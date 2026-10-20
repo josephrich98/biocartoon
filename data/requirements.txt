@@ -1,0 +1,5 @@
+# Python packages for the data pipeline (cairosvg also needs the cairo library: `brew install cairo`).
+boto3
+cairosvg
+pillow
+requests

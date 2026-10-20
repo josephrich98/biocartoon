@@ -1,0 +1,32 @@
+# Tests the catalog crate and the submissions Worker on every push.
+name: test
+on:
+  push:
+  pull_request:
+
+jobs:
+  catalog:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: catalog
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: catalog
+      - run: cargo test --release
+
+  worker:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: worker
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - run: npm ci
+      - run: npm test

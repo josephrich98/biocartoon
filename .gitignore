@@ -1,0 +1,25 @@
+data/bioart/
+__pycache__/
+*.pyc
+.venv/
+data/scrape.log
+data/sources/
+data/raster/
+data/assets.sqlite
+data/assets.sqlite-*
+data/assets.csv
+data/assets.tmp
+data/upload_r2.log
+data/catalog/
+
+# JS / Cloudflare tooling
+node_modules/
+.wrangler/
+.dev.vars
+
+# OS
+.DS_Store
+data/backups/
+data/sync-reports/
+data/.sync-work/
+data/.sync.lock

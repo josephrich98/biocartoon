@@ -1,0 +1,37 @@
+[package]
+name = "biocartoon-catalog"
+version = "0.1.0"
+edition = "2021"
+description = "Search and download the BioCartoon catalog of open-licensed scientific illustrations, from Rust, a shell or an MCP client"
+license = "BSD-2-Clause"
+repository = "https://github.com/josephrich98/biocartoon"
+
+[lib]
+name = "biocartoon_catalog"
+path = "src/lib.rs"
+
+[[bin]]
+name = "biocartoon"
+path = "src/bin/biocartoon.rs"
+
+[dependencies]
+log = "0.4"
+serde = { version = "1", features = ["derive"] }
+
+# The command line, MCP server and downloads are desktop only. A wasm32 build (the BioCartoon web
+# app) gets the search engine and taxonomy, and feeds the catalog in with `Worker::from_bytes`.
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+rusqlite = { version = "0.40", features = ["bundled", "serialize"] }
+serde_json = "1"
+dirs = "6"
+ureq = "3"
+flate2 = "1"
+image = { version = "0.25", default-features = false, features = ["png", "jpeg", "webp", "gif", "bmp", "tiff", "ico"] }
+base64 = "0.22"
+env_logger = "0.11"
+
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+rusqlite = { version = "0.40", features = ["serialize"] }
+
+[profile.dev.package."*"]
+opt-level = 2

@@ -1,0 +1,32 @@
+# `pip install biocartoon`: the `biocartoon` command line, built from this crate by maturin and
+# shipped as a plain binary in a wheel (no Python module). Wheels are built for each platform and
+# published by .github/workflows/pypi.yml; locally: `maturin build --release`.
+[build-system]
+requires = ["maturin>=1.7,<2"]
+build-backend = "maturin"
+
+[project]
+name = "biocartoon"
+dynamic = ["version"]
+description = "Search and download the BioCartoon catalog of open-licensed scientific illustrations from a shell or an MCP client"
+readme = "README.md"
+license = "BSD-2-Clause"
+license-files = ["LICENSE"]
+authors = [{ name = "Joseph Rich" }]
+requires-python = ">=3.8"
+keywords = ["biology", "illustration", "icons", "scientific figures", "mcp"]
+classifiers = [
+    "Environment :: Console",
+    "Intended Audience :: Science/Research",
+    "Programming Language :: Rust",
+    "Topic :: Scientific/Engineering :: Bio-Informatics",
+    "Topic :: Multimedia :: Graphics",
+]
+
+[project.urls]
+Homepage = "https://biocartoon.com"
+Repository = "https://github.com/josephrich98/biocartoon"
+
+[tool.maturin]
+bindings = "bin"
+strip = true

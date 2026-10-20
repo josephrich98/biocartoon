@@ -1,0 +1,24 @@
+// Public endpoint the app submits to. Writes only to the private pending bucket and D1;
+// the public bucket is bound read-only in practice (submit only HEADs it to check references).
+{
+  "name": "biocartoon-submit",
+  "main": "src/submit.ts",
+  "compatibility_date": "2026-10-01",
+  "routes": [{ "pattern": "api.biocartoon.com", "custom_domain": true }],
+  "r2_buckets": [
+    { "binding": "PENDING", "bucket_name": "biocartoon-pending" },
+    { "binding": "PUBLIC", "bucket_name": "biocartoon" },
+    // Private: signed-in users' online projects (src/accounts.ts). Never make it public.
+    { "binding": "USERS", "bucket_name": "biocartoon-users" }
+  ],
+  "vars": {
+    // Where the web app runs: sign-in returns there, and only it may call the account routes.
+    "APP_ORIGINS": "https://app.biocartoon.com",
+    // The OAuth apps' public ids. Their secrets: npx wrangler secret put GOOGLE_CLIENT_SECRET (and GITHUB_CLIENT_SECRET).
+    "GOOGLE_CLIENT_ID": "599303386512-ceirfqmjnies67ught8u8c36jq65n1hm.apps.googleusercontent.com",
+    "GITHUB_CLIENT_ID": "Ov23liqZWJtnS5faTB3X"
+  },
+  "d1_databases": [
+    { "binding": "DB", "database_name": "biocartoon-submissions", "database_id": "d1900da6-09c5-44c4-9f6a-cbf683a12bfe" }
+  ]
+}

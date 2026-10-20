@@ -1,0 +1,25 @@
+// The review page, at review.biocartoon.com. Put that hostname behind Cloudflare Access (Zero Trust >
+// Access > Applications > self-hosted, allow only your email), then set ACCESS_TEAM and
+// ACCESS_AUD below. Without them every request is refused.
+{
+  "name": "biocartoon-review",
+  "main": "src/review.ts",
+  "compatibility_date": "2026-10-01",
+  "routes": [{ "pattern": "review.biocartoon.com", "custom_domain": true }],
+  "workers_dev": false,
+  // Daily: delete the files of rejections older than REJECTED_KEEP_DAYS (src/publish.ts).
+  "triggers": { "crons": ["17 4 * * *"] },
+  "vars": {
+    // e.g. "myteam" for myteam.cloudflareaccess.com
+    "ACCESS_TEAM": "little-bar-e04d",
+    // the Access application's "Application Audience (AUD) Tag"
+    "ACCESS_AUD": "d424b29250e2b223576f01d08422a2d2d79af77c3a892521be913618751924bd"
+  },
+  "r2_buckets": [
+    { "binding": "PENDING", "bucket_name": "biocartoon-pending" },
+    { "binding": "PUBLIC", "bucket_name": "biocartoon" }
+  ],
+  "d1_databases": [
+    { "binding": "DB", "database_name": "biocartoon-submissions", "database_id": "d1900da6-09c5-44c4-9f6a-cbf683a12bfe" }
+  ]
+}
