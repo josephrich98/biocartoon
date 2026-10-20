@@ -8,7 +8,7 @@
 
 #[cfg(not(target_arch = "wasm32"))]
 use rusqlite::OpenFlags;
-use rusqlite::{params, Connection};
+use rusqlite::{params, Connection, OptionalExtension};
 use std::path::Path;
 #[cfg(not(target_arch = "wasm32"))]
 use std::path::PathBuf;
@@ -107,7 +107,7 @@ impl IconSort {
             IconSort::Alphabetical => "lower(coalesce(a.title,'')), a.title, a.id".into(),
             IconSort::ReverseAlphabetical => "lower(coalesce(a.title,'')) DESC, a.title DESC, a.id DESC".into(),
             IconSort::Popular => "coalesce(us.n,0) DESC, lower(coalesce(a.title,'')), a.title, a.id".into(),
-            IconSort::Relevance => format!("{SOURCE_ORDER}, m.score, a.id"),
+            IconSort::Relevance => "m.score, a.id".into(),
         }
     }
 
@@ -143,21 +143,31 @@ pub fn resolve_source(s: &str) -> Option<&'static str> {
     SOURCES.iter().find(|(k, c, _, _)| k.eq_ignore_ascii_case(s) || c.eq_ignore_ascii_case(s)).map(|(k, ..)| *k)
 }
 
-/// ` AND (a.source IN (...))`, or nothing for every source. [`BIOCARTOON_SOURCE`] selects
-/// BioCartoon's own uploads.
+/// The database an asset is listed under: [`BIOCARTOON_SOURCE`] for the uploads (source `user`)
+/// whose author is [`BIOCARTOON_AUTHOR`], which a reviewer approved as BioCartoon's own; its
+/// source otherwise. As biocartoon-app's `theme::asset_source`.
+const SHOWN_SOURCE: &str = "CASE WHEN a.source = 'user' AND a.author = 'BioCartoon' THEN 'biocartoon' ELSE a.source END";
+
+/// The `source` column of a database's assets (`user` for BioCartoon's own).
+fn stored_source(source: &str) -> &str {
+    if source == BIOCARTOON_SOURCE { "user" } else { source }
+}
+
+/// The condition that an asset is listed under the database `?1`. Matching `a.source` too lets
+/// SQLite use its index.
+fn source_is() -> String {
+    format!("a.source = CASE ?1 WHEN '{BIOCARTOON_SOURCE}' THEN 'user' ELSE ?1 END AND ({SHOWN_SOURCE}) = ?1")
+}
+
+/// ` AND (...)` keeping the assets listed under these databases (see [`SHOWN_SOURCE`]), or nothing
+/// for every database.
 fn src_filter(sources: &[String]) -> String {
     if sources.is_empty() {
         return String::new();
     }
-    let (own, rest): (Vec<_>, Vec<_>) = sources.iter().partition(|s| s.as_str() == BIOCARTOON_SOURCE);
-    let mut terms = Vec::new();
-    if !rest.is_empty() {
-        terms.push(format!("a.source IN ({})", rest.iter().map(|s| format!("'{}'", s.replace('\'', "''"))).collect::<Vec<_>>().join(",")));
-    }
-    if !own.is_empty() {
-        terms.push(format!("(a.source = 'user' AND a.author = '{BIOCARTOON_AUTHOR}')"));
-    }
-    format!(" AND ({})", terms.join(" OR "))
+    let list = |v: Vec<&str>| v.iter().map(|s| format!("'{}'", s.replace('\'', "''"))).collect::<Vec<_>>().join(",");
+    let stored = list(sources.iter().map(|s| stored_source(s)).collect());
+    format!(" AND (a.source IN ({stored}) AND ({SHOWN_SOURCE}) IN ({}))", list(sources.iter().map(String::as_str).collect()))
 }
 
 /// The category term of a browse (`?2`): one of the ", "-separated categories an asset is filed
@@ -172,7 +182,8 @@ fn category_filter(category: Option<&str>) -> (&'static str, String) {
     }
 }
 
-/// Ordering of sources in results: user uploads, then the science collections.
+/// Ordering of the source list: user uploads, then the science collections. Results don't use
+/// it, so no database is ranked ahead of another.
 const SOURCE_ORDER: &str = "CASE a.source WHEN 'user' THEN 0 WHEN 'bioart' THEN 1 WHEN 'bioicons' THEN 2 \
     WHEN 'servier' THEN 3 WHEN 'scidraw' THEN 4 WHEN 'healthicons' THEN 5 WHEN 'reactome' THEN 6 \
     WHEN 'openmoji' THEN 7 ELSE 9 END";
@@ -188,6 +199,11 @@ const GROUP_KEY: &str = "CASE a.source WHEN 'bioart' THEN coalesce(json_extract(
 const GROUP_KEY_GRP: &str = "coalesce(a.grp, a.id)";
 /// [`GROUP_KEY`] for catalogs without the `extra` column: a BioArt title stands in for its accession.
 const GROUP_KEY_NO_EXTRA: &str = "CASE a.source WHEN 'bioart' THEN 'bioart' || char(31) || coalesce(a.title,'') ELSE a.id END";
+/// Pairs one Health Icons pictogram's styles (`filled/x`, `outline/x`), which are separate icons
+/// but switch as style presets; NULL elsewhere. Titles won't do: several pictograms share one.
+const STYLE_KEY: &str = "CASE a.source WHEN 'healthicons' THEN substr(a.source_id, instr(a.source_id, '/') + 1) END";
+/// [`STYLE_KEY`] for catalogs without the `source_id` column.
+const STYLE_KEY_NO_SOURCE_ID: &str = "CASE a.source WHEN 'healthicons' THEN a.title END";
 
 const COLS: &str = "a.id, a.source, a.source_name, coalesce(a.title,''), coalesce(a.variant,''), coalesce(a.category,''), \
     a.license, a.credit, coalesce(a.author,''), a.png_key, a.png_local, coalesce(a.png_width,0), coalesce(a.png_height,0)";
@@ -229,6 +245,8 @@ pub struct Worker {
     group_key: &'static str,
     /// 1 on a copy of an identical image (the catalog's `dup` column), or 0 where it has none.
     dup: &'static str,
+    /// [`STYLE_KEY`], or its stand-in when the catalog lacks the column it reads.
+    style_key: &'static str,
     /// `usage.stars` exists (it can't be created on a read-only connection to an old usage file).
     local_stars: bool,
     /// `usage.uses` exists (it can't be created on a read-only connection with no usage file,
@@ -356,7 +374,8 @@ impl Worker {
         } else {
             (GROUP_KEY_NO_EXTRA, "0")
         };
-        Ok(Self { conn, fts, vocab: Default::default(), stars_col, group_key, dup, local_stars, local_uses, taxa: Default::default() })
+        let style_key = if has_col("source_id") { STYLE_KEY } else { STYLE_KEY_NO_SOURCE_ID };
+        Ok(Self { conn, fts, vocab: Default::default(), stars_col, group_key, dup, style_key, local_stars, local_uses, taxa: Default::default() })
     }
 
     /// The star columns of a `SELECT ... FROM assets a {stars_join}`: the count (the local
@@ -512,12 +531,7 @@ impl Worker {
         };
         let q = query.trim();
         if q.is_empty() {
-            let sort = sort.without_score();
-            let order = if sort == IconSort::Popular {
-                format!("coalesce(us.n,0) DESC, {SOURCE_ORDER}, {}", sort.sql())
-            } else {
-                format!("{SOURCE_ORDER}, {}", sort.sql())
-            };
+            let order = sort.without_score().sql();
             // Bare `a.rowid` next to MIN() takes the row with the minimum (the plain variant).
             let sql = wrap(
                 format!("SELECT a.rowid AS rid, {pf} AS score FROM assets a WHERE a.png_key IS NOT NULL {src_filter} GROUP BY {gk}"),
@@ -535,7 +549,7 @@ impl Worker {
                      FROM assets a WHERE (a.title LIKE ?1 OR a.tags LIKE ?1) AND a.png_key IS NOT NULL {src_filter} \
                      GROUP BY {gk}"
                 ),
-                &if sort == IconSort::Relevance { format!("{SOURCE_ORDER}, length(a.title), a.id") } else { sort.sql() },
+                &if sort == IconSort::Relevance { "length(a.title), a.id".into() } else { sort.sql() },
                 "LIMIT ?2 OFFSET ?3",
             );
             let mut st = self.conn.prepare(&sql)?;
@@ -555,10 +569,7 @@ impl Worker {
         let all = terms.join(" ");
         let any = terms.len() > 1 && !self.conn.query_row(&format!("SELECT EXISTS (SELECT 1 FROM {})", matched("?1")), params![all], |r| r.get::<_, bool>(0))?;
         let expr = if any { terms.join(" OR ") } else { all };
-        let order = match sort {
-            IconSort::Relevance if any => format!("m.score, {SOURCE_ORDER}, a.id"),
-            _ => sort.sql(),
-        };
+        let order = sort.sql();
         // Bare `a.rowid` next to MIN() takes the row with the minimum: the best match, and among
         // equal ones the plain variant (unless only a coloured one matches, as for "red flask"),
         // and an original over a copy.
@@ -632,11 +643,12 @@ impl Worker {
 
     pub fn browse(&self, source: &str, category: Option<&str>, offset: usize, limit: usize, sort: IconSort) -> rusqlite::Result<Vec<AssetRow>> {
         let gk = self.group_key;
+        let source_is = source_is();
         let pf = self.plain_first();
         let (cat_sql, cat_arg) = category_filter(category);
         let sql = format!(
             "SELECT {cols}, {pf} FROM assets a {uses_join} {stars_join} \
-             WHERE a.source = ?1 AND a.png_key IS NOT NULL {cat_sql} GROUP BY {gk} \
+             WHERE {source_is} AND a.png_key IS NOT NULL {cat_sql} GROUP BY {gk} \
              ORDER BY {order} LIMIT ?3 OFFSET ?4",
             cols = self.cols(),
             stars_join = self.stars_join(),
@@ -651,9 +663,10 @@ impl Worker {
     /// How many icons `browse` could return with no limit.
     pub fn browse_total(&self, source: &str, category: Option<&str>) -> rusqlite::Result<i64> {
         let gk = self.group_key;
+        let source_is = source_is();
         let (cat_sql, cat_arg) = category_filter(category);
         self.conn.query_row(
-            &format!("SELECT count(*) FROM (SELECT 1 FROM assets a WHERE a.source = ?1 AND a.png_key IS NOT NULL {cat_sql} GROUP BY {gk})"),
+            &format!("SELECT count(*) FROM (SELECT 1 FROM assets a WHERE {source_is} AND a.png_key IS NOT NULL {cat_sql} GROUP BY {gk})"),
             params![source, cat_arg],
             |r| r.get(0),
         )
@@ -663,8 +676,9 @@ impl Worker {
     /// under several ("Viruses, Molecules") counts in each; "" (uncategorized) comes last.
     pub fn categories(&self, source: &str) -> rusqlite::Result<Vec<CategoryInfo>> {
         let gk = self.group_key;
+        let source_is = source_is();
         let mut st = self.conn.prepare(&format!(
-            "SELECT DISTINCT coalesce(a.category,''), {gk} FROM assets a WHERE a.source=?1 AND a.png_key IS NOT NULL"
+            "SELECT DISTINCT coalesce(a.category,''), {gk} FROM assets a WHERE {source_is} AND a.png_key IS NOT NULL"
         ))?;
         let mut titles: std::collections::HashMap<String, std::collections::HashSet<String>> = Default::default();
         let mut rows = st.query(params![source])?;
@@ -777,8 +791,10 @@ impl Worker {
     pub fn sources(&self) -> rusqlite::Result<Vec<SourceInfo>> {
         let gk = self.group_key;
         let mut st = self.conn.prepare(&format!(
-            "SELECT a.source, a.source_name, count(*), count(DISTINCT {gk}), group_concat(DISTINCT a.license) FROM assets a \
-             WHERE a.png_key IS NOT NULL GROUP BY a.source ORDER BY {SOURCE_ORDER}"
+            "SELECT {SHOWN_SOURCE} AS s, CASE WHEN {SHOWN_SOURCE} = 'biocartoon' THEN 'BioCartoon' ELSE a.source_name END, \
+             count(*), count(DISTINCT {gk}), group_concat(DISTINCT a.license) FROM assets a \
+             WHERE a.png_key IS NOT NULL GROUP BY s ORDER BY {}",
+            SOURCE_ORDER.replace("CASE a.source", &format!("CASE s WHEN '{BIOCARTOON_SOURCE}' THEN -1"))
         ))?;
         let rows = st
             .query_map([], |r| {
@@ -794,14 +810,20 @@ impl Worker {
         rows
     }
 
-    pub fn variants(&self, source: &str, title: &str) -> rusqlite::Result<Vec<AssetRow>> {
+    /// The style presets of the icon with this id: its recolours (see [`GROUP_KEY`]) and its other
+    /// Health Icons styles, copies of identical images left out. Not other icons that share its
+    /// title: those are different drawings.
+    pub fn variants(&self, id: &str) -> rusqlite::Result<Vec<AssetRow>> {
+        let (gk, sk) = (self.group_key, self.style_key);
         let mut st = self.conn.prepare(&format!(
-            "SELECT {} FROM assets a {} WHERE a.source=?1 AND a.title=?2 AND a.png_key IS NOT NULL AND NOT {} ORDER BY a.variant LIMIT 40",
+            "SELECT {} FROM assets a {} WHERE a.png_key IS NOT NULL AND NOT {} \
+             AND ({gk} = (SELECT {gk} FROM assets a WHERE a.id=?1) OR {sk} = (SELECT {sk} FROM assets a WHERE a.id=?1)) \
+             ORDER BY a.variant LIMIT 40",
             self.cols(),
             self.stars_join(),
             self.dup
         ))?;
-        let rows = st.query_map(params![source, title], row_from)?.collect();
+        let rows = st.query_map(params![id], row_from)?.collect();
         rows
     }
 
@@ -916,6 +938,29 @@ impl Worker {
             }
         }
         Ok(())
+    }
+
+    /// Take an asset [`Self::insert_user`] added back out of the local catalog. Only the user's own
+    /// copies (with a `png_local`) go: a published upload would come back with the next catalog.
+    /// The PNG stays on disk, for documents that placed it. False when there was no such row.
+    pub fn remove_user(&self, id: &str) -> rusqlite::Result<bool> {
+        let own = "source='user' AND png_local IS NOT NULL";
+        let Some(rid) = self.conn.query_row(&format!("SELECT rowid FROM assets WHERE id=?1 AND {own}"), params![id], |r| r.get::<_, i64>(0)).optional()? else {
+            return Ok(false);
+        };
+        if self.fts {
+            // External-content FTS tables are told about deletions with the row's old values.
+            let _ = self.conn.execute(
+                "INSERT INTO assets_fts(assets_fts, rowid, title, description, tags, category, variant) \
+                 SELECT 'delete', rowid, title, description, tags, category, variant FROM assets WHERE rowid=?1",
+                params![rid],
+            );
+        }
+        if self.taxa.get() {
+            self.conn.execute("DELETE FROM temp.asset_taxa WHERE rid=?1", params![rid])?;
+        }
+        self.conn.execute("DELETE FROM assets WHERE rowid=?1", params![rid])?;
+        Ok(true)
     }
 
     pub fn record_use(&self, source: &str, title: &str) -> rusqlite::Result<()> {
@@ -1198,7 +1243,7 @@ mod tests {
         assert_eq!((find(&w, "k0").stars, find(&w, "k0").starred), (3, false));
         let hit = w.search("gamma", &[], 10, IconSort::Relevance).unwrap().remove(0);
         assert_eq!((hit.stars, hit.starred), (1201, true));
-        let v = w.variants("bioart", "gamma cell").unwrap().remove(0);
+        let v = w.variants("k2").unwrap().remove(0);
         assert_eq!((v.stars, v.starred), (1201, true));
         // They live in the usage file, so they survive a catalog update.
         drop(w);
@@ -1251,6 +1296,30 @@ mod tests {
         assert_eq!((titles(rows), total), (vec!["Influenza".to_string(), "SARS-CoV-2".to_string()], 2));
         let (_, total) = w.browse_taxon(None, None, &["user".into()], 0, 10, IconSort::Alphabetical).unwrap();
         assert_eq!(total, 0);
+    }
+
+    #[test]
+    fn own_uploads_can_be_removed() {
+        let dir = std::env::temp_dir().join(format!("cc-catalog-remove-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let w = worker(&dir);
+        // A published upload (no png_local) next to one of the user's own.
+        for (id, local) in [("shared", None), ("mine", Some("/tmp/mine.png"))] {
+            w.conn
+                .execute(
+                    &format!("INSERT INTO assets ({TEST_COLS}) VALUES (?1, 'user', 'User-generated', ?2, '', '', '', '[]', 'CC0-1.0', '', '', ?1, ?3, 1, 1)"),
+                    params![format!("user/{id}"), format!("zebra {id}"), local],
+                )
+                .unwrap();
+        }
+        w.conn.execute_batch("INSERT INTO assets_fts(assets_fts) VALUES('rebuild');").unwrap();
+        assert_eq!(w.search_total("zebra", &[]).unwrap(), 2);
+        assert!(!w.remove_user("user/shared").unwrap());
+        assert!(w.remove_user("user/mine").unwrap());
+        assert!(!w.remove_user("user/mine").unwrap());
+        assert_eq!(titles(w.search("zebra", &[], 10, IconSort::Relevance).unwrap()), vec!["zebra shared"]);
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]
@@ -1344,6 +1413,11 @@ mod tests {
         let mut colours: Vec<&str> = re["ba/2"].iter().map(|r| r.variant.as_str()).collect();
         colours.sort();
         assert_eq!(colours, ["", "blue", "red"]);
+        // Presets: a drawing's colours, a pictogram's styles, never another drawing's.
+        assert_eq!(ids(w.variants("ba/2").unwrap()), ["ba/1", "ba/3", "ba/2"]);
+        assert_eq!(ids(w.variants("ba/4").unwrap()), ["ba/4"]);
+        assert_eq!(ids(w.variants("hi/o").unwrap()), ["hi/f", "hi/o"]);
+        assert_eq!(ids(w.variants("sd/1").unwrap()), ["sd/1"]);
         let _ = std::fs::remove_dir_all(&dir);
     }
 
@@ -1388,7 +1462,41 @@ mod tests {
         assert_eq!(ids(w.search("heard", &[], 10, IconSort::Relevance).unwrap()), ["om/hm"]);
         let re = w.recolors(&["ba/38_1".into()]).unwrap();
         assert_eq!(ids(re["ba/38_1"].clone()), ["ba/37_1", "ba/37_2"]);
-        assert_eq!(w.variants("bioart", "bat").unwrap().len(), 2);
+        assert_eq!(ids(w.variants("ba/38_2").unwrap()), ["ba/37_1", "ba/37_2"]);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn biocartoons_own_uploads_are_listed_under_biocartoon_not_user_generated() {
+        let dir = std::env::temp_dir().join(format!("cc-catalog-own-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let db = dir.join("assets.sqlite");
+        let c = Connection::open(&db).unwrap();
+        c.execute_batch(
+            "CREATE TABLE assets (id TEXT PRIMARY KEY, source TEXT, source_name TEXT, title TEXT, variant TEXT, \
+             description TEXT, category TEXT, tags TEXT, license TEXT, credit TEXT, author TEXT, png_key TEXT, \
+             png_local TEXT, png_width INTEGER, png_height INTEGER, extra TEXT);",
+        )
+        .unwrap();
+        for (id, source, author) in [("user/logo", "user", "BioCartoon"), ("user/cell", "user", "Ann"), ("bioicons/x", "bioicons", "")] {
+            c.execute(
+                "INSERT INTO assets VALUES (?1, ?2, 'User-generated', ?1, '', '', 'Lab', '[]', 'CC0-1.0', '', ?3, ?1, NULL, 1, 1, '{}')",
+                params![id, source, author],
+            )
+            .unwrap();
+        }
+        drop(c);
+        let w = Worker::open(&db, &dir.join("usage.sqlite")).unwrap();
+        let ids = |rows: Vec<AssetRow>| rows.into_iter().map(|r| r.id).collect::<Vec<_>>();
+        assert_eq!(ids(w.browse(BIOCARTOON_SOURCE, None, 0, 10, IconSort::Alphabetical).unwrap()), ["user/logo"]);
+        assert_eq!(ids(w.browse("user", None, 0, 10, IconSort::Alphabetical).unwrap()), ["user/cell"]);
+        assert_eq!((w.browse_total(BIOCARTOON_SOURCE, None).unwrap(), w.browse_total("user", Some("Lab")).unwrap()), (1, 1));
+        assert_eq!(w.categories(BIOCARTOON_SOURCE).unwrap().iter().map(|c| c.count).sum::<i64>(), 1);
+        assert_eq!(ids(w.search("", &["user".into()], 10, IconSort::Alphabetical).unwrap()), ["user/cell"]);
+        assert_eq!(ids(w.search("", &[BIOCARTOON_SOURCE.into(), "bioicons".into()], 10, IconSort::Alphabetical).unwrap()), ["bioicons/x", "user/logo"]);
+        let srcs: Vec<(String, String, i64)> = w.sources().unwrap().into_iter().map(|s| (s.source, s.name, s.icons)).collect();
+        assert_eq!(srcs, [("biocartoon".into(), "BioCartoon".into(), 1), ("user".into(), "User-generated".into(), 1), ("bioicons".into(), "User-generated".into(), 1)]);
         let _ = std::fs::remove_dir_all(&dir);
     }
 }

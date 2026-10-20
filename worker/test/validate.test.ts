@@ -81,6 +81,7 @@ test("meta checks", () => {
   assert.throws(() => parseMeta({ title: "ok", author: "f*ck", license: "CC0-1.0" }), /language/);
   assert.throws(() => parseMeta({ title: "ok", license: "CC-BY-4.0" }), /credit name/);
   assert.equal(parseMeta({ title: "ok", author: "Ann", license: "CC-BY-4.0" }).author, "Ann");
+  assert.throws(() => parseMeta({ title: "ok", author: "BioCartoon team", license: "CC0-1.0" }), /BioCartoon/);
 });
 
 test("credit lines", () => {

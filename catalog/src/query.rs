@@ -248,10 +248,9 @@ impl Catalog {
         Ok(self.details([id])?.pop())
     }
 
-    /// Colour / style variants of the same asset (same source and title), the given one included.
+    /// Colour / style variants of the same asset (see `Worker::variants`), the given one included.
     pub fn variants(&self, id: &str) -> Result<Vec<Asset>, String> {
-        let Some(a) = self.get(id)? else { return Ok(Vec::new()) };
-        let rows = self.worker.variants(&a.source, &a.title).map_err(|e| e.to_string())?;
+        let rows = self.worker.variants(id).map_err(|e| e.to_string())?;
         self.details(rows.iter().map(|r| r.id.as_str()))
     }
 

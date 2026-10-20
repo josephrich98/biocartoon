@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { profanity, clean, newId, checkLanguage, Rejected } from "../src/text.ts";
+import { profanity, clean, newId, checkLanguage, impersonatesBioCartoon, Rejected } from "../src/text.ts";
 
 test("scientific vocabulary passes", () => {
   const ok = `penis vagina vulva testis scrotum anus anal rectum breast nipple sperm semen ejaculation erection
@@ -27,4 +27,14 @@ test("clean trims and limits", () => {
 test("ids are slug-safe", () => {
   assert.match(newId("T cell: activation!"), /^t-cell-activation-[0-9a-f]{10}$/);
   assert.match(newId("!!!"), /^item-[0-9a-f]{10}$/);
+});
+
+test("names that pass for BioCartoon are caught", () => {
+  for (const s of ["BioCartoon", "biocartoon", "The BioCartoon Team", "bi0cartoon", "B1O C4RT00N", "bio-cartoon", "Bio_Cartoon",
+    "biocartooon", "biocartton", "biokartoon", "biocartoo", "iocartoon", "BíoCártoon", "bіоcartoon", "BlOCARTOON", "ann@biocartoon.com"]) {
+    assert.ok(impersonatesBioCartoon(s), s);
+  }
+  for (const s of ["Ann Lee", "anonymous", "Bio Lab", "Cartoon Network", "biology cartoons", "Bob Carton", "Dr. Biocart", "Tobias Carton"]) {
+    assert.ok(!impersonatesBioCartoon(s), s);
+  }
 });

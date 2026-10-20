@@ -33,9 +33,9 @@ function setup(row: Row, pending: string[]) {
         bind(...a: unknown[]) {
           return {
             async run() {
-              if (sql.includes("status = 'pending'")) Object.assign(row, { status: "pending", reviewed_at: null, reviewed_by: null });
+              if (sql.includes("status = 'pending'")) Object.assign(row, { status: "pending", reviewed_at: null, reviewed_by: null, official: 0 });
               else if (sql.includes("files = '[]'")) row.files = "[]";
-              else Object.assign(row, { status: a[1], reviewed_at: a[2], reviewed_by: a[3] });
+              else Object.assign(row, { status: a[1], reviewed_at: a[2], reviewed_by: a[3], official: a[4] });
             },
             async all() {
               const old = row.status === "rejected" && row.files !== "[]" && row.reviewed_at! < (a[0] as string);
@@ -52,8 +52,12 @@ function setup(row: Row, pending: string[]) {
 const asset = (id: string, files: string[]): Row => ({
   id, kind: "asset", title: "Cell", description: "", category: "", author: "Me", license: "CC0-1.0", files: JSON.stringify(files),
   texts: "[]", width: 10, height: 10, bytes: 3, png_sha256: null, created_at: "2026-10-01T00:00:00Z", status: "pending",
-  reviewed_at: null, reviewed_by: null,
+  reviewed_at: null, reviewed_by: null, official: 0,
 });
+const sidecar = (PUBLIC: ReturnType<typeof bucket>, k: string) => {
+  const b: unknown = PUBLIC.m.get(k)!.body; // the sidecar is put as a string
+  return JSON.parse(typeof b === "string" ? b : new TextDecoder().decode(b as ArrayBuffer));
+};
 
 test("public keys", () => {
   assert.equal(publicKey({ id: "a", kind: "asset" }, "a/image.png"), "user/a.png");
@@ -90,6 +94,29 @@ test("undoing an approved template", async () => {
   await undo(env, row);
   assert.equal(PUBLIC.m.size, 0);
   assert.deepEqual([...PENDING.m.keys()].sort(), [...files].sort());
+});
+
+test("an official approval credits BioCartoon, and undoing it clears the flag", async () => {
+  const row = asset("cell", ["cell/image.png"]);
+  const { env, PUBLIC } = setup(row, ["cell/image.png"]);
+  await approve(env, row, "me");
+  assert.equal(sidecar(PUBLIC, "user/cell.json").author, "Me");
+  assert.equal(sidecar(PUBLIC, "user/cell.json").official, undefined);
+  await undo(env, row);
+  await approve(env, row, "me", true);
+  const s = sidecar(PUBLIC, "user/cell.json");
+  assert.deepEqual([s.author, s.credit, s.official, row.official], ["BioCartoon", '"Cell", BioCartoon, CC0', true, 1]);
+  await undo(env, row);
+  assert.equal(row.official, 0);
+});
+
+test("an official template is credited to BioCartoon in its template.json", async () => {
+  const files = ["t/thumb.png", "t/template.json"];
+  const row = { ...asset("t", files), kind: "template" as const };
+  const { env, PENDING, PUBLIC } = setup(row, files);
+  PENDING.m.set("t/template.json", { body: new TextEncoder().encode(JSON.stringify({ meta: { id: "t", author: "Me" }, width: 1 })).buffer });
+  await approve(env, row, "me", true);
+  assert.deepEqual(sidecar(PUBLIC, "templates/t/template.json"), { meta: { id: "t", author: "BioCartoon" }, width: 1 });
 });
 
 test("undoing an approval whose public files are gone fails without changing anything", async () => {

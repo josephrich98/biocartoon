@@ -44,6 +44,39 @@ export function profanity(text: string): string | null {
   return null;
 }
 
+/** The author of BioCartoon's own assets (catalog crate: BIOCARTOON_AUTHOR). Only a reviewer can
+ *  give it, by approving a submission as official (src/publish.ts). */
+export const BIOCARTOON_AUTHOR = "BioCartoon";
+
+// Characters that pass for a letter of "biocartoon": digits and symbols, and Cyrillic/Greek lookalikes.
+const LOOKALIKES: Record<string, string> = {
+  "0": "o", "1": "i", "3": "e", "4": "a", "5": "s", "7": "t", "8": "b", "@": "a", "$": "s", "!": "i", "|": "i", l: "i",
+  "а": "a", "о": "o", "с": "c", "і": "i", "ο": "o", "α": "a", "ι": "i",
+};
+// "biocartoon" with repeated letters collapsed, as names are before matching.
+const RESERVED = "biocarton";
+
+/** Whether `name` contains BioCartoon or something that passes for it ("Bi0 Cart00n", "biocartton",
+ *  "BioKartoon"): lookalikes mapped to letters, everything but letters dropped, repeats collapsed,
+ *  then any stretch within one edit of the name. */
+export function impersonatesBioCartoon(name: string): boolean {
+  const s = [...name.normalize("NFKD").replace(/\p{M}/gu, "").toLowerCase()]
+    .map((c) => LOOKALIKES[c] ?? c)
+    .join("")
+    .replace(/[^a-z]/g, "")
+    .replace(/(.)\1+/g, "$1");
+  // Edit distance from RESERVED to the best-matching stretch of s (a match may start anywhere).
+  const m = RESERVED.length;
+  let prev = Array.from({ length: m + 1 }, (_, i) => i);
+  for (const c of s) {
+    const cur = [0];
+    for (let i = 1; i <= m; i++) cur.push(Math.min(prev[i] + 1, cur[i - 1] + 1, prev[i - 1] + (RESERVED[i - 1] === c ? 0 : 1)));
+    if (cur[m] <= 1) return true;
+    prev = cur;
+  }
+  return false;
+}
+
 /** Trim, drop control characters, enforce a length limit. */
 export function clean(v: unknown, limit: number, field: string, required = false): string {
   const s = typeof v === "string" ? v.replace(/[\u0000-\u001f\u007f]/g, " ").replace(/\s+/g, " ").trim() : "";

@@ -8,7 +8,7 @@
 
 import type { Env } from "./env.ts";
 import { sha256Hex } from "./http.ts";
-import { Rejected } from "./text.ts";
+import { BIOCARTOON_AUTHOR, Rejected } from "./text.ts";
 import { creditLine } from "./validate.ts";
 
 /** How long a rejected submission's files are kept, so the rejection can be undone. */
@@ -30,16 +30,19 @@ export interface Row {
   png_sha256: string | null;
   created_at: string;
   status: string;
+  /** 1 when approved as BioCartoon's own (credited to BioCartoon, whatever name it was sent under). */
+  official: number;
   reviewed_at: string | null;
   reviewed_by: string | null;
 }
 
 const IMMUTABLE = "public, max-age=31536000, immutable";
 
-async function copy(env: Env, from: string, to: string, contentType: string): Promise<ArrayBuffer> {
+async function copy(env: Env, from: string, to: string, contentType: string, edit?: (b: ArrayBuffer) => ArrayBuffer): Promise<ArrayBuffer> {
   const obj = await env.PENDING.get(from);
   if (!obj) throw new Error(`pending object ${from} is missing`);
-  const body = await obj.arrayBuffer();
+  const raw = await obj.arrayBuffer();
+  const body = edit ? edit(raw) : raw;
   // An SVG opened straight from the bucket downloads instead of rendering on the bucket's origin
   // (images and fetches of it are unaffected).
   const contentDisposition = contentType === "image/svg+xml" ? "attachment" : undefined;
@@ -47,8 +50,11 @@ async function copy(env: Env, from: string, to: string, contentType: string): Pr
   return body;
 }
 
-export async function approve(env: Env, row: Row, reviewer: string): Promise<void> {
+/** Publishes a submission. `official` publishes it as BioCartoon's own: credited to BioCartoon, so
+ *  the app lists it under the BioCartoon database rather than the user-generated one. */
+export async function approve(env: Env, row: Row, reviewer: string, official = false): Promise<void> {
   const files: string[] = JSON.parse(row.files);
+  const author = official ? BIOCARTOON_AUTHOR : row.author;
   if (row.kind === "asset") {
     const key = `user/${row.id}.png`;
     let image;
@@ -61,22 +67,29 @@ export async function approve(env: Env, row: Row, reviewer: string): Promise<voi
       const bytes = (await copy(env, `${row.id}/image.png`, key, "image/png")).byteLength;
       image = { png_width: row.width, png_height: row.height, png_bytes: bytes, png_sha256: row.png_sha256 };
     }
-    const credit = creditLine(row.title, row.author, row.license);
+    const credit = official ? creditLine(row.title, "", row.license, BIOCARTOON_AUTHOR) : creditLine(row.title, row.author, row.license);
     const sidecar = {
       id: `user/${row.id}`, title: row.title, description: row.description, category: row.category, license: row.license,
-      credit, author: row.author, png_key: key, ...image, created_at: row.created_at,
+      credit, author, png_key: key, ...image, created_at: row.created_at, ...(official && { official: true }),
     };
     await env.PUBLIC.put(`user/${row.id}.json`, JSON.stringify(sidecar), { httpMetadata: { contentType: "application/json" } });
   } else {
     // template.json last: publishing only looks for it, so it never sees a partial template.
     const ordered = [...files.filter((f) => !f.endsWith("template.json")), ...files.filter((f) => f.endsWith("template.json"))];
+    // An official template's credit is in its template.json (data/uploads.py reads meta.author).
+    const credit = (b: ArrayBuffer) => {
+      const t = JSON.parse(new TextDecoder().decode(b));
+      t.meta = { ...t.meta, author };
+      return new TextEncoder().encode(JSON.stringify(t)).buffer as ArrayBuffer;
+    };
     for (const f of ordered) {
       const name = f.slice(row.id.length + 1);
-      await copy(env, f, `templates/${row.id}/${name}`, name.endsWith(".json") ? "application/json" : "image/png");
+      const json = name.endsWith(".json");
+      await copy(env, f, `templates/${row.id}/${name}`, json ? "application/json" : "image/png", json && official ? credit : undefined);
     }
   }
   await env.PENDING.delete(files);
-  await setStatus(env, row.id, "approved", reviewer);
+  await setStatus(env, row.id, "approved", reviewer, official);
 }
 
 export async function reject(env: Env, row: Row, reviewer: string): Promise<void> {
@@ -114,7 +127,7 @@ export async function undo(env: Env, row: Row): Promise<void> {
   } else {
     return;
   }
-  await env.DB.prepare("UPDATE submissions SET status = 'pending', reviewed_at = NULL, reviewed_by = NULL WHERE id = ?1").bind(row.id).run();
+  await env.DB.prepare("UPDATE submissions SET status = 'pending', reviewed_at = NULL, reviewed_by = NULL, official = 0 WHERE id = ?1").bind(row.id).run();
 }
 
 /** Deletes the files of rejections older than REJECTED_KEEP_DAYS (run daily by the review Worker's cron). */
@@ -130,9 +143,9 @@ export async function purgeRejected(env: Env, now = new Date()): Promise<number>
   return rows.results.length;
 }
 
-async function setStatus(env: Env, id: string, status: string, reviewer: string): Promise<void> {
-  await env.DB.prepare("UPDATE submissions SET status = ?2, reviewed_at = ?3, reviewed_by = ?4 WHERE id = ?1")
-    .bind(id, status, new Date().toISOString().replace(/\.\d+Z$/, "Z"), reviewer)
+async function setStatus(env: Env, id: string, status: string, reviewer: string, official = false): Promise<void> {
+  await env.DB.prepare("UPDATE submissions SET status = ?2, reviewed_at = ?3, reviewed_by = ?4, official = ?5 WHERE id = ?1")
+    .bind(id, status, new Date().toISOString().replace(/\.\d+Z$/, "Z"), reviewer, official ? 1 : 0)
     .run();
 }
 

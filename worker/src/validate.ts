@@ -1,7 +1,7 @@
 // Validation of submitted assets and templates. Pure functions (no bindings) so they are unit-tested.
 
 import { LICENSES, LICENSE_URLS, MAX_IMAGE_SIDE, MAX_PNG_BYTES, MAX_SVG_BYTES, MAX_TEMPLATE_IMAGES, MAX_TEMPLATE_ITEMS } from "./limits.ts";
-import { Rejected, checkLanguage, clean } from "./text.ts";
+import { Rejected, checkLanguage, clean, impersonatesBioCartoon } from "./text.ts";
 
 export interface Meta {
   title: string;
@@ -150,6 +150,8 @@ export function parseMeta(raw: unknown): Meta {
   // CC BY exists so the artist is credited: it needs a name to credit.
   if (meta.license === "CC-BY-4.0" && meta.author === "anonymous") throw new Rejected("CC BY 4.0 needs a credit name");
   checkLanguage([meta.title, meta.description, meta.category, meta.author]);
+  // Only BioCartoon's own assets go under its name, and a reviewer gives it (src/publish.ts).
+  if (impersonatesBioCartoon(meta.author)) throw new Rejected("Credit name can't include BioCartoon: that name is kept for BioCartoon's own assets.");
   return meta;
 }
 

@@ -78,8 +78,9 @@ async function route(req: Request, env: Env, who: string): Promise<Response> {
       return back(`Undid: “${row.title}” is pending again${was === "approved" ? ". If the catalog was published since, it leaves the app at the next publish_catalog.py run" : ""}`);
     }
     if (row.status !== "pending") return back(`“${row.title}” was already ${row.status}`);
-    await (action === "approve" ? approve(env, row, who) : reject(env, row, who));
-    return back(`${action === "approve" ? "Approved" : "Rejected"} “${row.title}”`, true);
+    const official = action === "approve" && (await req.formData()).get("official") === "1";
+    await (action === "approve" ? approve(env, row, who, official) : reject(env, row, who));
+    return back(`${action === "approve" ? "Approved" : "Rejected"} “${row.title}”${official ? " as an official BioCartoon asset" : ""}`, true);
   }
   return new Response("Not found", { status: 404 });
 }
@@ -103,7 +104,9 @@ function card(r: Row): string {
     <dt>License</dt><dd>${esc(r.license)}</dd><dt>Size</dt><dd>${r.width ? `${r.width}×${r.height}, ` : ""}${Math.max(1, Math.round(r.bytes / 1024))} KB${svg ? " SVG" : ""}</dd>
     <dt>Submitted</dt><dd>${esc(r.created_at)}</dd></dl>
     ${textList}
-    <form method="post"><button formaction="/approve/${esc(r.id)}" class="ok">Approve</button>
+    <form method="post"><label class="official"><input type="checkbox" name="official" value="1"> Official BioCartoon ${esc(r.kind)}
+    <span>(credited to BioCartoon instead of ${esc(r.author)}, and listed under the BioCartoon database)</span></label>
+    <button formaction="/approve/${esc(r.id)}" class="ok">Approve</button>
     <button formaction="/reject/${esc(r.id)}" class="no">Reject</button></form>
   </div>
 </section>`;
@@ -128,13 +131,14 @@ dl{display:grid;grid-template-columns:90px 1fr;gap:2px 8px;margin:8px 0;font-siz
 li{overflow-wrap:anywhere}button{font:inherit;padding:7px 18px;border-radius:6px;border:0;color:#fff;cursor:pointer;margin-right:6px}
 .ok{background:#2e7d32}.no{background:#b3261e}.done{background:#e8f5e9;border:1px solid #a5d6a7;padding:8px 12px;border-radius:6px;display:flex;align-items:center;gap:12px}
 .undo{background:#55555f;padding:3px 12px;font-size:13px}.done .undo{margin-left:auto}form.inline{display:inline;margin:0}
+label.official{display:block;margin:0 0 10px;font-size:14px}label.official span{color:#777;font-size:12px}
 table{border-collapse:collapse;font-size:13px;width:100%}td{border-top:1px solid #ddd;padding:4px 6px}
 </style></head><body>
 <h1>Review queue: ${total?.n ?? 0} pending</h1>
 ${done ? `<div class="done"><span>${esc(done)}</span>${undoId ? undoForm(undoId) : ""}</div>` : ""}
 ${pending.results.map(card).join("") || "<p>Nothing to review.</p>"}
 <h3>Recent decisions</h3><table>${recent.results
-    .map((r) => `<tr><td>${esc(r.status)}</td><td>${esc(r.kind)}</td><td>${esc(r.title)}</td><td>${esc(r.author)}</td><td>${esc(r.reviewed_by)}</td><td>${esc(r.reviewed_at)}</td><td>${r.status === "approved" || r.files !== "[]" ? undoForm(r.id) : ""}</td></tr>`)
+    .map((r) => `<tr><td>${esc(r.status)}${r.official ? " (official)" : ""}</td><td>${esc(r.kind)}</td><td>${esc(r.title)}</td><td>${esc(r.author)}</td><td>${esc(r.reviewed_by)}</td><td>${esc(r.reviewed_at)}</td><td>${r.status === "approved" || r.files !== "[]" ? undoForm(r.id) : ""}</td></tr>`)
     .join("")}</table>
 <p style="color:#777;font-size:13px">Approved items reach the app the next time <code>data/publish_catalog.py</code> runs, and an undone approval leaves it then too.
 Rejections can be undone for ${REJECTED_KEEP_DAYS} days.</p>
