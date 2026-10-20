@@ -102,8 +102,8 @@ def count_templates(db: Path | None) -> int:
 def render(rows: list[tuple[str, int, int, str]]) -> str:
     icons, templates = sum(r[1] for r in rows), sum(r[2] for r in rows)
     lines = [f"{icons:,} icons and {templates:,} templates across {len(rows)} resources.", "",
-             "| source | icons | templates | license |", "|---|---|---|---|"]
-    lines += [f"| {source_cell(s)} | {n:,} | {t:,} | {lic} |" for s, n, t, lic in rows]
+             "| source | icons | license |", "|---|---|---|"]
+    lines += [f"| {source_cell(s)} | {n:,} | {lic} |" for s, n, _, lic in rows]
     return "\n".join(lines)
 
 
