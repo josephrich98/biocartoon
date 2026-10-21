@@ -31,6 +31,8 @@ COMMANDS
       --sort relevance|az|za|popular
       --columns C,C,...     which columns of the icon table to show, in this order (default all):
                             id, title, source, category, description, author, license, filetype
+      --facets              instead of icons, how many each filter's choices find under TERM and
+                            the other filters (as the editor's dropdowns count them)
       --sql                 run TERM as read-only SQL on the catalog instead (no TERM: the schema)
                             [--max-rows N]. A TERM that starts like SQL (SELECT ... FROM, WITH,
                             PRAGMA, EXPLAIN) is run as SQL anyway, with a warning; --no-sql stops that.
@@ -612,6 +614,9 @@ fn search(a: &Args, q: &str, templates: Option<Templates>) -> Result<(), String>
     }
     let want_icons = only_icons || !only_templates;
     let want_templates = templates.is_some() && (only_templates || (!only_icons && !icon_filters));
+    if a.flag("facets") {
+        return facets(a, q);
+    }
     let (limit, offset) = (a.num("limit", 12)?, a.num("offset", 0)?);
     let mut out = serde_json::Map::new();
     let mut icons = Vec::new();
@@ -644,6 +649,44 @@ fn search(a: &Args, q: &str, templates: Option<Templates>) -> Result<(), String>
             println!("\nTEMPLATES");
         }
         print_templates(&temps);
+    }
+    Ok(())
+}
+
+/// `search --facets`: each icon filter's choices with how many icons they find under the query and
+/// the other filters (a choice is not counted under its own filter, so picking one leaves the rest listed).
+fn facets(a: &Args, q: &str) -> Result<(), String> {
+    let cat = Catalog::open_default()?;
+    let fc = match icon_filter(a, &cat)? {
+        Some(f) => cat.facets(q, &f)?,
+        None => Default::default(),
+    };
+    let pairs = |k: &str, v: &[(String, i64)]| v.iter().map(|(x, n)| json!({k: x, "icons": n})).collect::<Vec<_>>();
+    let taxa: Vec<Value> = fc.taxa.iter().filter(|t| !t.cat.is_empty()).map(|t| json!({"slug": taxonomy::taxon_slug(&t.cat, &t.sub), "icons": t.count})).collect();
+    let db_cats: Vec<Value> = fc.db_cats.iter().map(|(s, c, n)| json!({"source": s, "category": c, "icons": n})).collect();
+    let out = json!({
+        "sources": pairs("source", &fc.sources),
+        "licenses": pairs("license", &fc.licenses),
+        "categories": taxa,
+        "db_categories": db_cats,
+        "file_types": pairs("file_type", &fc.formats),
+    });
+    if a.flag("json") {
+        print_json(&out);
+        return Ok(());
+    }
+    for (head, key) in [("DATABASES", "sources"), ("LICENSES", "licenses"), ("CATEGORIES", "categories"), ("DATABASE CATEGORIES", "db_categories"), ("FILE TYPES", "file_types")] {
+        println!("{head}");
+        for r in out[key].as_array().into_iter().flatten() {
+            let name = match key {
+                "sources" => r["source"].as_str().unwrap_or_default().to_string(),
+                "licenses" => r["license"].as_str().unwrap_or_default().to_string(),
+                "categories" => r["slug"].as_str().unwrap_or_default().to_string(),
+                "db_categories" => format!("{}:{}", r["source"].as_str().unwrap_or_default(), r["category"].as_str().unwrap_or_default()),
+                _ => r["file_type"].as_str().unwrap_or_default().to_string(),
+            };
+            println!("  {name:<56} {:>6}", r["icons"]);
+        }
     }
     Ok(())
 }
