@@ -50,6 +50,47 @@ DISPLAY = {
 ICON_KEY = ("CASE source WHEN 'bioart' THEN coalesce(json_extract(extra, '$.accession'), id) "
             "WHEN 'healthicons' THEN substr(source_id, instr(source_id, '/') + 1) ELSE id END")
 FAMILIES = {"PD": "Public Domain", "CC0": "CC0", "CC-BY": "CC BY", "CC-BY-SA": "CC BY-SA"}
+# source -> (png_key, label) of the icons in the table's "examples" column, the same ones (and
+# labels) as the table on biocartoon.com (biocartoon-app/site/public/index.html). Each is credited
+# under the table from its row's `credit`.
+ASSETS_URL = "https://assets.biocartoon.com/"
+EXAMPLES = {
+    "bioicons": [("bioicons/cc-by-4.0/Nucleic_acids/DNA_colored.png", "DNA"),
+                 ("bioicons/cc-by-4.0/Cell_types/Lymphocyte.png", "Lymphocyte"),
+                 ("bioicons/cc-by-3.0/Human_physiology/heart.png", "Heart"),
+                 ("bioicons/cc-by-4.0/Animals/Mouse.png", "Mouse"),
+                 ("bioicons/cc-by-4.0/Human_physiology/Human_male.png", "Human male")],
+    "healthicons": [("healthicons/filled/body/dna.png", "DNA"),
+                    ("healthicons/filled/body/cell-nuclei.png", "Cell nuclei"),
+                    ("healthicons/filled/body/heart-organ.png", "Heart"),
+                    ("healthicons/filled/zoonoses/animal-rat.png", "Rat"),
+                    ("healthicons/filled/people/person.png", "Person")],
+    "bioart": [("bioart/123_629265.png", "DNA"),
+               ("bioart/508_636258.png", "T cell"),
+               ("bioart/228_630872.png", "Heart"),
+               ("bioart/279_631480.png", "Mouse"),
+               ("bioart/238_630972.png", "Human male")],
+    "openmoji": [("openmoji/1F9EC.png", "DNA"),
+                 ("openmoji/1F95D.png", "Kiwi"),
+                 ("openmoji/1FAC0.png", "Heart"),
+                 ("openmoji/1F401.png", "Mouse"),
+                 ("openmoji/1F9D1.png", "Person")],
+    "reactome": [("reactome/R-ICO-012630.png", "DNA"),
+                 ("reactome/R-ICO-012548.png", "Cell"),
+                 ("reactome/R-ICO-014671.png", "Heart"),
+                 ("reactome/R-ICO-014760.png", "Mosquito"),
+                 ("reactome/R-ICO-013956.png", "Male body with organs")],
+    "scidraw": [("scidraw/300600a8-aa21-4da5-9ab8-e5ffa883e5ef.png", "DNA"),
+                ("scidraw/2fd8c494-e81e-4016-aad1-ddcedf556d25.png", "Cell"),
+                ("scidraw/974e624f-dae9-4b40-bac9-e1e67b4d13e1.png", "Heart"),
+                ("scidraw/2855271a-b8c2-4621-8fde-aedf0ab7d80d.png", "Mouse"),
+                ("scidraw/f4f67923-e24e-48ab-8c19-b4ff436f45a4.png", "Human silhouette")],
+    "servier": [("servier/dna.png", "DNA"),
+                ("servier/cell-red-blue.png", "Cell"),
+                ("servier/heart-organ.png", "Heart"),
+                ("servier/mouse.png", "Mouse"),
+                ("servier/african-adult-man.png", "Man")],
+}
 
 
 def license_label(counts: Counter) -> str:
@@ -99,11 +140,33 @@ def count_templates(db: Path | None) -> int:
     return n
 
 
-def render(rows: list[tuple[str, int, int, str]]) -> str:
+def examples_cell(source: str) -> str:
+    return " ".join(f'<img src="{ASSETS_URL}{key}" alt="{label}" title="{label}" height="32">'
+                    for key, label in EXAMPLES.get(source, []))
+
+
+def example_credits(db: Path) -> list[str]:
+    """The `credit` of every example icon, in table order; one missing from the catalog is a warning."""
+    keys = [key for _, examples in sorted(EXAMPLES.items(), key=lambda kv: source_name(kv[0]).lower())
+            for key, _ in examples]
+    con = sqlite3.connect(f"file:{db}?mode=ro", uri=True)
+    credits = dict(con.execute(f"SELECT png_key, credit FROM assets WHERE png_key IN ({','.join('?' * len(keys))})", keys))
+    con.close()
+    for key in keys:
+        if key not in credits:
+            print(f"warning: example icon {key} is not in the catalog; not credited")
+    return [credits[k] for k in keys if k in credits]
+
+
+def render(rows: list[tuple[str, int, int, str]], credits: list[str] = ()) -> str:
     icons, templates = sum(r[1] for r in rows), sum(r[2] for r in rows)
     lines = [f"{icons:,} icons and {templates:,} templates across {len(rows)} resources.", "",
-             "| source | icons | license |", "|---|---|---|"]
-    lines += [f"| {source_cell(s)} | {n:,} | {lic} |" for s, n, _, lic in rows]
+             "| source | icons | license | examples |", "|---|---|---|---|"]
+    lines += [f"| {source_cell(s)} | {n:,} | {lic} | {examples_cell(s)} |" for s, n, _, lic in rows]
+    if credits:
+        lines += ["", "<details><summary>Example icon credits</summary>", ""]
+        lines += [f"- {c}" for c in credits]
+        lines += ["", "</details>"]
     return "\n".join(lines)
 
 
@@ -125,7 +188,7 @@ def replace_block(path: Path, start: str, end: str, body: str, what: str) -> boo
 def update(db: Path, readme: Path = README, templates_db: Path | None = None,
            app_readme: Path = APP_README) -> bool:
     """Rewrite the marked block in `readme`, and in `app_readme` when that file exists."""
-    table = "\n" + render(stats(db, count_templates(templates_db))) + "\n"
+    table = "\n" + render(stats(db, count_templates(templates_db)), example_credits(db)) + "\n"
     ok = replace_block(readme, README_START, README_END, table, "resources table")
     if app_readme.exists():
         replace_block(app_readme, APP_START, APP_END, table, "resources table")
