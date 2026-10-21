@@ -130,6 +130,7 @@ impl Asset {
             svg_key: self.svg_key.clone(),
             stars: self.stars,
             starred: self.starred,
+            taxa: crate::taxonomy::classify(&self.source, &self.category, &self.title, &self.tags.join(" ")),
         }
     }
 }

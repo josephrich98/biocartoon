@@ -39,6 +39,8 @@ pub struct AssetRow {
     pub stars: i64,
     /// Whether this install starred it (kept in the usage file, see [`Worker::set_stars`]).
     pub starred: bool,
+    /// Its places in `crate::taxonomy`: (category, subcategory), at least one for a catalog row.
+    pub taxa: Vec<crate::taxonomy::Taxon>,
 }
 
 /// The latest star count of one asset, and whether this install's own star is among them.
@@ -255,6 +257,7 @@ const COLS: &str = "a.id, a.source, a.source_name, coalesce(a.title,''), coalesc
 const STARS_JOIN: &str = "LEFT JOIN usage.stars ls ON ls.id = a.id";
 
 fn row_from(r: &rusqlite::Row) -> rusqlite::Result<AssetRow> {
+    let (source, category, title, tags): (String, String, String, String) = (r.get(1)?, r.get(5)?, r.get(3)?, r.get(16)?);
     Ok(AssetRow {
         id: r.get(0)?,
         source: r.get(1)?,
@@ -272,6 +275,7 @@ fn row_from(r: &rusqlite::Row) -> rusqlite::Result<AssetRow> {
         stars: r.get(13)?,
         starred: r.get::<_, i64>(14)? != 0,
         svg_key: r.get(15)?,
+        taxa: crate::taxonomy::classify(&source, &category, &title, &tags),
     })
 }
 
@@ -452,7 +456,7 @@ impl Worker {
 
     /// Every column of an [`AssetRow`] (see `row_from`).
     fn cols(&self) -> String {
-        format!("{COLS}, {}, {}", self.stars_cols(), self.svg_key)
+        format!("{COLS}, {}, {}, coalesce(a.tags,'')", self.stars_cols(), self.svg_key)
     }
 
     /// The words of a query as the index splits them (lowercase, alphanumeric runs).
@@ -1041,8 +1045,8 @@ impl Worker {
         let mut groups: std::collections::HashMap<String, Vec<AssetRow>> = Default::default();
         let mut rows = st.query(args.as_slice())?;
         while let Some(r) = rows.next()? {
-            // `{gk}` comes after the 16 columns of `row_from`.
-            groups.entry(r.get(16)?).or_default().push(row_from(r)?);
+            // `{gk}` comes after the 17 columns of `row_from`.
+            groups.entry(r.get(17)?).or_default().push(row_from(r)?);
         }
         for (key, group) in groups {
             if group.len() > 1 {
