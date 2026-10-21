@@ -980,7 +980,8 @@ impl Worker {
             return Ok(out);
         }
         let marks = |n: usize| vec!["?"; n].join(",");
-        // Which group each id is in; ids that are their own group have nothing to add.
+        // Which group each id is in. An id can be its group's key (a `grp` names the group's first
+        // icon), so the groups' sizes, not their keys, tell which have other colours.
         let mut by_key: std::collections::HashMap<String, Vec<String>> = Default::default();
         let mut sources = std::collections::BTreeSet::new();
         let sql = format!("SELECT a.id, a.source, {gk} FROM assets a WHERE a.id IN ({})", marks(ids.len()));
@@ -988,10 +989,8 @@ impl Worker {
         let mut rows = st.query(rusqlite::params_from_iter(ids))?;
         while let Some(r) = rows.next()? {
             let (id, source, key): (String, String, String) = (r.get(0)?, r.get(1)?, r.get(2)?);
-            if key != id {
-                by_key.entry(key).or_default().push(id);
-                sources.insert(source);
-            }
+            by_key.entry(key).or_default().push(id);
+            sources.insert(source);
         }
         if by_key.is_empty() {
             return Ok(out);
@@ -1607,6 +1606,10 @@ mod tests {
         assert_eq!(ids(w.search("heard", &[], 10, IconSort::Relevance).unwrap()), ["om/hm"]);
         let re = w.recolors(&["ba/38_1".into()]).unwrap();
         assert_eq!(ids(re["ba/38_1"].clone()), ["ba/37_1", "ba/37_2"]);
+        // The icon a group is named after, the one search shows, has its colours too.
+        let re = w.recolors(&["ba/37_1".into(), "om/fr".into()]).unwrap();
+        assert_eq!(re.keys().collect::<Vec<_>>(), ["ba/37_1"]);
+        assert_eq!(ids(re["ba/37_1"].clone()), ["ba/37_1", "ba/37_2"]);
         assert_eq!(ids(w.variants("ba/38_2").unwrap()), ["ba/37_1", "ba/37_2"]);
         let _ = std::fs::remove_dir_all(&dir);
     }
