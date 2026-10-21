@@ -557,6 +557,16 @@ pub fn resolve(s: &str) -> Option<(&'static str, &'static str)> {
     None
 }
 
+/// The subcategories a slug names: `cells.cell_types`, or a subcategory's slug or display name
+/// alone (`cell_types`, "Cell types"), which may name a subcategory of several categories.
+pub fn resolve_subcategories(s: &str) -> Vec<(&'static str, &'static str)> {
+    if s.contains('.') {
+        return resolve(s).filter(|(_, sub)| !sub.is_empty()).into_iter().collect();
+    }
+    let want = slug(s);
+    TAXONOMY.iter().flat_map(|(c, subs)| subs.iter().filter(|s| slug(s) == want).map(move |s| (*c, *s))).collect()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -569,6 +579,9 @@ mod tests {
         assert_eq!(resolve("Cell types"), Some(CELL_TYPES));
         assert_eq!(resolve("cells"), Some((CELLS, "")));
         assert_eq!(resolve("cells.viruses"), None);
+        assert_eq!(resolve_subcategories("cell_types"), vec![CELL_TYPES]);
+        assert_eq!(resolve_subcategories("cells.cell_types"), vec![CELL_TYPES]);
+        assert!(resolve_subcategories("cells").is_empty());
         for (c, subs) in TAXONOMY {
             assert!(!about(c).is_empty(), "{c}");
             assert_eq!(resolve(&slug(c)), Some((*c, "")));

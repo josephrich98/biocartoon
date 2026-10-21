@@ -7,7 +7,7 @@
 //! `<data dir>/biocartoon/catalog/` that the editor shares (`BIOCARTOON_DB` overrides it), and is
 //! downloaded when it is missing.
 
-use crate::catalog::{cached_catalog, sync_catalog, AssetRow, CategoryInfo, IconSort, SourceInfo, TaxonCount, Worker};
+use crate::catalog::{cached_catalog, sync_catalog, AssetRow, CategoryInfo, Facets, Filter, IconSort, SourceInfo, TaxonCount, Worker};
 use rusqlite::types::ValueRef;
 use rusqlite::{params, Connection, OpenFlags};
 use serde::Serialize;
@@ -246,6 +246,26 @@ impl Catalog {
             annotate(a, query);
         }
         Ok(out)
+    }
+
+    /// The icons matching `query` that pass `filter` (every icon passing it when `query` is
+    /// empty), `offset` and `limit` paging through them in `sort` order, with how many there are.
+    /// Each of `filter`'s lists keeps the icons matching any of its entries, and an icon has to
+    /// pass every list.
+    pub fn search_filtered(&self, query: &str, filter: &Filter, offset: usize, limit: usize, sort: IconSort) -> Result<(Vec<Asset>, i64), String> {
+        let rows = self.worker.search_filtered(query, filter, offset, limit, sort).map_err(|e| e.to_string())?;
+        let total = self.worker.search_filtered_total(query, filter).map_err(|e| e.to_string())?;
+        let mut out = self.details(rows.iter().map(|r| r.id.as_str()))?;
+        for a in &mut out {
+            annotate(a, query);
+        }
+        Ok((out, total))
+    }
+
+    /// Icon counts of each value `filter`'s lists could take (licenses, databases' own
+    /// categories, file types, ...), under the rest of `filter`.
+    pub fn facets(&self, filter: &Filter) -> Result<Facets, String> {
+        self.worker.facets(filter).map_err(|e| e.to_string())
     }
 
     pub fn get(&self, id: &str) -> Result<Option<Asset>, String> {

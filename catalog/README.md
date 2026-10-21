@@ -50,8 +50,16 @@ server also lists the shared slide templates. The BioCartoon desktop editor ship
 - `biocartoon search "TERM"`: icons and templates matching TERM, best first. With no TERM it pages
   through everything.
     - `--icons` / `--templates`: only that kind
-    - `--source S`: icons from one collection (a code or name from `biocartoon --sources`)
-    - `--category C`: icons in one category (a slug from `biocartoon --categories`)
+    - `--source S`: icons from a collection (a code or name from `biocartoon --sources`)
+    - `--author A`: icons by an author (part of the name, any case)
+    - `--category C`: icons in a category (a slug from `biocartoon --categories`)
+    - `--subcategory S`: icons in a subcategory (a slug from `biocartoon --categories`)
+    - `--db-category [S:]C`: icons in a collection's own category (from `biocartoon --db-categories`)
+    - `--license L`: icons under a license (`CC-BY-4.0`, `CC0-1.0`, ...)
+    - `--file-type svg|png`: icons published as SVG, or as a PNG only
+
+    Repeat a filter for several values: an icon matching any of them passes. An icon has to pass
+    every filter given.
     - `--sql`: run TERM as read-only SQL on the catalog
 - `biocartoon get ID`: everything about one icon: license, credit, PNG/SVG URLs, colour variants
 - `biocartoon fetch ID`: download the PNG (`--svg` for the SVG, `--out FILE|DIR`, `--max-side N`)
@@ -61,6 +69,7 @@ server also lists the shared slide templates. The BioCartoon desktop editor ship
 - `biocartoon --version`: the program's version, and when the local catalog was published and downloaded
 - `biocartoon --sources`: list icon sources for `biocartoon search --source S`
 - `biocartoon --categories`: list icon categories for `biocartoon search --category C`
+- `biocartoon --db-categories`: list the collections' own categories for `biocartoon search --db-category S:C`
 
 Run `biocartoon --help` for everything.
 
@@ -85,7 +94,7 @@ biocartoon upload figures/ --license CC-BY-4.0 --credit "Your Name" --dry-run   
 biocartoon upload figures/ --license CC-BY-4.0 --credit "Your Name" --category cells
 ```
 
-Narrow a search by collection or category:
+Narrow a search by collection, category, author, license or file type:
 
 ```bash
 biocartoon --sources                                       # codes: BA, BI, SV, SD, HI, RE, OM, ...
@@ -95,6 +104,10 @@ biocartoon search neuron --source BA --source SD           # BioArt or SciDraw
 biocartoon search mitochondria --category cells.organelles_and_cell_components
 biocartoon search --category viruses --sort az --limit 40 --offset 40   # page 2 of all viruses
 biocartoon --categories --source SD                        # what SciDraw covers
+biocartoon search neuron --subcategory cell_types --file-type svg            # SVG cell types
+biocartoon search --license CC0-1.0 --license PD --category cells            # free of attribution
+biocartoon search --author kissinger --source BA --sort popular              # one illustrator
+biocartoon search --db-category "BA:Cellular Processes" --db-category "BA:Proteins"
 ```
 
 Query the catalog with SQL (read-only):

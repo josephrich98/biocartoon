@@ -2,7 +2,7 @@
 //! The BioCartoon editor's own `biocartoon` runs these same commands through [`run_command`],
 //! adding its templates to `search` and the `app` command.
 
-use crate::catalog::{format_stars, resolve_source, IconSort, SOURCES};
+use crate::catalog::{resolve_source, Filter, IconSort, FORMAT_PNG, FORMAT_SVG, SOURCES};
 use crate::mcp;
 use crate::query::{self, Asset, Catalog};
 use crate::taxonomy;
@@ -17,15 +17,25 @@ COMMANDS
   search [TERM]             icons and templates matching TERM, best first (one per icon;
                             science collections first). An empty TERM pages through them all.
       --icons | --templates only icons, or only templates
-      --source S            icons from one collection (repeatable): a code or name from --sources
-      --category C          icons in one category: a slug from --categories (cells.cell_types)
+      Icon filters. Repeat one for several values: an icon matching any of them passes. An icon
+      has to pass every filter given.
+      --source S            from a collection: a code or name from --sources
+      --author A            by an author: part of the name, any case (ann finds Ann Smith)
+      --category C          in a category: a slug from --categories (cells, or cells.cell_types)
+      --subcategory S       in a subcategory: a slug from --categories (cell_types, cells.cell_types)
+      --db-category [S:]C   in a collection's own category C, from --db-categories; S: limits
+                            it to collection S (C alone: that category in any collection)
+      --license L           under a license (CC-BY-4.0, CC0-1.0, ...; any case)
+      --file-type svg|png   svg: published as SVG; png: published as a PNG only
       --limit N             how many of each (default 12)  [--offset N]
       --sort relevance|az|za|popular
+      --columns C,C,...     which columns of the icon table to show, in this order (default all):
+                            id, title, source, category, description, author, license, filetype
       --sql                 run TERM as read-only SQL on the catalog instead (no TERM: the schema)
                             [--max-rows N]. A TERM that starts like SQL (SELECT ... FROM, WITH,
                             PRAGMA, EXPLAIN) is run as SQL anyway, with a warning; --no-sql stops that.
   get <id>                  everything about one icon: license, credit, URLs, colour variants
-  fetch <id>                download the PNG  [--svg] [--out FILE|DIR] [--max-side N]
+  fetch <id>                download the PNG  [--svg] [--out FILE|DIR] [--max-side N] [--open]
   sync                      download the newest published catalog
   upload <file|folder>...   submit images (SVG, PNG, JPEG, WebP, GIF, BMP, TIFF; folders searched
                             recursively) to the shared library. They wait in the review queue
@@ -41,6 +51,7 @@ COMMANDS
   --sources                 the collections: code, name, icons, licenses, what they hold
   --categories              BioCartoon's categories and subcategories, with slugs and counts
                             (of one collection with --source)
+  --db-categories           the collections' own categories, with counts  [--source S]
 ";
 
 /// The options every catalog command takes.
@@ -69,9 +80,9 @@ pub struct Args {
 impl Args {
     /// `valued` names the options that take a value (the catalog's are always included).
     pub fn parse(argv: Vec<String>, valued: &[&str]) -> Self {
-        const VALUED: [&str; 15] = [
+        const VALUED: [&str; 20] = [
             "source", "limit", "sort", "category", "offset", "out", "max-side", "max-rows", "db", "url", "license", "credit", "title",
-            "description", "submit-url",
+            "description", "submit-url", "author", "subcategory", "db-category", "file-type", "columns",
         ];
         let mut a = Self { pos: Vec::new(), opts: HashMap::new() };
         let mut it = argv.into_iter();
@@ -105,11 +116,12 @@ impl Args {
     pub fn command(&self) -> &str {
         self.pos.first().map(String::as_str).unwrap_or("help")
     }
-    /// `--help`, `help` or no command at all (except a lone `--sources`, `--categories` or
-    /// `--version`).
+    /// `--help`, `help` or no command at all (except a lone `--sources`, `--categories`,
+    /// `--db-categories` or `--version`).
     pub fn wants_help(&self) -> bool {
         self.flag("help")
-            || (matches!(self.command(), "help" | "-h") && !["sources", "categories", "version"].iter().any(|f| self.flag(f)))
+            || (matches!(self.command(), "help" | "-h")
+                && !["sources", "categories", "db-categories", "version"].iter().any(|f| self.flag(f)))
     }
     /// `--db`, `--url` and `--submit-url` become `BIOCARTOON_DB`, `BIOCARTOON_ASSET_URL` and
     /// `BIOCARTOON_SUBMIT_URL` for the rest of the run.
@@ -130,17 +142,45 @@ pub fn print_json(v: &impl serde::Serialize) {
     println!("{}", serde_json::to_string_pretty(v).unwrap_or_default());
 }
 
-fn print_assets(rows: &[Asset]) {
+/// The columns of `search`'s icon table, in order, with what fills them. `--columns` picks some.
+const ICON_COLUMNS: [(&str, fn(&Asset) -> String); 8] = [
+    ("ID", |a| a.id.clone()),
+    ("Title", |a| if a.variant.is_empty() { a.title.clone() } else { format!("{} [{}]", a.title, a.variant) }),
+    ("Source", |a| a.source.clone()),
+    ("Category", |a| a.category.clone()),
+    ("Description", |a| a.description.clone()),
+    ("Author", |a| a.author.clone()),
+    ("License", |a| a.license.clone()),
+    ("File type", |a| if a.svg_key.is_some() { FORMAT_SVG } else { FORMAT_PNG }.to_string()),
+];
+
+/// The `--columns` given (comma-separated, any case, repeatable) as indices into
+/// [`ICON_COLUMNS`], in the order given; all of them when there's no `--columns`.
+fn icon_columns(a: &Args) -> Result<Vec<usize>, String> {
+    let key = |s: &str| s.to_lowercase().replace(['-', '_', ' '], "");
+    let mut cols = Vec::new();
+    for name in values(a, "columns").flat_map(|v| v.split(',')).map(str::trim).filter(|n| !n.is_empty()) {
+        let i = ICON_COLUMNS.iter().position(|(c, _)| key(c) == key(name)).ok_or_else(|| {
+            let known = ICON_COLUMNS.iter().map(|(c, _)| key(c)).collect::<Vec<_>>().join(", ");
+            format!("unknown column {name:?} (one of {known})")
+        })?;
+        if !cols.contains(&i) {
+            cols.push(i);
+        }
+    }
+    Ok(if cols.is_empty() { (0..ICON_COLUMNS.len()).collect() } else { cols })
+}
+
+fn print_assets(rows: &[Asset], cols: &[usize]) {
     if rows.is_empty() {
         println!("no results");
         return;
     }
-    for a in rows {
-        let variant = if a.variant.is_empty() { String::new() } else { format!(" [{}]", a.variant) };
-        let matched = if a.matched_fields.is_empty() { String::new() } else { format!("  matched: {}", a.matched_fields.join(",")) };
-        let stars = if a.stars > 0 { format!("; {} stars", format_stars(a.stars)) } else { String::new() };
-        println!("{:<34} {:<12} {}{}  ({}; {}x{}{}){}", a.id, a.source, a.title, variant, a.category, a.width, a.height, stars, matched);
-    }
+    let head: Vec<&str> = cols.iter().map(|&i| ICON_COLUMNS[i].0).collect();
+    let body: Vec<Vec<String>> = rows.iter().map(|a| cols.iter().map(|&i| (ICON_COLUMNS[i].1)(a)).collect()).collect();
+    print_table(&head, &body);
+    let n = rows.len();
+    println!("{n} result{}. Pass an ID to `biocartoon get <ID>` for its license and credit, or `biocartoon fetch <ID>` to download it.", if n == 1 { "" } else { "s" });
 }
 
 /// Templates a program adds to `search` (the editor's): JSON objects with at least `id`,
@@ -153,9 +193,67 @@ fn print_templates(rows: &[Value]) {
         return;
     }
     let s = |t: &Value, k: &str| t[k].as_str().unwrap_or_default().to_string();
-    for t in rows {
-        println!("{:<40} {} — {} ({})", s(t, "id"), s(t, "title"), s(t, "description"), s(t, "category"));
+    let body: Vec<Vec<String>> = rows.iter().map(|t| vec![s(t, "id"), s(t, "title"), s(t, "category"), s(t, "description")]).collect();
+    print_table(&["ID", "Title", "Category", "Description"], &body);
+}
+
+/// Longest a cell other than an ID (which is never cut) is shown, in characters.
+const MAX_CELL: usize = 48;
+
+/// Print `rows` as a table with box-drawing lines and a header row.
+fn print_table(head: &[&str], rows: &[Vec<String>]) {
+    let cells: Vec<Vec<String>> = rows
+        .iter()
+        .map(|r| r.iter().zip(head).map(|(c, h)| if *h == "ID" { c.clone() } else { clip(&one_line(c), MAX_CELL) }).collect())
+        .collect();
+    let width = |i: usize| cells.iter().map(|r| r[i].chars().count()).chain([head[i].chars().count()]).max().unwrap_or(0);
+    let widths: Vec<usize> = (0..head.len()).map(width).collect();
+    let rule = |l: &str, m: &str, r: &str| {
+        let segs: Vec<String> = widths.iter().map(|w| "─".repeat(w + 2)).collect();
+        println!("{l}{}{r}", segs.join(m));
+    };
+    let line = |row: &[String]| {
+        let segs: Vec<String> = row.iter().zip(&widths).map(|(c, w)| format!(" {c}{} ", " ".repeat(w - c.chars().count()))).collect();
+        println!("│{}│", segs.join("│"));
+    };
+    rule("┌", "┬", "┐");
+    line(&head.iter().map(|h| h.to_string()).collect::<Vec<_>>());
+    rule("├", "┼", "┤");
+    for r in &cells {
+        line(r);
     }
+    rule("└", "┴", "┘");
+}
+
+/// `s` with each run of whitespace (newlines too) turned into one space.
+fn one_line(s: &str) -> String {
+    s.split_whitespace().collect::<Vec<_>>().join(" ")
+}
+
+/// `s` cut to `max` characters, ending in an ellipsis when cut.
+fn clip(s: &str, max: usize) -> String {
+    if s.chars().count() <= max {
+        return s.to_string();
+    }
+    let mut out: String = s.chars().take(max - 1).collect();
+    out.push('…');
+    out
+}
+
+/// Open `path` in the system's default app for its type.
+fn open_file(path: &std::path::Path) -> Result<(), String> {
+    use std::process::Command;
+    #[cfg(target_os = "macos")]
+    let mut cmd = Command::new("open");
+    #[cfg(target_os = "windows")]
+    let mut cmd = {
+        let mut c = Command::new("cmd");
+        c.args(["/C", "start", ""]);
+        c
+    };
+    #[cfg(not(any(target_os = "macos", target_os = "windows")))]
+    let mut cmd = Command::new("xdg-open");
+    cmd.arg(path).spawn().map(drop).map_err(|e| format!("open {}: {e}", path.display()))
 }
 
 /// Whether a search term reads as a SQL statement rather than words.
@@ -178,6 +276,9 @@ pub fn run_command(a: &Args, templates: Option<Templates>) -> Option<Result<(), 
     if a.flag("categories") {
         return Some(categories(a));
     }
+    if a.flag("db-categories") {
+        return Some(db_categories(a));
+    }
     let cmd = a.command();
     const NAMES: [&str; 6] = ["sync", "search", "get", "fetch", "upload", "help"];
     NAMES.contains(&cmd).then(|| run_inner(a, cmd, templates))
@@ -191,6 +292,82 @@ fn source_args(a: &Args) -> Result<Vec<String>, String> {
         .flatten()
         .map(|s| resolve_source(s).map(String::from).ok_or_else(|| format!("unknown source {s:?} (see biocartoon --sources)")))
         .collect()
+}
+
+/// Every value given for option `k`.
+fn values<'a>(a: &'a Args, k: &str) -> impl Iterator<Item = &'a str> {
+    a.opts.get(k).into_iter().flatten().map(String::as_str)
+}
+
+/// The icon filter options of `search`.
+const ICON_FILTERS: [&str; 7] = ["source", "author", "category", "subcategory", "db-category", "license", "file-type"];
+
+/// `search`'s icon filter. Each option keeps the icons matching any of its values, and an icon
+/// has to pass every option given. `None` when they can't match anything (subcategories outside
+/// every `--category`).
+fn icon_filter(a: &Args, cat: &Catalog) -> Result<Option<Filter>, String> {
+    let mut f = Filter { sources: source_args(a)?, ..Filter::default() };
+    f.authors = values(a, "author").map(str::to_string).collect();
+
+    let mut cats = Vec::new();
+    for c in values(a, "category") {
+        cats.push(taxonomy::resolve(c).ok_or_else(|| format!("unknown category {c:?} (see biocartoon --categories)"))?);
+    }
+    let mut subs = Vec::new();
+    for s in values(a, "subcategory") {
+        let found = taxonomy::resolve_subcategories(s);
+        if found.is_empty() {
+            return Err(format!("unknown subcategory {s:?} (see biocartoon --categories)"));
+        }
+        subs.extend(found);
+    }
+    // Both: the subcategories inside the categories (or the same subcategory `--category` named).
+    let taxa = if subs.is_empty() {
+        cats
+    } else if cats.is_empty() {
+        subs
+    } else {
+        let inside: Vec<_> = subs.into_iter().filter(|(c, s)| cats.iter().any(|(kc, ks)| kc == c && (ks.is_empty() || ks == s))).collect();
+        if inside.is_empty() {
+            return Ok(None);
+        }
+        inside
+    };
+    f.taxa = taxa.into_iter().map(|(c, s)| (c.to_string(), s.to_string())).collect();
+
+    if a.flag("license") || a.flag("db-category") {
+        let facets = cat.facets(&Filter::default())?;
+        for l in values(a, "license") {
+            let found = facets.licenses.iter().find(|(name, _)| name.eq_ignore_ascii_case(l.trim()));
+            let known = || facets.licenses.iter().map(|(n, _)| n.as_str()).collect::<Vec<_>>().join(", ");
+            f.licenses.push(found.ok_or_else(|| format!("unknown license {l:?} (one of {})", known()))?.0.clone());
+        }
+        for v in values(a, "db-category") {
+            let (src, c) = match v.split_once(':') {
+                Some((s, c)) => (Some(resolve_source(s.trim()).ok_or_else(|| format!("unknown source {s:?} (see biocartoon --sources)"))?), c.trim()),
+                None => (None, v.trim()),
+            };
+            let found: Vec<_> = facets
+                .db_cats
+                .iter()
+                .filter(|(s, name, _)| src.is_none_or(|src| src == s) && name.eq_ignore_ascii_case(c))
+                .map(|(s, name, _)| (s.clone(), name.clone()))
+                .collect();
+            if found.is_empty() {
+                return Err(format!("no collection has the category {v:?} (see biocartoon --db-categories)"));
+            }
+            f.db_cats.extend(found);
+        }
+    }
+
+    for t in values(a, "file-type") {
+        f.formats.push(match t.trim().to_lowercase().as_str() {
+            "svg" => FORMAT_SVG.to_string(),
+            "png" => FORMAT_PNG.to_string(),
+            _ => return Err(format!("--file-type is svg or png, not {t:?}")),
+        });
+    }
+    Ok(Some(f))
 }
 
 fn sources(a: &Args) -> Result<(), String> {
@@ -312,6 +489,9 @@ fn run_inner(a: &Args, cmd: &str, templates: Option<Templates>) -> Result<(), St
             } else {
                 println!("{} ({} bytes) — {} [{}]", out.display(), bytes.len(), asset.credit, asset.license);
             }
+            if a.flag("open") {
+                open_file(&out)?;
+            }
         }
         "upload" => upload(a)?,
         _ => print!("{}", usage()),
@@ -404,17 +584,28 @@ fn upload(a: &Args) -> Result<(), String> {
     Ok(())
 }
 
+/// `--db-categories`: each collection's own categories (of the `--source` ones), for
+/// `search --db-category`.
+fn db_categories(a: &Args) -> Result<(), String> {
+    let facets = Catalog::open_default()?.facets(&Filter::sources(&source_args(a)?))?;
+    if a.flag("json") {
+        let rows: Vec<Value> = facets.db_cats.iter().map(|(s, c, n)| json!({"source": s, "category": c, "icons": n})).collect();
+        print_json(&rows);
+    } else {
+        for (s, c, n) in &facets.db_cats {
+            println!("{:<58} {:>6}", format!("{s}:{c}"), n);
+        }
+    }
+    Ok(())
+}
+
 /// `search`: icons and (when the program has them) templates.
 fn search(a: &Args, q: &str, templates: Option<Templates>) -> Result<(), String> {
-    let sources = source_args(a)?;
-    let taxon = match a.opt("category") {
-        Some(c) => Some(taxonomy::resolve(c).ok_or_else(|| format!("unknown category {c:?} (see biocartoon --categories)"))?),
-        None => None,
-    };
-    let icon_filters = !sources.is_empty() || taxon.is_some();
+    let cols = icon_columns(a)?;
+    let icon_filters = ICON_FILTERS.iter().any(|k| a.flag(k));
     let (only_icons, only_templates) = (a.flag("icons"), a.flag("templates"));
     if only_templates && icon_filters {
-        return Err("--source and --category only apply to icons".into());
+        return Err(format!("{} only apply to icons", ICON_FILTERS.map(|k| format!("--{k}")).join(", ")));
     }
     if only_templates && templates.is_none() {
         return Err("templates come with the BioCartoon editor's biocartoon command".into());
@@ -426,11 +617,10 @@ fn search(a: &Args, q: &str, templates: Option<Templates>) -> Result<(), String>
     let mut icons = Vec::new();
     if want_icons {
         let cat = Catalog::open_default()?;
-        icons = if q.trim().is_empty() {
-            cat.browse_taxon(taxon, &sources, offset, limit, sort(a, IconSort::Alphabetical))?.0
-        } else {
-            cat.search_in(q, &sources, taxon, limit + offset, sort(a, IconSort::Relevance))?.into_iter().skip(offset).collect()
-        };
+        let default_sort = if q.trim().is_empty() { IconSort::Alphabetical } else { IconSort::Relevance };
+        if let Some(f) = icon_filter(a, &cat)? {
+            icons = cat.search_filtered(q, &f, offset, limit, sort(a, default_sort))?.0;
+        }
         out.insert("icons".into(), json!(icons));
     }
     let mut temps = Vec::new();
@@ -447,7 +637,7 @@ fn search(a: &Args, q: &str, templates: Option<Templates>) -> Result<(), String>
         if both {
             println!("ICONS");
         }
-        print_assets(&icons);
+        print_assets(&icons, &cols);
     }
     if want_templates {
         if both {
