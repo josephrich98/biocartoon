@@ -39,6 +39,10 @@ The `biocartoon` command searches the published catalog from a shell:
 pip install biocartoon
 ```
 
+If your shell then says `biocartoon: command not found`, pip put the program in a folder that is
+not on your PATH (pip names it in a warning near the end of its output): add that folder to PATH,
+or install with `pipx install biocartoon` or `uv tool install biocartoon`, which handle PATH for you.
+
 The package is the compiled program alone, with no Python dependencies. To build it from source
 instead, run `cd catalog && cargo build --release` (giving `target/release/biocartoon`). This
 build searches icons; its MCP server also lists the shared slide templates. The BioCartoon desktop
@@ -292,3 +296,7 @@ Application and website source code: [github.com/josephrich98/biocartoon-app](ht
 Icon SQLite database: [assets.biocartoon.com/catalog/assets.sqlite.gz](https://assets.biocartoon.com/catalog/assets.sqlite.gz)
 
 Template SQLite database: [assets.biocartoon.com/catalog/templates.sqlite.gz](https://assets.biocartoon.com/catalog/templates.sqlite.gz)
+
+## Support
+
+If biocartoon is useful to you, you can [buy me a coffee](https://buymeacoffee.com/josephrich) ☕

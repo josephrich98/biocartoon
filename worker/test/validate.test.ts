@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { checkSvg, checkTemplate, creditLine, parseMeta, pngSize } from "../src/validate.ts";
+import { checkSvg, checkTemplate, creditLine, parseMeta, parseSuggestion, pngSize } from "../src/validate.ts";
 
 const png = (w: number, h: number) => {
   const b = new Uint8Array(33);
@@ -112,4 +112,11 @@ test("template rejections", () => {
   assert.throws(() => checkTemplate(tmpl([img("catalog/assets.png")]), "a", meta, ok, ""), /reference/);
   assert.throws(() => checkTemplate(tmpl(Array(301).fill(text("x"))), "a", meta, ok, ""), /300/);
   assert.throws(() => checkTemplate(tmpl([{ kind: { Script: {} } }]), "a", meta, ok, ""), /invalid/);
+});
+
+test("suggestions are checked", () => {
+  assert.deepEqual(parseSuggestion({ kind: "icon", title: " T  cell ", description: "", name: "" }), { kind: "icon", title: "T cell", description: "", name: "" });
+  assert.throws(() => parseSuggestion({ kind: "asset", title: "x" }), /kind/);
+  assert.throws(() => parseSuggestion({ kind: "template", title: "" }), /Title/);
+  assert.throws(() => parseSuggestion({ kind: "icon", title: "shit cell" }), /language/);
 });

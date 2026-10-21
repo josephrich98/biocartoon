@@ -155,6 +155,27 @@ export function parseMeta(raw: unknown): Meta {
   return meta;
 }
 
+export interface Suggestion {
+  kind: "icon" | "template";
+  title: string;
+  description: string;
+  name: string;
+}
+
+/** The body of `POST /suggest`. */
+export function parseSuggestion(raw: unknown): Suggestion {
+  const r = ((typeof raw === "object" && raw) || {}) as Record<string, unknown>;
+  if (r.kind !== "icon" && r.kind !== "template") throw new Rejected("kind must be icon or template");
+  const s: Suggestion = {
+    kind: r.kind,
+    title: clean(r.title, 80, "Title", true),
+    description: clean(r.description, 1000, "Description"),
+    name: clean(r.name, 60, "Name"),
+  };
+  checkLanguage([s.title, s.description, s.name]);
+  return s;
+}
+
 /** A bucket key a template may point at (an existing published object, checked by the caller). */
 export function isReferenceKey(k: string): boolean {
   return /^[A-Za-z0-9_.\/-]{1,300}$/.test(k) && !k.includes("..") && !k.startsWith("/") && !k.startsWith("catalog/") && k.endsWith(".png");

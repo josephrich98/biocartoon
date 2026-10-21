@@ -5,6 +5,7 @@
 //   POST /submit   multipart/form-data:
 //     kind=asset     meta=<JSON>  image=<PNG> | svg=<SVG> (publishing renders an SVG's PNG; one sent along is ignored)
 //     kind=template  meta=<JSON>  template=<JSON>  thumb=<PNG>  img-1.png=<PNG> ...
+//   POST /suggest  application/json {kind: "icon" | "template", title, description?, name?}
 //   GET  /status?ids=<id>,<id>   -> {"<id>": "pending" | "approved" | "rejected"}
 //   POST /star, GET /stars, GET /stars/all: star counts on catalog assets (src/stars.ts)
 //   /auth/*, /me, /cloud/projects/*: optional accounts that keep projects online (src/accounts.ts)
@@ -12,10 +13,12 @@
 import * as accounts from "./accounts.ts";
 import type { Env } from "./env.ts";
 import { guarded, json, sha256Hex } from "./http.ts";
-import { MAX_PENDING, MAX_PER_IP_PER_DAY, MAX_REQUEST_BYTES, MAX_TEMPLATE_JSON_BYTES } from "./limits.ts";
+import {
+  MAX_OPEN_SUGGESTIONS, MAX_PENDING, MAX_PER_IP_PER_DAY, MAX_REQUEST_BYTES, MAX_SUGGESTIONS_PER_IP_PER_DAY, MAX_TEMPLATE_JSON_BYTES,
+} from "./limits.ts";
 import * as stars from "./stars.ts";
 import { Rejected, newId } from "./text.ts";
-import { checkSvg, checkTemplate, parseMeta, pngSize } from "./validate.ts";
+import { checkSvg, checkTemplate, parseMeta, parseSuggestion, pngSize } from "./validate.ts";
 
 const ID = /^[a-z0-9][a-z0-9-]{0,100}$/;
 
@@ -23,6 +26,7 @@ export default {
   async fetch(req: Request, env: Env): Promise<Response> {
     const url = new URL(req.url);
     if (url.pathname === "/submit" && req.method === "POST") return guarded(() => submit(req, env));
+    if (url.pathname === "/suggest" && req.method === "POST") return guarded(() => suggest(req, env));
     if (url.pathname === "/status" && req.method === "GET") return guarded(() => status(url, env));
     if (url.pathname === "/star" || url.pathname === "/stars" || url.pathname === "/stars/all") {
       if (req.method === "OPTIONS") return stars.preflight();
@@ -158,6 +162,35 @@ async function submit(req: Request, env: Env): Promise<Response> {
     throw e;
   }
   return json({ id, kind, status: "pending" }, 201);
+}
+
+async function suggest(req: Request, env: Env): Promise<Response> {
+  const length = Number(req.headers.get("content-length"));
+  if (!length) throw new Rejected("Content-Length is required", 411);
+  if (length > 16 * 1024) throw new Rejected("Suggestion is too large", 413);
+  const ipHash = (await sha256Hex(`${env.IP_SALT ?? "biocartoon"}:${req.headers.get("cf-connecting-ip") ?? "?"}`)).slice(0, 32);
+  const now = new Date();
+  const dayAgo = new Date(now.getTime() - 86_400_000).toISOString();
+  const counts = await env.DB.prepare(
+    "SELECT (SELECT count(*) FROM suggestions WHERE ip_hash = ?1 AND created_at > ?2) AS mine, \
+            (SELECT count(*) FROM suggestions WHERE status = 'open') AS open",
+  )
+    .bind(ipHash, dayAgo)
+    .first<{ mine: number; open: number }>();
+  if ((counts?.mine ?? 0) >= MAX_SUGGESTIONS_PER_IP_PER_DAY) throw new Rejected(`Limit reached: ${MAX_SUGGESTIONS_PER_IP_PER_DAY} suggestions a day. Please try again tomorrow.`, 429);
+  if ((counts?.open ?? 0) >= MAX_OPEN_SUGGESTIONS) throw new Rejected("The suggestion box is full. Please try again in a few days.", 503);
+  let raw: unknown;
+  try {
+    raw = await req.json();
+  } catch {
+    throw new Rejected("Body must be JSON", 400);
+  }
+  const s = parseSuggestion(raw);
+  const id = newId(s.title);
+  await env.DB.prepare("INSERT INTO suggestions (id, kind, title, description, name, ip_hash, created_at) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)")
+    .bind(id, s.kind, s.title, s.description, s.name, ipHash, now.toISOString().replace(/\.\d+Z$/, "Z"))
+    .run();
+  return json({ id, status: "open" }, 201);
 }
 
 async function status(url: URL, env: Env): Promise<Response> {

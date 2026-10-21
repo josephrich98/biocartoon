@@ -88,6 +88,8 @@ pub struct Asset {
     pub png_key: String,
     /// Where the PNG can be fetched (a URL, or a local path for user-generated assets).
     pub url: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub svg_key: Option<String>,
     /// Where the SVG can be fetched, when there is one (Servier publishes PNGs only).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub svg_url: Option<String>,
@@ -125,6 +127,7 @@ impl Asset {
             png_local: self.png_local.clone(),
             png_width: self.width,
             png_height: self.height,
+            svg_key: self.svg_key.clone(),
             stars: self.stars,
             starred: self.starred,
         }
@@ -197,7 +200,8 @@ impl Catalog {
             author: r.get(10)?,
             source_url: r.get(11)?,
             url: self.url_for(&png_key, png_local.as_deref()),
-            svg_url: svg_key.map(|k| self.url_for(&k, svg_local.as_deref())),
+            svg_url: svg_key.as_deref().map(|k| self.url_for(k, svg_local.as_deref())),
+            svg_key,
             png_key,
             width: r.get::<_, i64>(14)? as u32,
             height: r.get::<_, i64>(15)? as u32,
@@ -459,6 +463,7 @@ mod tests {
             source_url: None,
             png_key: "bioart/1.png".into(),
             url: String::new(),
+            svg_key: None,
             svg_url: None,
             width: 10,
             height: 10,

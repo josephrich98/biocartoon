@@ -9,6 +9,10 @@ export const MAX_TEMPLATE_IMAGES = 24;
 export const MAX_REQUEST_BYTES = 48 * 1024 * 1024;
 /** Submissions per IP address per rolling day. */
 export const MAX_PER_IP_PER_DAY = 20;
+/** Suggestions per IP address per rolling day. */
+export const MAX_SUGGESTIONS_PER_IP_PER_DAY = 20;
+/** New suggestions are refused while this many are open. */
+export const MAX_OPEN_SUGGESTIONS = 2000;
 /** New submissions are refused while this many await review. */
 export const MAX_PENDING = 1000;
 export const LICENSES = ["CC0-1.0", "CC-BY-4.0"] as const;

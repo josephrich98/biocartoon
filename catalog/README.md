@@ -38,6 +38,10 @@ Install Desktop application: [www.biocartoon.com/download](https://www.biocartoo
 pip install biocartoon        # or: pipx install biocartoon / uv tool install biocartoon
 ```
 
+If your shell then says `biocartoon: command not found`, pip put the program in a folder that is
+not on your PATH (pip names it in a warning near the end of its output): add that folder to PATH,
+or install with `pipx install biocartoon` or `uv tool install biocartoon`, which handle PATH for you.
+
 The package is the compiled program alone, with no Python dependencies. The first command that
 needs the catalog downloads it; `biocartoon sync` updates it. This build searches icons; its MCP
 server also lists the shared slide templates. The BioCartoon desktop editor ships a fuller

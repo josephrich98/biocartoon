@@ -33,6 +33,8 @@ pub struct AssetRow {
     pub png_local: Option<String>,
     pub png_width: u32,
     pub png_height: u32,
+    /// The same image as an SVG, when the source publishes one (Servier publishes PNGs only).
+    pub svg_key: Option<String>,
     /// Stars from everyone (the catalog's snapshot, or the latest count the Worker reported).
     pub stars: i64,
     /// Whether this install starred it (kept in the usage file, see [`Worker::set_stars`]).
@@ -170,6 +172,47 @@ fn src_filter(sources: &[String]) -> String {
     format!(" AND (a.source IN ({stored}) AND ({SHOWN_SOURCE}) IN ({}))", list(sources.iter().map(String::as_str).collect()))
 }
 
+/// What a search keeps besides its words. Each list keeps the assets matching any of its entries
+/// (an empty one keeps everything), and an asset has to pass every list.
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct Filter {
+    /// Databases, as [`SHOWN_SOURCE`] names them.
+    pub sources: Vec<String>,
+    /// Parts of the author's name, any case ("ann" finds Ann Smith).
+    pub authors: Vec<String>,
+    /// Licenses as stored ("CC-BY-4.0").
+    pub licenses: Vec<String>,
+    /// Places in `crate::taxonomy`: (category, subcategory), the subcategory "" for all of it.
+    pub taxa: Vec<(String, String)>,
+    /// A database's own categories: (database as [`SHOWN_SOURCE`] names it, category). An asset
+    /// filed under several (", "-separated) is in each.
+    pub db_cats: Vec<(String, String)>,
+    /// File types, [`FORMAT_SVG`] (the source publishes an SVG) or [`FORMAT_PNG`] (a PNG only).
+    pub formats: Vec<String>,
+}
+
+pub const FORMAT_SVG: &str = "SVG";
+pub const FORMAT_PNG: &str = "PNG";
+
+/// Icon counts of a filter's choices (see [`Worker::facets`]); only those with icons are listed.
+#[derive(Clone, Debug, Default)]
+pub struct Facets {
+    /// By database, as [`SHOWN_SOURCE`] names them.
+    pub sources: Vec<(String, i64)>,
+    pub licenses: Vec<(String, i64)>,
+    pub taxa: Vec<TaxonCount>,
+    /// (database, its own category, icons), by database then category.
+    pub db_cats: Vec<(String, String, i64)>,
+    /// By file type, [`FORMAT_SVG`] or [`FORMAT_PNG`].
+    pub formats: Vec<(String, i64)>,
+}
+
+impl Filter {
+    pub fn sources(sources: &[String]) -> Self {
+        Self { sources: sources.to_vec(), ..Self::default() }
+    }
+}
+
 /// The category term of a browse (`?2`): one of the ", "-separated categories an asset is filed
 /// under ("" for uncategorized), or anything when `None`.
 fn category_filter(category: Option<&str>) -> (&'static str, String) {
@@ -228,6 +271,7 @@ fn row_from(r: &rusqlite::Row) -> rusqlite::Result<AssetRow> {
         png_height: r.get::<_, i64>(12)? as u32,
         stars: r.get(13)?,
         starred: r.get::<_, i64>(14)? != 0,
+        svg_key: r.get(15)?,
     })
 }
 
@@ -247,6 +291,8 @@ pub struct Worker {
     dup: &'static str,
     /// [`STYLE_KEY`], or its stand-in when the catalog lacks the column it reads.
     style_key: &'static str,
+    /// `a.svg_key`, or NULL in catalogs without the column.
+    svg_key: &'static str,
     /// `usage.stars` exists (it can't be created on a read-only connection to an old usage file).
     local_stars: bool,
     /// `usage.uses` exists (it can't be created on a read-only connection with no usage file,
@@ -375,7 +421,8 @@ impl Worker {
             (GROUP_KEY_NO_EXTRA, "0")
         };
         let style_key = if has_col("source_id") { STYLE_KEY } else { STYLE_KEY_NO_SOURCE_ID };
-        Ok(Self { conn, fts, vocab: Default::default(), stars_col, group_key, dup, style_key, local_stars, local_uses, taxa: Default::default() })
+        let svg_key = if has_col("svg_key") { "a.svg_key" } else { "NULL" };
+        Ok(Self { conn, fts, vocab: Default::default(), stars_col, group_key, dup, style_key, svg_key, local_stars, local_uses, taxa: Default::default() })
     }
 
     /// The star columns of a `SELECT ... FROM assets a {stars_join}`: the count (the local
@@ -405,7 +452,7 @@ impl Worker {
 
     /// Every column of an [`AssetRow`] (see `row_from`).
     fn cols(&self) -> String {
-        format!("{COLS}, {}", self.stars_cols())
+        format!("{COLS}, {}, {}", self.stars_cols(), self.svg_key)
     }
 
     /// The words of a query as the index splits them (lowercase, alphanumeric runs).
@@ -480,8 +527,8 @@ impl Worker {
         Ok(v.into_iter().map(|(w, _)| w).collect())
     }
 
-    /// Picks the best `limit` matches (science collections first, then relevance) and returns
-    /// them in `sort` order.
+    /// Picks the best `limit` matches (by relevance; no collection is ranked ahead of another) and
+    /// returns them in `sort` order.
     pub fn search(&self, query: &str, sources: &[String], limit: usize, sort: IconSort) -> rusqlite::Result<Vec<AssetRow>> {
         self.search_page(query, sources, None, 0, limit, sort)
     }
@@ -510,19 +557,61 @@ impl Worker {
         limit: usize,
         sort: IconSort,
     ) -> rusqlite::Result<Vec<AssetRow>> {
+        let mut filter = Filter::sources(sources);
+        filter.taxa.extend(taxon.map(|(c, s)| (c.to_string(), s.to_string())));
+        self.search_filtered(query, &filter, offset, limit, sort)
+    }
+
+    /// ` AND (...)` keeping the assets that pass `f`, or nothing when it keeps everything.
+    fn filter_sql(&self, f: &Filter) -> rusqlite::Result<String> {
+        let q = |s: &str| format!("'{}'", s.replace('\'', "''"));
+        let mut sql = src_filter(&f.sources);
+        let authors: Vec<String> = f.authors.iter().map(|a| a.trim().to_lowercase()).filter(|a| !a.is_empty()).collect();
+        if !authors.is_empty() {
+            let any: Vec<String> = authors.iter().map(|a| format!("instr(lower(coalesce(a.author,'')), {}) > 0", q(a))).collect();
+            sql += &format!(" AND ({})", any.join(" OR "));
+        }
+        if !f.licenses.is_empty() {
+            sql += &format!(" AND a.license IN ({})", f.licenses.iter().map(|l| q(l)).collect::<Vec<_>>().join(","));
+        }
+        if !f.taxa.is_empty() {
+            self.ensure_taxa()?;
+            let any: Vec<String> = f
+                .taxa
+                .iter()
+                .map(|(c, s)| if s.is_empty() { format!("cat = {}", q(c)) } else { format!("(cat = {} AND sub = {})", q(c), q(s)) })
+                .collect();
+            sql += &format!(" AND a.rowid IN (SELECT rid FROM temp.asset_taxa WHERE {})", any.join(" OR "));
+        }
+        if !f.db_cats.is_empty() {
+            let any: Vec<String> = f
+                .db_cats
+                .iter()
+                .map(|(src, c)| {
+                    format!(
+                        "(a.source = {} AND ({SHOWN_SOURCE}) = {} AND (coalesce(a.category,'') = {c} OR instr(', ' || a.category || ', ', {}) > 0))",
+                        q(stored_source(src)),
+                        q(src),
+                        q(&format!(", {c}, ")),
+                        c = q(c)
+                    )
+                })
+                .collect();
+            sql += &format!(" AND ({})", any.join(" OR "));
+        }
+        let svg = f.formats.iter().any(|x| x == FORMAT_SVG);
+        let png = f.formats.iter().any(|x| x == FORMAT_PNG);
+        if svg != png {
+            sql += &format!(" AND {} IS {}NULL", self.svg_key, if svg { "NOT " } else { "" });
+        }
+        Ok(sql)
+    }
+
+    /// [`Self::search_page`] keeping what passes `filter`. An empty query lists everything that does.
+    pub fn search_filtered(&self, query: &str, filter: &Filter, offset: usize, limit: usize, sort: IconSort) -> rusqlite::Result<Vec<AssetRow>> {
         let gk = self.group_key;
         let pf = self.plain_first();
-        let mut src_filter = src_filter(sources);
-        if let Some((cat, sub)) = taxon {
-            self.ensure_taxa()?;
-            let q = |s: &str| s.replace('\'', "''");
-            src_filter += &format!(
-                " AND a.rowid IN (SELECT rid FROM temp.asset_taxa WHERE cat = '{}' AND ('{}' = '' OR sub = '{}'))",
-                q(cat),
-                q(sub),
-                q(sub)
-            );
-        }
+        let src_filter = self.filter_sql(filter)?;
         let (cols, stars_join, uses_join) = (self.cols(), self.stars_join(), self.uses_join());
         // `inner` picks one row per icon (`rid`, with its match `score`); `page` is the LIMIT and
         // OFFSET placeholders.
@@ -601,8 +690,13 @@ impl Worker {
 
     /// How many icons `search` could return with no limit (it shows at most `limit`).
     pub fn search_total(&self, query: &str, sources: &[String]) -> rusqlite::Result<i64> {
+        self.search_filtered_total(query, &Filter::sources(sources))
+    }
+
+    /// How many icons `search_filtered` could return with no limit.
+    pub fn search_filtered_total(&self, query: &str, filter: &Filter) -> rusqlite::Result<i64> {
         let gk = self.group_key;
-        let src_filter = src_filter(sources);
+        let src_filter = self.filter_sql(filter)?;
         let count = |inner: String, arg: Option<String>| -> rusqlite::Result<i64> {
             let sql = format!("SELECT count(*) FROM ({inner} GROUP BY {gk})");
             match arg {
@@ -775,9 +869,14 @@ impl Worker {
 
     /// Icon counts of every category and subcategory that has any, under `sources`.
     pub fn taxonomy(&self, sources: &[String]) -> rusqlite::Result<Vec<TaxonCount>> {
+        self.taxonomy_filtered(&Filter::sources(sources))
+    }
+
+    /// [`Self::taxonomy`] of what passes `filter`.
+    pub fn taxonomy_filtered(&self, filter: &Filter) -> rusqlite::Result<Vec<TaxonCount>> {
         let gk = self.group_key;
         self.ensure_taxa()?;
-        let src = src_filter(sources);
+        let src = self.filter_sql(filter)?;
         let key = format!("count(DISTINCT {gk})");
         let sql = format!(
             "SELECT t.cat, t.sub, {key} FROM temp.asset_taxa t JOIN assets a ON a.rowid = t.rid WHERE 1 {src} GROUP BY t.cat, t.sub \
@@ -786,6 +885,51 @@ impl Worker {
         );
         let rows = self.conn.prepare(&sql)?.query_map([], |r| Ok(TaxonCount { cat: r.get(0)?, sub: r.get(1)?, count: r.get(2)? }))?.collect();
         rows
+    }
+
+    /// The choices of a search's filters that still find icons: each counted under the other
+    /// filters, so picking a database narrows the categories and licenses but not the databases.
+    pub fn facets(&self, filter: &Filter) -> rusqlite::Result<Facets> {
+        let gk = self.group_key;
+        let counts = |col: &str, f: Filter| -> rusqlite::Result<Vec<(String, i64)>> {
+            let sql = format!(
+                "SELECT {col} AS v, count(DISTINCT {gk}) FROM assets a WHERE a.png_key IS NOT NULL {} AND coalesce({col},'') <> '' GROUP BY v ORDER BY v",
+                self.filter_sql(&f)?
+            );
+            let rows = self.conn.prepare(&sql)?.query_map([], |r| Ok((r.get(0)?, r.get(1)?)))?.collect();
+            rows
+        };
+        Ok(Facets {
+            sources: counts(&format!("({SHOWN_SOURCE})"), Filter { sources: Vec::new(), ..filter.clone() })?,
+            licenses: counts("a.license", Filter { licenses: Vec::new(), ..filter.clone() })?,
+            taxa: self.taxonomy_filtered(&Filter { taxa: Vec::new(), ..filter.clone() })?,
+            db_cats: self.db_categories(&Filter { db_cats: Vec::new(), ..filter.clone() })?,
+            formats: counts(
+                &format!("CASE WHEN {} IS NULL THEN '{FORMAT_PNG}' ELSE '{FORMAT_SVG}' END", self.svg_key),
+                Filter { formats: Vec::new(), ..filter.clone() },
+            )?,
+        })
+    }
+
+    /// Every database's own categories with icons passing `filter`, as in [`Self::categories`]
+    /// (uncategorized ones left out), by database then category.
+    fn db_categories(&self, filter: &Filter) -> rusqlite::Result<Vec<(String, String, i64)>> {
+        let gk = self.group_key;
+        let mut st = self.conn.prepare(&format!(
+            "SELECT DISTINCT {SHOWN_SOURCE}, coalesce(a.category,''), {gk} FROM assets a WHERE a.png_key IS NOT NULL {}",
+            self.filter_sql(filter)?
+        ))?;
+        let mut icons: std::collections::HashMap<(String, String), std::collections::HashSet<String>> = Default::default();
+        let mut rows = st.query([])?;
+        while let Some(r) = rows.next()? {
+            let (src, cat, key): (String, String, String) = (r.get(0)?, r.get(1)?, r.get(2)?);
+            for l in cat.split(", ").map(str::trim).filter(|l| !l.is_empty()) {
+                icons.entry((src.clone(), l.to_string())).or_default().insert(key.clone());
+            }
+        }
+        let mut out: Vec<(String, String, i64)> = icons.into_iter().map(|((s, c), k)| (s, c, k.len() as i64)).collect();
+        out.sort_by(|a, b| a.0.cmp(&b.0).then_with(|| a.1.to_lowercase().cmp(&b.1.to_lowercase())));
+        Ok(out)
     }
 
     pub fn sources(&self) -> rusqlite::Result<Vec<SourceInfo>> {
@@ -866,7 +1010,8 @@ impl Worker {
         let mut groups: std::collections::HashMap<String, Vec<AssetRow>> = Default::default();
         let mut rows = st.query(args.as_slice())?;
         while let Some(r) = rows.next()? {
-            groups.entry(r.get(15)?).or_default().push(row_from(r)?);
+            // `{gk}` comes after the 16 columns of `row_from`.
+            groups.entry(r.get(16)?).or_default().push(row_from(r)?);
         }
         for (key, group) in groups {
             if group.len() > 1 {
@@ -1497,6 +1642,74 @@ mod tests {
         assert_eq!(ids(w.search("", &[BIOCARTOON_SOURCE.into(), "bioicons".into()], 10, IconSort::Alphabetical).unwrap()), ["bioicons/x", "user/logo"]);
         let srcs: Vec<(String, String, i64)> = w.sources().unwrap().into_iter().map(|s| (s.source, s.name, s.icons)).collect();
         assert_eq!(srcs, [("biocartoon".into(), "BioCartoon".into(), 1), ("user".into(), "User-generated".into(), 1), ("bioicons".into(), "User-generated".into(), 1)]);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn filters_or_within_and_across() {
+        let dir = std::env::temp_dir().join(format!("cc-catalog-filter-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let db = dir.join("assets.sqlite");
+        let c = Connection::open(&db).unwrap();
+        c.execute_batch(
+            "CREATE TABLE assets (id TEXT PRIMARY KEY, source TEXT, source_name TEXT, title TEXT, variant TEXT, \
+             description TEXT, category TEXT, tags TEXT, license TEXT, credit TEXT, author TEXT, png_key TEXT, \
+             png_local TEXT, png_width INTEGER, png_height INTEGER);",
+        )
+        .unwrap();
+        for (id, source, author, license, cat) in [
+            ("a", "bioicons", "Ann Smith", "MIT", "Viruses, Cells"),
+            ("b", "bioicons", "Bob", "CC0-1.0", "Cells"),
+            ("c", "openmoji", "Joanna", "CC-BY-SA-4.0", "Cells"),
+            ("d", "servier", "Servier", "MIT", ""),
+        ] {
+            c.execute(
+                &format!("INSERT INTO assets ({TEST_COLS}) VALUES (?1, ?2, ?2, ?1, '', '', ?5, '[]', ?4, '', ?3, ?1, NULL, 1, 1)"),
+                params![id, source, author, license, cat],
+            )
+            .unwrap();
+        }
+        c.execute_batch("ALTER TABLE assets ADD COLUMN svg_key TEXT; UPDATE assets SET svg_key = id || '.svg' WHERE id IN ('a', 'c');").unwrap();
+        drop(c);
+        let w = Worker::open(&db, &dir.join("usage.sqlite")).unwrap();
+        let ids = |f: &Filter| {
+            let rows = w.search_filtered("", f, 0, 10, IconSort::Alphabetical).unwrap();
+            assert_eq!(w.search_filtered_total("", f).unwrap(), rows.len() as i64);
+            rows.into_iter().map(|r| r.id).collect::<Vec<_>>()
+        };
+        let s = |v: &[&str]| v.iter().map(|x| x.to_string()).collect::<Vec<_>>();
+        // Any part of the name, any case; several are any of them.
+        assert_eq!(ids(&Filter { authors: s(&["ANN"]), ..Filter::default() }), ["a", "c"]);
+        assert_eq!(ids(&Filter { authors: s(&["bob", "servier"]), ..Filter::default() }), ["b", "d"]);
+        assert_eq!(ids(&Filter { sources: s(&["bioicons", "openmoji"]), ..Filter::default() }), ["a", "b", "c"]);
+        // Across filters, all of them.
+        assert_eq!(ids(&Filter { sources: s(&["bioicons"]), licenses: s(&["MIT"]), ..Filter::default() }), ["a"]);
+        assert_eq!(ids(&Filter { sources: s(&["openmoji"]), licenses: s(&["MIT"]), ..Filter::default() }), Vec::<String>::new());
+        // A category keeps what is filed under it; one with a subcategory picked keeps just that.
+        let (cat, sub) = crate::taxonomy::classify("bioicons", "Cells", "b", "[]")[0];
+        let by_cat = ids(&Filter { taxa: vec![(cat.into(), String::new())], ..Filter::default() });
+        assert!(by_cat.contains(&"b".to_string()));
+        assert_eq!(by_cat, ids(&Filter { taxa: vec![(cat.into(), sub.into())], ..Filter::default() }));
+        assert_eq!(ids(&Filter { taxa: vec![(cat.into(), sub.into())], licenses: s(&["CC0-1.0"]), ..Filter::default() }), ["b"]);
+        // A filter's choices are counted under the others, not under itself.
+        let fc = w.facets(&Filter { sources: s(&["bioicons"]), licenses: s(&["MIT"]), ..Filter::default() }).unwrap();
+        assert_eq!(fc.licenses, [("CC0-1.0".to_string(), 1), ("MIT".to_string(), 1)]);
+        assert_eq!(fc.sources, [("bioicons".to_string(), 1), ("servier".to_string(), 1)]);
+        assert_eq!(fc.taxa.iter().find(|t| t.cat.is_empty()).map(|t| t.count), Some(1));
+        // A database's own categories: one of several an asset is filed under, in that database only.
+        let dc = |v: &[(&str, &str)]| v.iter().map(|(a, b)| (a.to_string(), b.to_string())).collect::<Vec<_>>();
+        assert_eq!(ids(&Filter { db_cats: dc(&[("bioicons", "Cells")]), ..Filter::default() }), ["a", "b"]);
+        assert_eq!(ids(&Filter { db_cats: dc(&[("bioicons", "Viruses"), ("openmoji", "Cells")]), ..Filter::default() }), ["a", "c"]);
+        let fc = w.facets(&Filter { sources: s(&["bioicons"]), db_cats: dc(&[("bioicons", "Viruses")]), ..Filter::default() }).unwrap();
+        assert_eq!(fc.db_cats, [("bioicons".to_string(), "Cells".to_string(), 2), ("bioicons".to_string(), "Viruses".to_string(), 1)]);
+        // File type: an SVG when the source publishes one, else a PNG only; both keeps everything.
+        assert_eq!(ids(&Filter { formats: s(&[FORMAT_SVG]), ..Filter::default() }), ["a", "c"]);
+        assert_eq!(ids(&Filter { formats: s(&[FORMAT_PNG]), ..Filter::default() }), ["b", "d"]);
+        assert_eq!(ids(&Filter { formats: s(&[FORMAT_SVG, FORMAT_PNG]), ..Filter::default() }), ["a", "b", "c", "d"]);
+        let fc = w.facets(&Filter { sources: s(&["bioicons"]), formats: s(&[FORMAT_SVG]), ..Filter::default() }).unwrap();
+        assert_eq!(fc.formats, [("PNG".to_string(), 1), ("SVG".to_string(), 1)]);
+        assert_eq!(fc.sources, [("bioicons".to_string(), 1), ("openmoji".to_string(), 1)]);
         let _ = std::fs::remove_dir_all(&dir);
     }
 }

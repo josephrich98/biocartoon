@@ -7,6 +7,7 @@
 //   POST /approve/<id>     copy into the public bucket (see src/publish.ts)
 //   POST /reject/<id>      mark it rejected (its files are deleted REJECTED_KEEP_DAYS later)
 //   POST /undo/<id>        put an approved or rejected submission back in the queue
+//   POST /done/<id>        mark a suggestion (icon or template requests from the app) handled
 //
 // A daily cron (wrangler.review.jsonc) deletes the files of old rejections.
 
@@ -58,6 +59,13 @@ async function route(req: Request, env: Env, who: string): Promise<Response> {
         "cache-control": "private, max-age=600",
       },
     });
+  }
+  if (req.method === "POST" && action === "done" && ID.test(rest[0] ?? "")) {
+    if (req.headers.get("origin") !== url.origin) return new Response("Bad origin", { status: 403 });
+    const r = await env.DB.prepare("UPDATE suggestions SET status = 'done', reviewed_at = ?2, reviewed_by = ?3 WHERE id = ?1 AND status = 'open' RETURNING title")
+      .bind(rest[0], new Date().toISOString().replace(/\.\d+Z$/, "Z"), who)
+      .first<{ title: string }>();
+    return Response.redirect(`${url.origin}/?done=${encodeURIComponent(r ? `Marked the suggestion “${r.title}” done` : "That suggestion was already done")}`, 303);
   }
   if (req.method === "POST" && (action === "approve" || action === "reject" || action === "undo") && ID.test(rest[0] ?? "")) {
     // Forms from other sites must not be able to approve anything.
@@ -112,6 +120,19 @@ function card(r: Row): string {
 </section>`;
 }
 
+interface SuggestionRow {
+  id: string;
+  kind: string;
+  title: string;
+  description: string;
+  name: string;
+  created_at: string;
+}
+
+const suggestionRow = (r: SuggestionRow) =>
+  `<tr><td>${esc(r.kind)}</td><td><b>${esc(r.title)}</b>${r.description ? `<br>${esc(r.description)}` : ""}</td><td>${esc(r.name || "–")}</td><td>${esc(r.created_at)}</td>
+  <td><form method="post" class="inline"><button formaction="/done/${esc(r.id)}" class="undo">Done</button></form></td></tr>`;
+
 const undoForm = (id: string, cls = "") =>
   `<form method="post" class="inline"><button formaction="/undo/${esc(id)}" class="undo ${cls}">Undo</button></form>`;
 
@@ -119,6 +140,7 @@ async function page(env: Env, done: string | null, undoId: string | null): Promi
   const pending = await env.DB.prepare("SELECT * FROM submissions WHERE status = 'pending' ORDER BY created_at LIMIT 50").all<Row>();
   const total = await env.DB.prepare("SELECT count(*) AS n FROM submissions WHERE status = 'pending'").first<{ n: number }>();
   const recent = await env.DB.prepare("SELECT * FROM submissions WHERE status != 'pending' ORDER BY reviewed_at DESC LIMIT 20").all<Row>();
+  const suggestions = await env.DB.prepare("SELECT * FROM suggestions WHERE status = 'open' ORDER BY created_at LIMIT 100").all<SuggestionRow>();
   const html = `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width">
 <title>BioCartoon review (${total?.n ?? 0})</title><style>
 body{font:15px system-ui,sans-serif;margin:0 auto;max-width:1000px;padding:16px;color:#1d1d22;background:#f6f6f8}
@@ -137,6 +159,8 @@ table{border-collapse:collapse;font-size:13px;width:100%}td{border-top:1px solid
 <h1>Review queue: ${total?.n ?? 0} pending</h1>
 ${done ? `<div class="done"><span>${esc(done)}</span>${undoId ? undoForm(undoId) : ""}</div>` : ""}
 ${pending.results.map(card).join("") || "<p>Nothing to review.</p>"}
+<h3>Suggestions (${suggestions.results.length})</h3>
+${suggestions.results.length ? `<table>${suggestions.results.map(suggestionRow).join("")}</table>` : "<p>No open suggestions.</p>"}
 <h3>Recent decisions</h3><table>${recent.results
     .map((r) => `<tr><td>${esc(r.status)}${r.official ? " (official)" : ""}</td><td>${esc(r.kind)}</td><td>${esc(r.title)}</td><td>${esc(r.author)}</td><td>${esc(r.reviewed_by)}</td><td>${esc(r.reviewed_at)}</td><td>${r.status === "approved" || r.files !== "[]" ? undoForm(r.id) : ""}</td></tr>`)
     .join("")}</table>
