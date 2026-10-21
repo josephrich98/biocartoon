@@ -874,9 +874,14 @@ impl Worker {
 
     /// [`Self::taxonomy`] of what passes `filter`.
     pub fn taxonomy_filtered(&self, filter: &Filter) -> rusqlite::Result<Vec<TaxonCount>> {
+        self.ensure_taxa()?;
+        self.taxonomy_where(&self.filter_sql(filter)?)
+    }
+
+    /// [`Self::taxonomy_filtered`] of the assets passing `src`, `filter_sql`'s " AND ..." terms.
+    fn taxonomy_where(&self, src: &str) -> rusqlite::Result<Vec<TaxonCount>> {
         let gk = self.group_key;
         self.ensure_taxa()?;
-        let src = self.filter_sql(filter)?;
         let key = format!("count(DISTINCT {gk})");
         let sql = format!(
             "SELECT t.cat, t.sub, {key} FROM temp.asset_taxa t JOIN assets a ON a.rowid = t.rid WHERE 1 {src} GROUP BY t.cat, t.sub \
@@ -889,12 +894,15 @@ impl Worker {
 
     /// The choices of a search's filters that still find icons: each counted under the other
     /// filters, so picking a database narrows the categories and licenses but not the databases.
-    pub fn facets(&self, filter: &Filter) -> rusqlite::Result<Facets> {
+    /// A `query` counts only the icons it finds (as `search_filtered` does).
+    pub fn facets(&self, query: &str, filter: &Filter) -> rusqlite::Result<Facets> {
         let gk = self.group_key;
+        let matched = self.query_sql(query, filter)?;
+        let src = |f: Filter| self.filter_sql(&f).map(|s| s + &matched);
         let counts = |col: &str, f: Filter| -> rusqlite::Result<Vec<(String, i64)>> {
             let sql = format!(
                 "SELECT {col} AS v, count(DISTINCT {gk}) FROM assets a WHERE a.png_key IS NOT NULL {} AND coalesce({col},'') <> '' GROUP BY v ORDER BY v",
-                self.filter_sql(&f)?
+                src(f)?
             );
             let rows = self.conn.prepare(&sql)?.query_map([], |r| Ok((r.get(0)?, r.get(1)?)))?.collect();
             rows
@@ -902,8 +910,8 @@ impl Worker {
         Ok(Facets {
             sources: counts(&format!("({SHOWN_SOURCE})"), Filter { sources: Vec::new(), ..filter.clone() })?,
             licenses: counts("a.license", Filter { licenses: Vec::new(), ..filter.clone() })?,
-            taxa: self.taxonomy_filtered(&Filter { taxa: Vec::new(), ..filter.clone() })?,
-            db_cats: self.db_categories(&Filter { db_cats: Vec::new(), ..filter.clone() })?,
+            taxa: self.taxonomy_where(&src(Filter { taxa: Vec::new(), ..filter.clone() })?)?,
+            db_cats: self.db_categories(&src(Filter { db_cats: Vec::new(), ..filter.clone() })?)?,
             formats: counts(
                 &format!("CASE WHEN {} IS NULL THEN '{FORMAT_PNG}' ELSE '{FORMAT_SVG}' END", self.svg_key),
                 Filter { formats: Vec::new(), ..filter.clone() },
@@ -911,14 +919,38 @@ impl Worker {
         })
     }
 
-    /// Every database's own categories with icons passing `filter`, as in [`Self::categories`]
-    /// (uncategorized ones left out), by database then category.
-    fn db_categories(&self, filter: &Filter) -> rusqlite::Result<Vec<(String, String, i64)>> {
+    /// An " AND ..." term keeping the assets `query` finds, "" for no query. Every word, else
+    /// (when no asset passing `filter` has them all) any of them, as in `search_filtered`.
+    fn query_sql(&self, query: &str, filter: &Filter) -> rusqlite::Result<String> {
+        let lit = |s: &str| format!("'{}'", s.replace('\'', "''"));
+        let q = query.trim();
+        if q.is_empty() {
+            return Ok(String::new());
+        }
+        if !self.fts {
+            let like = lit(&format!("%{q}%"));
+            return Ok(format!(" AND (a.title LIKE {like} OR a.tags LIKE {like})"));
+        }
+        let terms = self.fts_terms(q)?;
+        if terms.is_empty() {
+            return Ok(" AND 0".into());
+        }
+        let matched = |expr: &str| format!(" AND a.rowid IN (SELECT rowid FROM assets_fts WHERE assets_fts MATCH {})", lit(expr));
+        let all = terms.join(" ");
+        if terms.len() > 1 {
+            let sql = format!("SELECT EXISTS (SELECT 1 FROM assets a WHERE a.png_key IS NOT NULL {}{})", self.filter_sql(filter)?, matched(&all));
+            if !self.conn.query_row(&sql, [], |r| r.get::<_, bool>(0))? {
+                return Ok(matched(&terms.join(" OR ")));
+            }
+        }
+        Ok(matched(&all))
+    }
+
+    /// Every database's own categories with icons passing `src` (`filter_sql`'s terms), as in
+    /// [`Self::categories`] (uncategorized ones left out), by database then category.
+    fn db_categories(&self, src: &str) -> rusqlite::Result<Vec<(String, String, i64)>> {
         let gk = self.group_key;
-        let mut st = self.conn.prepare(&format!(
-            "SELECT DISTINCT {SHOWN_SOURCE}, coalesce(a.category,''), {gk} FROM assets a WHERE a.png_key IS NOT NULL {}",
-            self.filter_sql(filter)?
-        ))?;
+        let mut st = self.conn.prepare(&format!("SELECT DISTINCT {SHOWN_SOURCE}, coalesce(a.category,''), {gk} FROM assets a WHERE a.png_key IS NOT NULL {src}"))?;
         let mut icons: std::collections::HashMap<(String, String), std::collections::HashSet<String>> = Default::default();
         let mut rows = st.query([])?;
         while let Some(r) = rows.next()? {
@@ -1696,7 +1728,7 @@ mod tests {
         assert_eq!(by_cat, ids(&Filter { taxa: vec![(cat.into(), sub.into())], ..Filter::default() }));
         assert_eq!(ids(&Filter { taxa: vec![(cat.into(), sub.into())], licenses: s(&["CC0-1.0"]), ..Filter::default() }), ["b"]);
         // A filter's choices are counted under the others, not under itself.
-        let fc = w.facets(&Filter { sources: s(&["bioicons"]), licenses: s(&["MIT"]), ..Filter::default() }).unwrap();
+        let fc = w.facets("", &Filter { sources: s(&["bioicons"]), licenses: s(&["MIT"]), ..Filter::default() }).unwrap();
         assert_eq!(fc.licenses, [("CC0-1.0".to_string(), 1), ("MIT".to_string(), 1)]);
         assert_eq!(fc.sources, [("bioicons".to_string(), 1), ("servier".to_string(), 1)]);
         assert_eq!(fc.taxa.iter().find(|t| t.cat.is_empty()).map(|t| t.count), Some(1));
@@ -1704,15 +1736,22 @@ mod tests {
         let dc = |v: &[(&str, &str)]| v.iter().map(|(a, b)| (a.to_string(), b.to_string())).collect::<Vec<_>>();
         assert_eq!(ids(&Filter { db_cats: dc(&[("bioicons", "Cells")]), ..Filter::default() }), ["a", "b"]);
         assert_eq!(ids(&Filter { db_cats: dc(&[("bioicons", "Viruses"), ("openmoji", "Cells")]), ..Filter::default() }), ["a", "c"]);
-        let fc = w.facets(&Filter { sources: s(&["bioicons"]), db_cats: dc(&[("bioicons", "Viruses")]), ..Filter::default() }).unwrap();
+        let fc = w.facets("", &Filter { sources: s(&["bioicons"]), db_cats: dc(&[("bioicons", "Viruses")]), ..Filter::default() }).unwrap();
         assert_eq!(fc.db_cats, [("bioicons".to_string(), "Cells".to_string(), 2), ("bioicons".to_string(), "Viruses".to_string(), 1)]);
         // File type: an SVG when the source publishes one, else a PNG only; both keeps everything.
         assert_eq!(ids(&Filter { formats: s(&[FORMAT_SVG]), ..Filter::default() }), ["a", "c"]);
         assert_eq!(ids(&Filter { formats: s(&[FORMAT_PNG]), ..Filter::default() }), ["b", "d"]);
         assert_eq!(ids(&Filter { formats: s(&[FORMAT_SVG, FORMAT_PNG]), ..Filter::default() }), ["a", "b", "c", "d"]);
-        let fc = w.facets(&Filter { sources: s(&["bioicons"]), formats: s(&[FORMAT_SVG]), ..Filter::default() }).unwrap();
+        let fc = w.facets("", &Filter { sources: s(&["bioicons"]), formats: s(&[FORMAT_SVG]), ..Filter::default() }).unwrap();
         assert_eq!(fc.formats, [("PNG".to_string(), 1), ("SVG".to_string(), 1)]);
         assert_eq!(fc.sources, [("bioicons".to_string(), 1), ("openmoji".to_string(), 1)]);
+        // A query counts only what it finds.
+        let fc = w.facets("cells", &Filter::default()).unwrap();
+        assert_eq!(fc.sources, [("bioicons".to_string(), 2), ("openmoji".to_string(), 1)]);
+        let fc = w.facets("cells", &Filter { licenses: s(&["MIT"]), ..Filter::default() }).unwrap();
+        assert_eq!(fc.sources, [("bioicons".to_string(), 1)]);
+        assert_eq!(fc.licenses, [("CC-BY-SA-4.0".to_string(), 1), ("CC0-1.0".to_string(), 1), ("MIT".to_string(), 1)]);
+        assert!(w.facets("zzzz", &Filter::default()).unwrap().sources.is_empty());
         let _ = std::fs::remove_dir_all(&dir);
     }
 }

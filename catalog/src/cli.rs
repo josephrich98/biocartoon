@@ -336,7 +336,7 @@ fn icon_filter(a: &Args, cat: &Catalog) -> Result<Option<Filter>, String> {
     f.taxa = taxa.into_iter().map(|(c, s)| (c.to_string(), s.to_string())).collect();
 
     if a.flag("license") || a.flag("db-category") {
-        let facets = cat.facets(&Filter::default())?;
+        let facets = cat.facets("", &Filter::default())?;
         for l in values(a, "license") {
             let found = facets.licenses.iter().find(|(name, _)| name.eq_ignore_ascii_case(l.trim()));
             let known = || facets.licenses.iter().map(|(n, _)| n.as_str()).collect::<Vec<_>>().join(", ");
@@ -587,7 +587,7 @@ fn upload(a: &Args) -> Result<(), String> {
 /// `--db-categories`: each collection's own categories (of the `--source` ones), for
 /// `search --db-category`.
 fn db_categories(a: &Args) -> Result<(), String> {
-    let facets = Catalog::open_default()?.facets(&Filter::sources(&source_args(a)?))?;
+    let facets = Catalog::open_default()?.facets("", &Filter::sources(&source_args(a)?))?;
     if a.flag("json") {
         let rows: Vec<Value> = facets.db_cats.iter().map(|(s, c, n)| json!({"source": s, "category": c, "icons": n})).collect();
         print_json(&rows);

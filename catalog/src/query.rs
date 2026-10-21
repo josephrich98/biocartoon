@@ -263,9 +263,9 @@ impl Catalog {
     }
 
     /// Icon counts of each value `filter`'s lists could take (licenses, databases' own
-    /// categories, file types, ...), under the rest of `filter`.
-    pub fn facets(&self, filter: &Filter) -> Result<Facets, String> {
-        self.worker.facets(filter).map_err(|e| e.to_string())
+    /// categories, file types, ...), under the rest of `filter`, of the icons `query` finds ("" for all).
+    pub fn facets(&self, query: &str, filter: &Filter) -> Result<Facets, String> {
+        self.worker.facets(query, filter).map_err(|e| e.to_string())
     }
 
     pub fn get(&self, id: &str) -> Result<Option<Asset>, String> {
