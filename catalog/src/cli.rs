@@ -23,7 +23,8 @@ COMMANDS
       --author A            by an author: part of the name, any case (ann finds Ann Smith)
       --category C          in a category: a slug from --categories (cells, or cells.cell_types)
       --subcategory S       in a subcategory: a slug from --categories (cell_types, cells.cell_types)
-      --db-category [S:]C   in a collection's own category C, from --db-categories; S: limits
+      --source-category [S:]C
+                            in a collection's own category C, from --source-categories; S: limits
                             it to collection S (C alone: that category in any collection)
       --license L           under a license (CC-BY-4.0, CC0-1.0, ...; any case)
       --file-type svg|png   svg: published as SVG; png: published as a PNG only
@@ -53,7 +54,7 @@ COMMANDS
   --sources                 the collections: code, name, icons, licenses, what they hold
   --categories              BioCartoon's categories and subcategories, with slugs and counts
                             (of one collection with --source)
-  --db-categories           the collections' own categories, with counts  [--source S]
+  --source-categories       the collections' own categories, with counts  [--source S]
 ";
 
 /// The options every catalog command takes.
@@ -73,6 +74,14 @@ fn usage() -> String {
     )
 }
 
+/// The help for one of the [`CATALOG_COMMANDS`] (its entry, then the shared options); `None` for
+/// any other command.
+pub fn command_help(cmd: &str) -> Option<String> {
+    let mut lines = CATALOG_COMMANDS.lines().skip_while(|l| l.get(2..).and_then(|r| r.split_whitespace().next()) != Some(cmd) || l.starts_with("   "));
+    let entry: Vec<&str> = lines.next().into_iter().chain(lines.take_while(|l| l.starts_with("   "))).collect();
+    (!entry.is_empty()).then(|| format!("COMMAND\n{}\n\n{CATALOG_OPTIONS}\nRun `biocartoon --help` for every command.\n", entry.join("\n")))
+}
+
 /// Command-line arguments: positionals, and `--flag` / `--key value` / `--key=value` options.
 pub struct Args {
     pub pos: Vec<String>,
@@ -82,9 +91,9 @@ pub struct Args {
 impl Args {
     /// `valued` names the options that take a value (the catalog's are always included).
     pub fn parse(argv: Vec<String>, valued: &[&str]) -> Self {
-        const VALUED: [&str; 20] = [
+        const VALUED: [&str; 21] = [
             "source", "limit", "sort", "category", "offset", "out", "max-side", "max-rows", "db", "url", "license", "credit", "title",
-            "description", "submit-url", "author", "subcategory", "db-category", "file-type", "columns",
+            "description", "submit-url", "author", "subcategory", "source-category", "db-category", "file-type", "columns",
         ];
         let mut a = Self { pos: Vec::new(), opts: HashMap::new() };
         let mut it = argv.into_iter();
@@ -94,6 +103,12 @@ impl Args {
                     Some((k, v)) => (k.to_string(), Some(v.to_string())),
                     None if VALUED.contains(&flag) || valued.contains(&flag) => (flag.to_string(), it.next()),
                     None => (flag.to_string(), None),
+                };
+                // The old names of `--source-category` and `--source-categories` still work.
+                let k = match k.as_str() {
+                    "db-category" => "source-category".to_string(),
+                    "db-categories" => "source-categories".to_string(),
+                    _ => k,
                 };
                 a.opts.entry(k).or_default().extend(v);
             } else {
@@ -119,11 +134,17 @@ impl Args {
         self.pos.first().map(String::as_str).unwrap_or("help")
     }
     /// `--help`, `help` or no command at all (except a lone `--sources`, `--categories`,
-    /// `--db-categories` or `--version`).
+    /// `--source-categories` or `--version`).
     pub fn wants_help(&self) -> bool {
         self.flag("help")
             || (matches!(self.command(), "help" | "-h")
-                && !["sources", "categories", "db-categories", "version"].iter().any(|f| self.flag(f)))
+                && !["sources", "categories", "source-categories", "version"].iter().any(|f| self.flag(f)))
+    }
+    /// The command help is asked about: `search` for `search --help` or `help search`; `None`
+    /// for the whole usage.
+    pub fn help_topic(&self) -> Option<&str> {
+        let i = usize::from(self.command() == "help");
+        self.pos.get(i).map(String::as_str).filter(|c| *c != "help")
     }
     /// `--db`, `--url` and `--submit-url` become `BIOCARTOON_DB`, `BIOCARTOON_ASSET_URL` and
     /// `BIOCARTOON_SUBMIT_URL` for the rest of the run.
@@ -278,8 +299,8 @@ pub fn run_command(a: &Args, templates: Option<Templates>) -> Option<Result<(), 
     if a.flag("categories") {
         return Some(categories(a));
     }
-    if a.flag("db-categories") {
-        return Some(db_categories(a));
+    if a.flag("source-categories") {
+        return Some(source_categories(a));
     }
     let cmd = a.command();
     const NAMES: [&str; 6] = ["sync", "search", "get", "fetch", "upload", "help"];
@@ -302,7 +323,7 @@ fn values<'a>(a: &'a Args, k: &str) -> impl Iterator<Item = &'a str> {
 }
 
 /// The icon filter options of `search`.
-const ICON_FILTERS: [&str; 7] = ["source", "author", "category", "subcategory", "db-category", "license", "file-type"];
+const ICON_FILTERS: [&str; 7] = ["source", "author", "category", "subcategory", "source-category", "license", "file-type"];
 
 /// `search`'s icon filter. Each option keeps the icons matching any of its values, and an icon
 /// has to pass every option given. `None` when they can't match anything (subcategories outside
@@ -337,14 +358,14 @@ fn icon_filter(a: &Args, cat: &Catalog) -> Result<Option<Filter>, String> {
     };
     f.taxa = taxa.into_iter().map(|(c, s)| (c.to_string(), s.to_string())).collect();
 
-    if a.flag("license") || a.flag("db-category") {
+    if a.flag("license") || a.flag("source-category") {
         let facets = cat.facets("", &Filter::default())?;
         for l in values(a, "license") {
             let found = facets.licenses.iter().find(|(name, _)| name.eq_ignore_ascii_case(l.trim()));
             let known = || facets.licenses.iter().map(|(n, _)| n.as_str()).collect::<Vec<_>>().join(", ");
             f.licenses.push(found.ok_or_else(|| format!("unknown license {l:?} (one of {})", known()))?.0.clone());
         }
-        for v in values(a, "db-category") {
+        for v in values(a, "source-category") {
             let (src, c) = match v.split_once(':') {
                 Some((s, c)) => (Some(resolve_source(s.trim()).ok_or_else(|| format!("unknown source {s:?} (see biocartoon --sources)"))?), c.trim()),
                 None => (None, v.trim()),
@@ -356,7 +377,7 @@ fn icon_filter(a: &Args, cat: &Catalog) -> Result<Option<Filter>, String> {
                 .map(|(s, name, _)| (s.clone(), name.clone()))
                 .collect();
             if found.is_empty() {
-                return Err(format!("no collection has the category {v:?} (see biocartoon --db-categories)"));
+                return Err(format!("no collection has the category {v:?} (see biocartoon --source-categories)"));
             }
             f.db_cats.extend(found);
         }
@@ -447,7 +468,7 @@ fn run_inner(a: &Args, cmd: &str, templates: Option<Templates>) -> Result<(), St
             let cat = catalog()?;
             let asset = cat.get(id)?.ok_or_else(|| format!("no asset {id}"))?;
             let variants: Vec<String> = cat.variants(id)?.into_iter().map(|v| v.id).filter(|v| v != id).collect();
-            let mut v = serde_json::to_value(&asset).unwrap_or_default();
+            let mut v = asset_json(&asset);
             v["variants"] = json!(variants);
             if json {
                 print_json(&v);
@@ -586,9 +607,9 @@ fn upload(a: &Args) -> Result<(), String> {
     Ok(())
 }
 
-/// `--db-categories`: each collection's own categories (of the `--source` ones), for
-/// `search --db-category`.
-fn db_categories(a: &Args) -> Result<(), String> {
+/// `--source-categories`: each collection's own categories (of the `--source` ones), for
+/// `search --source-category`.
+fn source_categories(a: &Args) -> Result<(), String> {
     let facets = Catalog::open_default()?.facets("", &Filter::sources(&source_args(a)?))?;
     if a.flag("json") {
         let rows: Vec<Value> = facets.db_cats.iter().map(|(s, c, n)| json!({"source": s, "category": c, "icons": n})).collect();
@@ -626,7 +647,7 @@ fn search(a: &Args, q: &str, templates: Option<Templates>) -> Result<(), String>
         if let Some(f) = icon_filter(a, &cat)? {
             icons = cat.search_filtered(q, &f, offset, limit, sort(a, default_sort))?.0;
         }
-        out.insert("icons".into(), json!(icons));
+        out.insert("icons".into(), Value::Array(icons.iter().map(asset_json).collect()));
     }
     let mut temps = Vec::new();
     if let (true, Some(t)) = (want_templates, templates) {
@@ -653,6 +674,19 @@ fn search(a: &Args, q: &str, templates: Option<Templates>) -> Result<(), String>
     Ok(())
 }
 
+/// An asset as `--json` prints it, with its place in BioCartoon's taxonomy (`taxa`: category,
+/// subcategory and slug, as `--categories` lists them).
+fn asset_json(asset: &Asset) -> Value {
+    let mut v = serde_json::to_value(asset).unwrap_or_default();
+    let taxa: Vec<Value> = taxonomy::classify(&asset.source, &asset.category, &asset.title, &asset.tags.join(" "))
+        .into_iter()
+        .filter(|(c, _)| !c.is_empty())
+        .map(|(c, s)| json!({"category": c, "subcategory": s, "slug": taxonomy::taxon_slug(c, s)}))
+        .collect();
+    v["taxa"] = json!(taxa);
+    v
+}
+
 /// `search --facets`: each icon filter's choices with how many icons they find under the query and
 /// the other filters (a choice is not counted under its own filter, so picking one leaves the rest listed).
 fn facets(a: &Args, q: &str) -> Result<(), String> {
@@ -663,26 +697,26 @@ fn facets(a: &Args, q: &str) -> Result<(), String> {
     };
     let pairs = |k: &str, v: &[(String, i64)]| v.iter().map(|(x, n)| json!({k: x, "icons": n})).collect::<Vec<_>>();
     let taxa: Vec<Value> = fc.taxa.iter().filter(|t| !t.cat.is_empty()).map(|t| json!({"slug": taxonomy::taxon_slug(&t.cat, &t.sub), "icons": t.count})).collect();
-    let db_cats: Vec<Value> = fc.db_cats.iter().map(|(s, c, n)| json!({"source": s, "category": c, "icons": n})).collect();
+    let source_cats: Vec<Value> = fc.db_cats.iter().map(|(s, c, n)| json!({"source": s, "category": c, "icons": n})).collect();
     let out = json!({
         "sources": pairs("source", &fc.sources),
         "licenses": pairs("license", &fc.licenses),
         "categories": taxa,
-        "db_categories": db_cats,
+        "source_categories": source_cats,
         "file_types": pairs("file_type", &fc.formats),
     });
     if a.flag("json") {
         print_json(&out);
         return Ok(());
     }
-    for (head, key) in [("DATABASES", "sources"), ("LICENSES", "licenses"), ("CATEGORIES", "categories"), ("DATABASE CATEGORIES", "db_categories"), ("FILE TYPES", "file_types")] {
+    for (head, key) in [("SOURCES", "sources"), ("LICENSES", "licenses"), ("CATEGORIES", "categories"), ("SOURCE CATEGORIES", "source_categories"), ("FILE TYPES", "file_types")] {
         println!("{head}");
         for r in out[key].as_array().into_iter().flatten() {
             let name = match key {
                 "sources" => r["source"].as_str().unwrap_or_default().to_string(),
                 "licenses" => r["license"].as_str().unwrap_or_default().to_string(),
                 "categories" => r["slug"].as_str().unwrap_or_default().to_string(),
-                "db_categories" => format!("{}:{}", r["source"].as_str().unwrap_or_default(), r["category"].as_str().unwrap_or_default()),
+                "source_categories" => format!("{}:{}", r["source"].as_str().unwrap_or_default(), r["category"].as_str().unwrap_or_default()),
                 _ => r["file_type"].as_str().unwrap_or_default().to_string(),
             };
             println!("  {name:<56} {:>6}", r["icons"]);
@@ -785,7 +819,7 @@ pub fn run(argv: Vec<String>) -> Result<(), String> {
     let a = Args::parse(argv, &[]);
     a.apply_env();
     if a.wants_help() {
-        print!("{}", usage());
+        print!("{}", a.help_topic().and_then(command_help).unwrap_or_else(usage));
         return Ok(());
     }
     if a.flag("version") {
@@ -809,6 +843,20 @@ mod tests {
         assert!(!looks_like_sql("select"));
         assert!(!looks_like_sql("select tool for cells"));
         assert!(!looks_like_sql("neuron with dendrites"));
+    }
+
+    #[test]
+    fn helps_one_command() {
+        let search = command_help("search").unwrap();
+        assert!(search.contains("--facets") && search.contains("--json") && !search.contains("--dry-run"));
+        let fetch = command_help("fetch").unwrap();
+        assert!(fetch.starts_with("COMMAND\n  fetch <id>") && !fetch.contains("sync"));
+        assert!(command_help("sources").is_none() && command_help("app").is_none());
+        let args = |v: &[&str]| Args::parse(v.iter().map(|s| s.to_string()).collect(), &[]);
+        assert_eq!(args(&["search", "--help"]).help_topic(), Some("search"));
+        assert_eq!(args(&["help", "get"]).help_topic(), Some("get"));
+        assert_eq!(args(&["--help"]).help_topic(), None);
+        assert_eq!(args(&["help"]).help_topic(), None);
     }
 
     #[test]

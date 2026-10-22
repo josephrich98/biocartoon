@@ -54,7 +54,7 @@ server also lists the shared slide templates. The BioCartoon desktop editor ship
     - `--author A`: icons by an author (part of the name, any case)
     - `--category C`: icons in a category (a slug from `biocartoon --categories`)
     - `--subcategory S`: icons in a subcategory (a slug from `biocartoon --categories`)
-    - `--db-category [S:]C`: icons in a collection's own category (from `biocartoon --db-categories`)
+    - `--source-category [S:]C`: icons in a collection's own category (from `biocartoon --source-categories`)
     - `--license L`: icons under a license (`CC-BY-4.0`, `CC0-1.0`, ...)
     - `--file-type svg|png`: icons published as SVG, or as a PNG only
 
@@ -69,7 +69,7 @@ server also lists the shared slide templates. The BioCartoon desktop editor ship
 - `biocartoon --version`: the program's version, and when the local catalog was published and downloaded
 - `biocartoon --sources`: list icon sources for `biocartoon search --source S`
 - `biocartoon --categories`: list icon categories for `biocartoon search --category C`
-- `biocartoon --db-categories`: list the collections' own categories for `biocartoon search --db-category S:C`
+- `biocartoon --source-categories`: list the collections' own categories for `biocartoon search --source-category S:C`
 
 Run `biocartoon --help` for everything.
 
@@ -107,7 +107,7 @@ biocartoon --categories --source SD                        # what SciDraw covers
 biocartoon search neuron --subcategory cell_types --file-type svg            # SVG cell types
 biocartoon search --license CC0-1.0 --license PD --category cells            # free of attribution
 biocartoon search --author kissinger --source BA --sort popular              # one illustrator
-biocartoon search --db-category "BA:Cellular Processes" --db-category "BA:Proteins"
+biocartoon search --source-category "BA:Cellular Processes" --source-category "BA:Proteins"
 ```
 
 Query the catalog with SQL (read-only):
