@@ -5,7 +5,7 @@
 //   POST /submit   multipart/form-data:
 //     kind=asset     meta=<JSON>  image=<PNG> | svg=<SVG> (publishing renders an SVG's PNG; one sent along is ignored)
 //     kind=template  meta=<JSON>  template=<JSON>  thumb=<PNG>  img-1.png=<PNG> ...
-//   POST /suggest  application/json {kind: "icon" | "template", title, description?, name?}
+//   POST /suggest  application/json {kind: "icon" | "template" | "other", title, description?, name?, email?}
 //   GET  /status?ids=<id>,<id>   -> {"<id>": "pending" | "approved" | "rejected"}
 //   POST /star, GET /stars, GET /stars/all: star counts on catalog assets (src/stars.ts)
 //   /auth/*, /me, /cloud/projects/*: optional accounts that keep projects online (src/accounts.ts)
@@ -18,7 +18,7 @@ import {
 } from "./limits.ts";
 import * as stars from "./stars.ts";
 import { Rejected, newId } from "./text.ts";
-import { checkSvg, checkTemplate, parseMeta, parseSuggestion, pngSize } from "./validate.ts";
+import { checkSvg, checkTemplate, parseEmail, parseMeta, parseSuggestion, pngSize } from "./validate.ts";
 
 const ID = /^[a-z0-9][a-z0-9-]{0,100}$/;
 
@@ -94,6 +94,8 @@ async function submit(req: Request, env: Env): Promise<Response> {
     throw new Rejected("meta must be JSON", 400);
   }
   const meta = parseMeta(metaRaw);
+  // Kept apart from meta, which is published: the address is only for the reviewers.
+  const email = parseEmail((metaRaw as Record<string, unknown> | null)?.email);
   const id = newId(meta.title);
   const createdAt = now.toISOString().replace(/\.\d+Z$/, "Z");
   const puts: [string, Uint8Array, string][] = [];
@@ -151,11 +153,11 @@ async function submit(req: Request, env: Env): Promise<Response> {
   for (const [key, body, contentType] of puts) await env.PENDING.put(key, body, { httpMetadata: { contentType } });
   try {
     await env.DB.prepare(
-      "INSERT INTO submissions (id, kind, title, description, category, author, license, files, texts, width, height, bytes, png_sha256, ip_hash, created_at) \
-       VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15)",
+      "INSERT INTO submissions (id, kind, title, description, category, author, license, files, texts, width, height, bytes, png_sha256, ip_hash, created_at, email) \
+       VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16)",
     )
       .bind(id, kind, meta.title, meta.description, meta.category, meta.author, meta.license, JSON.stringify(puts.map((p) => p[0])),
-        JSON.stringify(texts.slice(0, 200)), width, height, puts.reduce((n, p) => n + p[1].length, 0), pngSha, ipHash, createdAt)
+        JSON.stringify(texts.slice(0, 200)), width, height, puts.reduce((n, p) => n + p[1].length, 0), pngSha, ipHash, createdAt, email)
       .run();
   } catch (e) {
     await env.PENDING.delete(puts.map((p) => p[0]));
@@ -187,8 +189,8 @@ async function suggest(req: Request, env: Env): Promise<Response> {
   }
   const s = parseSuggestion(raw);
   const id = newId(s.title);
-  await env.DB.prepare("INSERT INTO suggestions (id, kind, title, description, name, ip_hash, created_at) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)")
-    .bind(id, s.kind, s.title, s.description, s.name, ipHash, now.toISOString().replace(/\.\d+Z$/, "Z"))
+  await env.DB.prepare("INSERT INTO suggestions (id, kind, title, description, name, email, ip_hash, created_at) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)")
+    .bind(id, s.kind, s.title, s.description, s.name, s.email, ipHash, now.toISOString().replace(/\.\d+Z$/, "Z"))
     .run();
   return json({ id, status: "open" }, 201);
 }

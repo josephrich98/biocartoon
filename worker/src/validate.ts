@@ -155,22 +155,31 @@ export function parseMeta(raw: unknown): Meta {
   return meta;
 }
 
+/** An optional contact address (empty if none), kept for reviewers and never published. */
+export function parseEmail(v: unknown): string {
+  const s = clean(v, 254, "Email");
+  if (s && !/^[^\s@]+@[^\s@.][^\s@]*\.[^\s@]*[^\s@.]$/.test(s)) throw new Rejected(`"${s}" doesn't look like an email address`);
+  return s;
+}
+
 export interface Suggestion {
-  kind: "icon" | "template";
+  kind: "icon" | "template" | "other";
   title: string;
   description: string;
   name: string;
+  email: string;
 }
 
 /** The body of `POST /suggest`. */
 export function parseSuggestion(raw: unknown): Suggestion {
   const r = ((typeof raw === "object" && raw) || {}) as Record<string, unknown>;
-  if (r.kind !== "icon" && r.kind !== "template") throw new Rejected("kind must be icon or template");
+  if (r.kind !== "icon" && r.kind !== "template" && r.kind !== "other") throw new Rejected("kind must be icon, template or other");
   const s: Suggestion = {
     kind: r.kind,
     title: clean(r.title, 80, "Title", true),
     description: clean(r.description, 1000, "Description"),
     name: clean(r.name, 60, "Name"),
+    email: parseEmail(r.email),
   };
   checkLanguage([s.title, s.description, s.name]);
   return s;

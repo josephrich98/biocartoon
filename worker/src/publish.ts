@@ -22,6 +22,8 @@ export interface Row {
   category: string;
   author: string;
   license: string;
+  /** Optional contact address for reviewers; never published. */
+  email: string;
   files: string;
   texts: string;
   width: number | null;

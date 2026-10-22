@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { checkSvg, checkTemplate, creditLine, parseMeta, parseSuggestion, pngSize } from "../src/validate.ts";
+import { checkSvg, checkTemplate, creditLine, parseEmail, parseMeta, parseSuggestion, pngSize } from "../src/validate.ts";
 
 const png = (w: number, h: number) => {
   const b = new Uint8Array(33);
@@ -84,6 +84,12 @@ test("meta checks", () => {
   assert.throws(() => parseMeta({ title: "ok", author: "BioCartoon team", license: "CC0-1.0" }), /BioCartoon/);
 });
 
+test("emails", () => {
+  assert.equal(parseEmail(undefined), "");
+  assert.equal(parseEmail("a.b+c@lab.example.org"), "a.b+c@lab.example.org");
+  for (const bad of ["ann", "ann@lab", "@lab.org", "ann@@lab.org", "a b@lab.org", "ann@.org", "ann@lab."]) assert.throws(() => parseEmail(bad), /email/, bad);
+});
+
 test("credit lines", () => {
   assert.equal(creditLine("Cell", "Ann", "CC-BY-4.0"), '"Cell" by Ann, BioCartoon community contribution, CC-BY-4.0 (https://creativecommons.org/licenses/by/4.0/)');
   assert.equal(creditLine("Cell", "anonymous", "CC0-1.0"), '"Cell", BioCartoon community contribution, CC0');
@@ -115,7 +121,9 @@ test("template rejections", () => {
 });
 
 test("suggestions are checked", () => {
-  assert.deepEqual(parseSuggestion({ kind: "icon", title: " T  cell ", description: "", name: "" }), { kind: "icon", title: "T cell", description: "", name: "" });
+  assert.deepEqual(parseSuggestion({ kind: "icon", title: " T  cell ", description: "", name: "" }), { kind: "icon", title: "T cell", description: "", name: "", email: "" });
+  assert.equal(parseSuggestion({ kind: "other", title: "Dark mode", email: " ann@lab.org " }).email, "ann@lab.org");
+  assert.throws(() => parseSuggestion({ kind: "other", title: "x", email: "ann" }), /email/);
   assert.throws(() => parseSuggestion({ kind: "asset", title: "x" }), /kind/);
   assert.throws(() => parseSuggestion({ kind: "template", title: "" }), /Title/);
   assert.throws(() => parseSuggestion({ kind: "icon", title: "shit cell" }), /language/);

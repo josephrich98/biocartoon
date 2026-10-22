@@ -109,6 +109,7 @@ function card(r: Row): string {
     <h2>${esc(r.title)} <span class="kind">${esc(r.kind)}</span></h2>
     ${r.description ? `<p>${esc(r.description)}</p>` : ""}
     <dl><dt>Category</dt><dd>${esc(r.category || "–")}</dd><dt>Credit</dt><dd>${esc(r.author)}</dd>
+    ${r.email ? `<dt>Email</dt><dd>${mailto(r.email)} (private)</dd>` : ""}
     <dt>License</dt><dd>${esc(r.license)}</dd><dt>Size</dt><dd>${r.width ? `${r.width}×${r.height}, ` : ""}${Math.max(1, Math.round(r.bytes / 1024))} KB${svg ? " SVG" : ""}</dd>
     <dt>Submitted</dt><dd>${esc(r.created_at)}</dd></dl>
     ${textList}
@@ -126,11 +127,14 @@ interface SuggestionRow {
   title: string;
   description: string;
   name: string;
+  email: string;
   created_at: string;
 }
 
+const mailto = (e: string) => `<a href="mailto:${esc(encodeURIComponent(e).replace(/%40/g, "@"))}">${esc(e)}</a>`;
+
 const suggestionRow = (r: SuggestionRow) =>
-  `<tr><td>${esc(r.kind)}</td><td><b>${esc(r.title)}</b>${r.description ? `<br>${esc(r.description)}` : ""}</td><td>${esc(r.name || "–")}</td><td>${esc(r.created_at)}</td>
+  `<tr><td>${esc(r.kind)}</td><td><b>${esc(r.title)}</b>${r.description ? `<br>${esc(r.description)}` : ""}</td><td>${esc(r.name || "–")}${r.email ? `<br>${mailto(r.email)}` : ""}</td><td>${esc(r.created_at)}</td>
   <td><form method="post" class="inline"><button formaction="/done/${esc(r.id)}" class="undo">Done</button></form></td></tr>`;
 
 const undoForm = (id: string, cls = "") =>
