@@ -16,6 +16,8 @@
 //!
 //! Each asset keeps its own upstream license; show its `credit` and follow its `license`.
 
+#[cfg(not(target_arch = "wasm32"))]
+pub mod bulk;
 pub mod catalog;
 pub mod synonyms;
 pub mod taxonomy;

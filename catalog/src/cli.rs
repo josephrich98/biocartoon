@@ -38,8 +38,24 @@ COMMANDS
                             [--max-rows N]. A TERM that starts like SQL (SELECT ... FROM, WITH,
                             PRAGMA, EXPLAIN) is run as SQL anyway, with a warning; --no-sql stops that.
   get <id>                  everything about one icon: license, credit, URLs, colour variants
-  fetch <id>                download the PNG  [--svg] [--out FILE|DIR] [--max-side N] [--open]
+  fetch <id>                download the SVG, or the PNG when the source publishes no SVG
+                            [--out FILE|DIR] [--open]
+      --png  --svg          that file type only (--svg fails when there is no SVG); an --out
+                            ending in .png or .svg picks it too
+      --max-side N          a PNG at most N pixels on its longest side (implies --png)
   sync                      download the newest published catalog
+  bulk-download             the whole catalog into one folder, with a README on its contents,
+                            licenses and the shell commands (curl, sqlite3) that do the same;
+                            prints those commands as it goes. Files already there are kept, so
+                            running it again fetches only what is missing.
+      --files F,...         all (default), metadata (the icon and template catalogs), artwork
+                            (icons and templates), icons, templates
+      --metadata-ext E      sqlite (default), csv, tsv, xlsx, json
+      --artwork-ext E       png or svg, for icons and templates (templates have no SVG: PNG)
+      --icons-ext E         svg (default; a PNG where the source publishes none) or png
+      --templates-ext E     png (the thumbnail; default) or biocartoon (a file the editor opens)
+      --output-dir DIR      where to put it (default ./biocartoon-catalog)
+      --jobs N              downloads at a time (default 8)  [--limit N: the first N of each]
   upload <file|folder>...   submit images (SVG, PNG, JPEG, WebP, GIF, BMP, TIFF; folders searched
                             recursively) to the shared library. They wait in the review queue
                             and join the catalog once approved; an SVG is published as SVG,
@@ -91,9 +107,10 @@ pub struct Args {
 impl Args {
     /// `valued` names the options that take a value (the catalog's are always included).
     pub fn parse(argv: Vec<String>, valued: &[&str]) -> Self {
-        const VALUED: [&str; 21] = [
+        const VALUED: [&str; 28] = [
             "source", "limit", "sort", "category", "offset", "out", "max-side", "max-rows", "db", "url", "license", "credit", "title",
-            "description", "submit-url", "author", "subcategory", "source-category", "db-category", "file-type", "columns",
+            "description", "submit-url", "author", "subcategory", "source-category", "db-category", "file-type", "columns", "files",
+            "metadata-ext", "artwork-ext", "icons-ext", "templates-ext", "output-dir", "jobs",
         ];
         let mut a = Self { pos: Vec::new(), opts: HashMap::new() };
         let mut it = argv.into_iter();
@@ -264,6 +281,28 @@ fn clip(s: &str, max: usize) -> String {
 }
 
 /// Open `path` in the system's default app for its type.
+/// Whether `fetch` downloads the SVG: an asked-for type (`--svg`/`--png`, `--max-side`, an `--out`
+/// ending in .svg/.png) when there is one, else the SVG whenever the source publishes it.
+fn fetch_as_svg(svg: bool, png: bool, max_side: bool, out_ext: Option<&str>, has_svg: bool) -> Result<bool, String> {
+    let ext = match out_ext {
+        Some("svg") => Some(true),
+        Some("png") => Some(false),
+        _ => None,
+    };
+    let asked = match (svg, png || max_side) {
+        (true, true) if max_side => return Err("--max-side is for PNGs (an SVG scales freely)".into()),
+        (true, true) => return Err("--svg or --png, not both".into()),
+        (true, false) => Some(true),
+        (false, true) => Some(false),
+        (false, false) => None,
+    };
+    match (asked, ext) {
+        (Some(a), Some(e)) if a != e => Err(format!("--out ends in .{} but {} was asked for", out_ext.unwrap(), if a { "an SVG" } else { "a PNG" })),
+        (Some(a), _) | (None, Some(a)) => Ok(a),
+        (None, None) => Ok(has_svg),
+    }
+}
+
 fn open_file(path: &std::path::Path) -> Result<(), String> {
     use std::process::Command;
     #[cfg(target_os = "macos")]
@@ -303,7 +342,7 @@ pub fn run_command(a: &Args, templates: Option<Templates>) -> Option<Result<(), 
         return Some(source_categories(a));
     }
     let cmd = a.command();
-    const NAMES: [&str; 6] = ["sync", "search", "get", "fetch", "upload", "help"];
+    const NAMES: [&str; 7] = ["sync", "search", "get", "fetch", "upload", "bulk-download", "help"];
     NAMES.contains(&cmd).then(|| run_inner(a, cmd, templates))
 }
 
@@ -318,7 +357,7 @@ fn source_args(a: &Args) -> Result<Vec<String>, String> {
 }
 
 /// Every value given for option `k`.
-fn values<'a>(a: &'a Args, k: &str) -> impl Iterator<Item = &'a str> {
+pub(crate) fn values<'a>(a: &'a Args, k: &str) -> impl Iterator<Item = &'a str> {
     a.opts.get(k).into_iter().flatten().map(String::as_str)
 }
 
@@ -487,11 +526,10 @@ fn run_inner(a: &Args, cmd: &str, templates: Option<Templates>) -> Result<(), St
             let id = a.pos.get(1).ok_or("fetch <id>")?;
             let cat = catalog()?;
             let asset = cat.get(id)?.ok_or_else(|| format!("no asset {id}"))?;
-            let svg = a.flag("svg");
+            let out_path = a.opt("out").map(PathBuf::from);
+            let out_ext = out_path.as_ref().filter(|p| !p.is_dir()).and_then(|p| p.extension()).and_then(|e| e.to_str()).map(str::to_ascii_lowercase);
+            let svg = fetch_as_svg(a.flag("svg"), a.flag("png"), a.opt("max-side").is_some(), out_ext.as_deref(), asset.svg_url.is_some())?;
             let bytes = if svg {
-                if a.opt("max-side").is_some() {
-                    return Err("--max-side is for PNGs (an SVG scales freely)".into());
-                }
                 cat.fetch_svg(&asset)?
             } else {
                 let png = cat.fetch_png(&asset)?;
@@ -500,15 +538,16 @@ fn run_inner(a: &Args, cmd: &str, templates: Option<Templates>) -> Result<(), St
                     None => png,
                 }
             };
-            let name = format!("{}.{}", id.replace('/', "_"), if svg { "svg" } else { "png" });
-            let out = match a.opt("out").map(PathBuf::from) {
+            let format = if svg { "svg" } else { "png" };
+            let name = format!("{}.{format}", id.replace('/', "_"));
+            let out = match out_path {
                 Some(p) if p.is_dir() => p.join(name),
                 Some(p) => p,
                 None => PathBuf::from(name),
             };
             std::fs::write(&out, &bytes).map_err(|e| format!("{}: {e}", out.display()))?;
             if json {
-                print_json(&json!({"path": out, "bytes": bytes.len(), "credit": asset.credit, "license": asset.license}));
+                print_json(&json!({"path": out, "format": format, "bytes": bytes.len(), "credit": asset.credit, "license": asset.license}));
             } else {
                 println!("{} ({} bytes) — {} [{}]", out.display(), bytes.len(), asset.credit, asset.license);
             }
@@ -517,6 +556,7 @@ fn run_inner(a: &Args, cmd: &str, templates: Option<Templates>) -> Result<(), St
             }
         }
         "upload" => upload(a)?,
+        "bulk-download" => crate::bulk::run(a)?,
         _ => print!("{}", usage()),
     }
     Ok(())
@@ -798,7 +838,7 @@ pub fn version(a: &Args, program_version: &str) -> Result<(), String> {
 }
 
 /// A time as `YYYY-MM-DDTHH:MM:SSZ`.
-fn utc(t: std::time::SystemTime) -> String {
+pub(crate) fn utc(t: std::time::SystemTime) -> String {
     let secs = t.duration_since(std::time::UNIX_EPOCH).map_or(0, |d| d.as_secs()) as i64;
     let (days, rem) = (secs.div_euclid(86_400), secs.rem_euclid(86_400));
     // Days since 1970-01-01 to a civil date (Howard Hinnant's algorithm).
@@ -843,6 +883,26 @@ mod tests {
         assert!(!looks_like_sql("select"));
         assert!(!looks_like_sql("select tool for cells"));
         assert!(!looks_like_sql("neuron with dendrites"));
+    }
+
+    #[test]
+    fn fetch_picks_svg_unless_asked() {
+        // Default: the SVG when there is one, else the PNG.
+        assert_eq!(fetch_as_svg(false, false, false, None, true), Ok(true));
+        assert_eq!(fetch_as_svg(false, false, false, None, false), Ok(false));
+        // --png, --max-side and a .png --out pick the PNG; --svg and a .svg --out the SVG (even when missing: fetch then fails).
+        assert_eq!(fetch_as_svg(false, true, false, None, true), Ok(false));
+        assert_eq!(fetch_as_svg(false, false, true, None, true), Ok(false));
+        assert_eq!(fetch_as_svg(false, false, false, Some("png"), true), Ok(false));
+        assert_eq!(fetch_as_svg(true, false, false, None, false), Ok(true));
+        assert_eq!(fetch_as_svg(false, false, false, Some("svg"), false), Ok(true));
+        assert_eq!(fetch_as_svg(false, true, false, Some("png"), true), Ok(false));
+        assert_eq!(fetch_as_svg(false, false, false, Some("jpg"), true), Ok(true));
+        // Contradictions are errors.
+        assert!(fetch_as_svg(true, true, false, None, true).is_err());
+        assert!(fetch_as_svg(true, false, true, None, true).is_err());
+        assert!(fetch_as_svg(true, false, false, Some("png"), true).is_err());
+        assert!(fetch_as_svg(false, false, true, Some("svg"), true).is_err());
     }
 
     #[test]

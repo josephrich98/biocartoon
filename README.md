@@ -103,8 +103,15 @@ editor ships a fuller `biocartoon` that adds templates to `search` and the `app`
     every filter given.
     - `--sql`: run TERM as read-only SQL on the catalog. 
 - `biocartoon get ID`: everything about one icon: license, credit, PNG/SVG URLs, colour variants
-- `biocartoon fetch ID`: download the PNG (`--svg` for the SVG, `--out FILE|DIR`, `--max-side N`)
+- `biocartoon fetch ID`: download the SVG, or the PNG when the source publishes no SVG (`--png` or `--svg` for that type only, `--out FILE|DIR`, `--max-side N` for a smaller PNG)
 - `biocartoon sync`: download the newest published catalog
+- `biocartoon bulk-download`: the whole catalog into one folder with a README (contents, licenses, and the equivalent curl/sqlite3 commands, which it also prints as it goes); running it again fetches only what is missing
+    - `--files all|metadata|artwork|icons|templates`: what to get (comma-separate several; `artwork` is icons and templates; default `all`)
+    - `--metadata-ext sqlite|csv|tsv|xlsx|json`: the icon and template catalogs' format (default `sqlite`)
+    - `--artwork-ext png|svg`: sets both of the next two (templates have no SVG, so they come as PNG)
+    - `--icons-ext svg|png`: default `svg`, with a PNG where the source publishes no SVG
+    - `--templates-ext png|biocartoon`: the thumbnail (default), or a `.biocartoon` file the editor opens
+    - `--output-dir DIR` (default `./biocartoon-catalog`), `--jobs N` (parallel downloads, default 8), `--limit N` (the first N of each, to try it out)
 - `biocartoon upload FILE...`: submit images files/folders to the database (approval required to merge in)
 - `biocartoon app CMD [JSON]`: drive the running desktop editor (editor's build only) --- requires the desktop app
 - `biocartoon mcp`: serve the same tools over MCP, mostly for agents (e.g., `claude mcp add biocartoon -- biocartoon mcp`)
@@ -123,7 +130,7 @@ bioart/353_641587                  bioart       Mitochondria  (Cells and Organel
 bioart/101_628750                  bioart       Damaged Mitochondria  (Cells and Organelles; 1705x1174)  matched: title,tags,description
 
 $ biocartoon get bioart/424_633913              # credit, license, PNG/SVG URLs, colour variants
-$ biocartoon fetch bioart/424_633913 --svg --out ~/Desktop
+$ biocartoon fetch bioart/424_633913 --out ~/Desktop               # the SVG
 $ biocartoon fetch bioart/424_633913 --max-side 512 --out neuron.png   # a smaller PNG
 ```
 
@@ -188,6 +195,15 @@ biocartoon app state                                       # page size and every
 biocartoon app insert_asset '{"asset":"bioart/424_633913","x":200,"y":120,"width":300}'
 biocartoon app move_items '{"ids":[3],"dx":48}'
 biocartoon app render '{"path":"slide.png"}'
+```
+
+Download the whole catalog (well over 1 GB), or parts of it:
+
+```bash
+biocartoon bulk-download                                   # everything, into ./biocartoon-catalog
+biocartoon bulk-download --files metadata --metadata-ext xlsx       # the catalogs as spreadsheets
+biocartoon bulk-download --files icons --icons-ext png --output-dir icons/
+biocartoon bulk-download --files templates --templates-ext biocartoon   # templates to open in the editor
 ```
 
 Keep the local catalog current, and connect an assistant:
