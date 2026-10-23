@@ -312,36 +312,6 @@ Copyright (c) 2026 Joseph Rich. This repository is open source under the [BSD 2-
 Contributions are welcome --- see [CONTRIBUTING.md](CONTRIBUTING.md). Contributors keep the copyright
 in their work, and artists are credited under the name they choose.
 
-## FAQs
-
-**Q: Is it really free?**
-
-A: Yes, it is! No accounts, subscriptions, publication licenses, microtransactions, watermarks — 100% free.
-
-**Q: Can I use figures in my papers/presentations?**
-
-A: Yes. The figures you make are yours. The illustrations in them keep their own licenses, so credit the creator wherever a license asks for it (CC BY and CC BY-SA). The editor shows the license and credit line for every illustration.
-
-**Q: Do I need an account?**
-
-A: No. Open the web app and start creating. An account is an option if you want your data to be saved long-term.
-
-**Q: What user information do you store?**
-
-A: By default, we don't store any user data. You can use the web app or desktop app without an account, and your figures, uploaded icons, and favorites stay on your own device (starring an icon only adds to its public count under a random ID, not anything tied to you). If you would like long-term storage of your figures in the web app, you can sign in with Google or GitHub, and then only your name, email, and an online copy of your figures are stored in a secure database. No passwords are ever stored. Deleting a figure or your account will remove this information from the online database as well.
-
-**Q: How do I contribute an illustration or template?**
-
-A: In the app, upload an icon or save a slide as a template and tick "Submit to the shared library". Submissions are reviewed before they appear for everyone. You keep the copyright and choose CC0 or CC BY 4.0.
-
-**Q: Why is there both a desktop app and web app?**
-
-A: The web app allows one to create figures immediately without any software downloads. The desktop app enables database indexing for quick searches, as well as downloads for offline use.
-
-**Q: Can I bulk download the database?**
-
-A: Yes. Open the app, click on the top-left menu, and click "Download".
-
 ## Other Links
 
 Website: [www.biocartoon.com](https://www.biocartoon.com)
