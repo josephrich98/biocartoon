@@ -317,6 +317,13 @@ const FTS_SQL: &str = "DROP TABLE IF EXISTS assets_fts; \
     INSERT INTO assets_fts(assets_fts) VALUES('rebuild'); \
     INSERT INTO assets_fts(assets_fts, rank) VALUES('rank', 'bm25(10.0, 1.0, 3.0, 1.0, 0.5)');";
 
+/// One query word's FTS5 term (see [`Worker::fts_term`]).
+struct Term {
+    expr: String,
+    /// The part of `expr` for the word as typed, when `expr` adds related words to it.
+    typed: Option<String>,
+}
+
 /// Most alternative words one unmatched query word is replaced with.
 const MAX_ALTERNATIVES: usize = 30;
 
@@ -468,17 +475,35 @@ impl Worker {
     }
 
     /// The FTS5 term for one query word: a prefix match when the word occurs (the index stems
-    /// it, so "cells" is "cell"*), otherwise an OR of the catalog words that contain it or are a
-    /// typo away from it ("cyte" -> lymphocyte, erythrocyte...; "nueron" -> neuron). None when
-    /// nothing comes close, so the word is ignored.
-    fn fts_term(&self, w: &str) -> rusqlite::Result<Option<String>> {
-        let prefix = format!("\"{w}\"*");
+    /// it, so "cells" is "cell"*), or-ed with its related words ("mouse" -> rat, hamster...; see
+    /// [`crate::synonyms`]). With neither in the catalog, an OR of the catalog words that contain
+    /// it or are a typo away from it ("cyte" -> lymphocyte, erythrocyte...; "nueron" -> neuron).
+    /// None when nothing comes close, so the word is ignored.
+    fn fts_term(&self, w: &str) -> rusqlite::Result<Option<Term>> {
+        let quote = |a: &str| format!("\"{a}\"");
+        let any_of = |alts: Vec<String>| if alts.len() == 1 { alts[0].clone() } else { format!("({})", alts.join(" OR ")) };
         let mut st = self.conn.prepare_cached("SELECT 1 FROM assets_fts WHERE assets_fts MATCH ?1 LIMIT 1")?;
-        if st.exists(params![prefix])? {
-            return Ok(Some(prefix));
+        let prefix = format!("{}*", quote(w));
+        let typed = if st.exists(params![prefix])? { Some(prefix) } else { None };
+        let mut related = Vec::new();
+        for r in crate::synonyms::related(w) {
+            if st.exists(params![quote(r)])? {
+                related.push(quote(r));
+            }
         }
-        let alts = self.similar_words(w);
-        Ok((!alts.is_empty()).then(|| format!("({})", alts.iter().map(|a| format!("\"{a}\"")).collect::<Vec<_>>().join(" OR "))))
+        let typed = match typed {
+            Some(t) => Some(t),
+            None if !related.is_empty() => None,
+            None => {
+                let alts = self.similar_words(w);
+                if alts.is_empty() {
+                    return Ok(None);
+                }
+                Some(any_of(alts.iter().map(|a| quote(a)).collect()))
+            }
+        };
+        let expr = any_of(typed.iter().cloned().chain(related.iter().cloned()).collect());
+        Ok(Some(Term { expr, typed: typed.filter(|_| !related.is_empty()) }))
     }
 
     /// Catalog words containing `w`, or within a typo or two of it (or of their start, so a
@@ -652,19 +677,32 @@ impl Worker {
             let rows = st.query_map(params![format!("%{q}%"), limit as i64, offset as i64], row_from)?.collect();
             return rows;
         }
-        let terms = self.fts_terms(q)?;
-        if terms.is_empty() {
+        let query_terms = self.fts_query(q)?;
+        if query_terms.is_empty() {
             return Ok(Vec::new());
         }
+        let terms: Vec<String> = query_terms.iter().map(|t| t.expr.clone()).collect();
         let matched = |expr: &str| format!(
             "(SELECT rowid, rank AS r FROM assets_fts WHERE assets_fts MATCH {expr}) f JOIN assets a ON a.rowid = f.rowid \
              WHERE a.png_key IS NOT NULL {src_filter}"
         );
         // Every word first; when no asset has them all, any of them, best match first
         // (bm25 ranks assets matching more of the words higher).
-        let all = terms.join(" ");
+        let all = terms.join(" AND ");
         let any = terms.len() > 1 && !self.conn.query_row(&format!("SELECT EXISTS (SELECT 1 FROM {})", matched("?1")), params![all], |r| r.get::<_, bool>(0))?;
         let expr = if any { terms.join(" OR ") } else { all };
+        // Icons found only through a related word ("rat" for "mouse") come after every icon with
+        // the words as typed.
+        let typed: Vec<String> = query_terms.iter().map(|t| t.typed.clone().unwrap_or_else(|| t.expr.clone())).collect();
+        let related = if typed == terms {
+            String::new()
+        } else {
+            let typed = if any { typed.join(" OR ") } else { typed.join(" AND ") };
+            format!(
+                " + CASE WHEN a.rowid IN (SELECT rowid FROM assets_fts WHERE assets_fts MATCH '{}') THEN 0 ELSE 1000 END",
+                typed.replace('\'', "''")
+            )
+        };
         let order = sort.sql();
         // Bare `a.rowid` next to MIN() takes the row with the minimum: the best match, and among
         // equal ones the plain variant (unless only a coloured one matches, as for "red flask"),
@@ -672,7 +710,7 @@ impl Worker {
         let dup = self.dup;
         let sql = wrap(
             format!(
-                "SELECT a.rowid AS rid, MIN(f.r + CASE WHEN coalesce(a.variant,'')='' THEN 0 ELSE 0.001 END + 0.002 * {dup}) AS score \
+                "SELECT a.rowid AS rid, MIN(f.r + CASE WHEN coalesce(a.variant,'')='' THEN 0 ELSE 0.001 END + 0.002 * {dup}{related}) AS score \
                  FROM {} GROUP BY {gk}",
                 matched("?1")
             ),
@@ -686,6 +724,10 @@ impl Worker {
 
     /// The FTS5 terms of a query's words (see [`Self::fts_term`]).
     fn fts_terms(&self, q: &str) -> rusqlite::Result<Vec<String>> {
+        Ok(self.fts_query(q)?.into_iter().map(|t| t.expr).collect())
+    }
+
+    fn fts_query(&self, q: &str) -> rusqlite::Result<Vec<Term>> {
         let mut terms = Vec::new();
         for w in Self::query_words(q) {
             if let Some(t) = self.fts_term(&w)? {
@@ -735,7 +777,7 @@ impl Worker {
             )
         };
         // The same fallback as `search`: every word, else any of them.
-        let all = fts(terms.join(" "))?;
+        let all = fts(terms.join(" AND "))?;
         if all > 0 || terms.len() == 1 {
             return Ok(all);
         }
@@ -943,7 +985,7 @@ impl Worker {
             return Ok(" AND 0".into());
         }
         let matched = |expr: &str| format!(" AND a.rowid IN (SELECT rowid FROM assets_fts WHERE assets_fts MATCH {})", lit(expr));
-        let all = terms.join(" ");
+        let all = terms.join(" AND ");
         if terms.len() > 1 {
             let sql = format!("SELECT EXISTS (SELECT 1 FROM assets a WHERE a.png_key IS NOT NULL {}{})", self.filter_sql(filter)?, matched(&all));
             if !self.conn.query_row(&sql, [], |r| r.get::<_, bool>(0))? {
@@ -1404,6 +1446,34 @@ mod tests {
         // A word nothing resembles is ignored.
         assert_eq!(az("red blood cell diagram"), vec!["red blood cell"]);
         assert!(az("qqqqzz").is_empty());
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn search_finds_related_words_after_the_typed_ones() {
+        let dir = std::env::temp_dir().join(format!("cc-catalog-related-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let w = worker(&dir);
+        let c = &w.conn;
+        for (i, t) in ["lab rat", "mouse", "hamster", "rate constant", "thrombocyte", "platelet aggregation"].iter().enumerate() {
+            c.execute(
+                &format!("INSERT INTO assets ({TEST_COLS}) VALUES (?1, 'servier', 'Servier', ?2, '', '', '', '[]', 'CC', '', '', ?1, NULL, 1, 1)"),
+                params![format!("s{i}"), t],
+            )
+            .unwrap();
+        }
+        c.execute_batch("INSERT INTO assets_fts(assets_fts) VALUES('rebuild');").unwrap();
+        let rel = |q: &str| titles(w.search(q, &[], 10, IconSort::Relevance).unwrap());
+        // The typed word first, then related animals; "rate" is not a rat.
+        let mice = rel("mouse");
+        assert_eq!(mice[0], "mouse");
+        assert_eq!(mice.len(), 3);
+        assert!(mice.contains(&"lab rat".into()) && mice.contains(&"hamster".into()));
+        assert_eq!(w.search_total("mice", &[]).unwrap(), 3);
+        assert_eq!(rel("rats")[0], "lab rat");
+        assert_eq!(rel("platelets")[0], "platelet aggregation");
+        assert_eq!(rel("platelets").len(), 2);
         let _ = std::fs::remove_dir_all(&dir);
     }
 
