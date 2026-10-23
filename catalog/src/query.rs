@@ -120,6 +120,7 @@ impl Asset {
             title: self.title.clone(),
             variant: self.variant.clone(),
             category: self.category.clone(),
+            description: self.description.clone(),
             license: self.license.clone(),
             credit: self.credit.clone(),
             author: self.author.clone(),

@@ -26,6 +26,8 @@ pub struct AssetRow {
     pub title: String,
     pub variant: String,
     pub category: String,
+    /// The artist's or uploader's description (often empty).
+    pub description: String,
     pub license: String,
     pub credit: String,
     pub author: String,
@@ -275,6 +277,7 @@ fn row_from(r: &rusqlite::Row) -> rusqlite::Result<AssetRow> {
         stars: r.get(13)?,
         starred: r.get::<_, i64>(14)? != 0,
         svg_key: r.get(15)?,
+        description: r.get(17)?,
         taxa: crate::taxonomy::classify(&source, &category, &title, &tags),
     })
 }
@@ -456,7 +459,7 @@ impl Worker {
 
     /// Every column of an [`AssetRow`] (see `row_from`).
     fn cols(&self) -> String {
-        format!("{COLS}, {}, {}, coalesce(a.tags,'')", self.stars_cols(), self.svg_key)
+        format!("{COLS}, {}, {}, coalesce(a.tags,''), coalesce(a.description,'')", self.stars_cols(), self.svg_key)
     }
 
     /// The words of a query as the index splits them (lowercase, alphanumeric runs).
@@ -1045,8 +1048,8 @@ impl Worker {
         let mut groups: std::collections::HashMap<String, Vec<AssetRow>> = Default::default();
         let mut rows = st.query(args.as_slice())?;
         while let Some(r) = rows.next()? {
-            // `{gk}` comes after the 17 columns of `row_from`.
-            groups.entry(r.get(17)?).or_default().push(row_from(r)?);
+            // `{gk}` comes after the 18 columns of `row_from`.
+            groups.entry(r.get(18)?).or_default().push(row_from(r)?);
         }
         for (key, group) in groups {
             if group.len() > 1 {
@@ -1083,12 +1086,12 @@ impl Worker {
              tags, license, license_raw, license_url, attribution_required, share_alike, author, source_url, doi, credit, \
              svg_key, png_key, png_is_raster, png_width, png_height, svg_bytes, png_bytes, \
              svg_local, png_local, extra, uploaded_at) VALUES (?1, 'user', 'User-generated', ?2, ?3, '', ?4, ?5, '[]', \
-             ?6, ?6, ?14, ?15, 0, ?7, NULL, NULL, ?8, NULL, ?9, 0, ?10, ?11, NULL, NULL, NULL, ?12, ?13, NULL)",
+             ?6, ?6, ?14, ?15, 0, ?7, NULL, NULL, ?8, ?16, ?9, 0, ?10, ?11, NULL, NULL, NULL, ?12, ?13, NULL)",
             params![
                 row.id,
                 row.id,
                 row.title,
-                row.credit,
+                row.description,
                 row.category,
                 row.license,
                 row.author,
@@ -1100,6 +1103,8 @@ impl Worker {
                 "{\"generated\": true}",
                 license_url,
                 attribution,
+                // An SVG the app keeps beside the PNG (a drawing an AI model made): drawn and exported instead.
+                row.svg_key,
             ],
         )?;
         if self.fts {
@@ -1536,6 +1541,56 @@ mod tests {
         let rows = w.browse("user", None, 0, 10, IconSort::Alphabetical).unwrap();
         assert_eq!(titles(rows), vec!["mine"]);
         assert_eq!(titles(w.search("mine", &[], 10, IconSort::Alphabetical).unwrap()), vec!["mine"]);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// An SVG the app keeps beside a user asset's PNG (an AI drawing) is stored, so it is drawn.
+    #[test]
+    fn user_rows_keep_their_svg() {
+        let dir = std::env::temp_dir().join(format!("cc-catalog-user-svg-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let db = dir.join("assets.sqlite");
+        Connection::open(&db)
+            .unwrap()
+            .execute_batch(
+                "CREATE TABLE assets (id TEXT PRIMARY KEY, source TEXT, source_name TEXT, source_id TEXT, title TEXT, variant TEXT, \
+                 description TEXT, category TEXT, tags TEXT, license TEXT, license_raw TEXT, license_url TEXT, \
+                 attribution_required INTEGER, share_alike INTEGER, author TEXT, source_url TEXT, doi TEXT, credit TEXT, \
+                 svg_key TEXT, png_key TEXT, png_is_raster INTEGER, png_width INTEGER, png_height INTEGER, svg_bytes INTEGER, \
+                 png_bytes INTEGER, svg_local TEXT, png_local TEXT, extra TEXT, uploaded_at TEXT);",
+            )
+            .unwrap();
+        let w = Worker::open(&db, &dir.join("usage.sqlite")).unwrap();
+        let mut row = AssetRow {
+            id: "user/drawn".into(),
+            source: "user".into(),
+            source_name: "User-generated".into(),
+            title: "drawn".into(),
+            variant: String::new(),
+            category: String::new(),
+            description: "one I drew".into(),
+            license: "CC0-1.0".into(),
+            credit: String::new(),
+            author: String::new(),
+            png_key: "user/drawn.png".into(),
+            png_local: Some("/data/user_generated/drawn.png".into()),
+            png_width: 4,
+            png_height: 2,
+            svg_key: Some("/data/user_generated/drawn.svg".into()),
+            stars: 0,
+            starred: false,
+            taxa: Vec::new(),
+        };
+        w.insert_user(&row).unwrap();
+        row.id = "user/painted".into();
+        row.title = "painted".into();
+        row.svg_key = None;
+        w.insert_user(&row).unwrap();
+        let rows = w.browse("user", None, 0, 10, IconSort::Alphabetical).unwrap();
+        let svgs: Vec<_> = rows.iter().map(|r| (r.title.as_str(), r.svg_key.as_deref())).collect();
+        assert_eq!(svgs, vec![("drawn", Some("/data/user_generated/drawn.svg")), ("painted", None)]);
+        assert_eq!(rows[0].description, "one I drew");
         let _ = std::fs::remove_dir_all(&dir);
     }
 

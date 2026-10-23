@@ -28,8 +28,8 @@ RENDERS = DATA / "raster" / "user"
 IMMUTABLE = "public, max-age=31536000, immutable"
 
 # Keep in sync with biocartoon-app (app/src/submit.rs).
-MAX_PNG_BYTES = 8 * 1024 * 1024
-MAX_SVG_BYTES = 4 * 1024 * 1024
+MAX_PNG_BYTES = 2 * 1024 * 1024
+MAX_SVG_BYTES = 2 * 1024 * 1024
 MAX_IMAGE_SIDE = 4096
 MAX_TEMPLATE_JSON_BYTES = 1024 * 1024
 MAX_TEMPLATE_ITEMS = 300

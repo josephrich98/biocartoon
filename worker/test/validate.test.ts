@@ -71,7 +71,7 @@ test("svg checks", () => {
   assert.throws(() => checkSvg(new TextEncoder().encode("<svg/><svg/>")), /root element/);
   assert.throws(() => checkSvg(new TextEncoder().encode("<svg/>trailing")), /well-formed/);
   assert.throws(() => checkSvg(new Uint8Array([0x3c, 0x73, 0x76, 0x67, 0xff, 0x2f, 0x3e])), /UTF-8/);
-  assert.throws(() => checkSvg(new Uint8Array(5 * 1024 * 1024)), /4 MB/);
+  assert.throws(() => checkSvg(new Uint8Array(3 * 1024 * 1024)), /2 MB/);
 });
 
 test("meta checks", () => {
