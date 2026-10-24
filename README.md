@@ -91,6 +91,7 @@ editor ships a fuller `biocartoon` that adds templates to `search` and the `app`
 - `biocartoon search "TERM"`: icons and templates matching TERM, best first. With no TERM it pages
   through everything.
     - `--icons` / `--templates`: only that kind
+    - `--tags T,...`: icons and templates with one of these tags (a whole tag, any case)
     - `--source S`: icons from a collection (a code or name from `biocartoon --sources`)
     - `--author A`: icons by an author (part of the name, any case)
     - `--category C`: icons in a category (a slug from `biocartoon --categories`)
@@ -112,7 +113,7 @@ editor ships a fuller `biocartoon` that adds templates to `search` and the `app`
     - `--icons-ext svg|png`: default `svg`, with a PNG where the source publishes no SVG
     - `--templates-ext png|biocartoon`: the thumbnail (default), or a `.biocartoon` file the editor opens
     - `--output-dir DIR` (default `./biocartoon-catalog`), `--jobs N` (parallel downloads, default 8), `--limit N` (the first N of each, to try it out)
-- `biocartoon upload FILE...`: submit images files/folders to the database (approval required to merge in)
+- `biocartoon upload FILE...`: submit images files/folders to the database (approval required to merge in); `--tags T,...` adds words to find them by
 - `biocartoon app CMD [JSON]`: drive the running desktop editor (editor's build only) --- requires the desktop app
 - `biocartoon mcp`: serve the same tools over MCP, mostly for agents (e.g., `claude mcp add biocartoon -- biocartoon mcp`)
 - `biocartoon --version`: the program's version, and when the local catalog was published and downloaded
@@ -138,7 +139,7 @@ Contribute your own illustrations (held for review before they are published):
 
 ```bash
 biocartoon upload figures/ --license CC-BY-4.0 --credit "Your Name" --dry-run   # check first
-biocartoon upload figures/ --license CC-BY-4.0 --credit "Your Name" --category cells
+biocartoon upload figures/ --license CC-BY-4.0 --credit "Your Name" --category cells --tags "neuron, axon"
 ```
 
 Narrow a search by collection, category, author, license or file type:
@@ -269,7 +270,7 @@ One row per icon in the `assets` table. Only rows that are uploaded to the bucke
 | `variant` | TEXT | BioArt colour scheme or Health Icons style, when the source has variants |
 | `description` | TEXT | upstream description, if any |
 | `category` | TEXT | the source's category path (e.g. `Anatomy and The Human Body / Cardiovascular system / Arteries`) |
-| `tags` | TEXT | JSON array of keywords |
+| `tags` | TEXT | JSON array of keywords (the source's, or the uploader's) |
 | `license` | TEXT | normalized license: `PD`, `CC0-1.0`, `CC-BY-3.0`, `CC-BY-4.0`, `CC-BY-SA-3.0`, `CC-BY-SA-4.0`, `MIT`, `BSD` |
 | `license_raw` | TEXT | the license as the source states it |
 | `license_url` | TEXT | link to the license text |
@@ -310,6 +311,7 @@ One row per slide template in the `templates` table.
 | `title` | TEXT | template title |
 | `description` | TEXT | short description |
 | `category` | TEXT | BioCartoon category (e.g. `Cell biology`) |
+| `tags` | TEXT | JSON array of keywords the author gave it (`[]` for none) |
 | `author` | TEXT | template author |
 | `license` | TEXT | normalized license, as in `assets` |
 | `created_at` | TEXT | ISO 8601 creation time |

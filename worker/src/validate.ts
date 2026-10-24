@@ -1,12 +1,16 @@
 // Validation of submitted assets and templates. Pure functions (no bindings) so they are unit-tested.
 
-import { LICENSES, LICENSE_URLS, MAX_IMAGE_SIDE, MAX_PNG_BYTES, MAX_SVG_BYTES, MAX_TEMPLATE_IMAGES, MAX_TEMPLATE_ITEMS } from "./limits.ts";
+import {
+  LICENSES, LICENSE_URLS, MAX_IMAGE_SIDE, MAX_PNG_BYTES, MAX_SVG_BYTES, MAX_TAGS, MAX_TAG_CHARS, MAX_TEMPLATE_IMAGES, MAX_TEMPLATE_ITEMS,
+} from "./limits.ts";
 import { Rejected, checkLanguage, clean, impersonatesBioCartoon } from "./text.ts";
 
 export interface Meta {
   title: string;
   description: string;
   category: string;
+  /** Optional search words, each one trimmed, no duplicates (any case). */
+  tags: string[];
   author: string;
   license: string;
 }
@@ -136,6 +140,21 @@ export function checkSvg(b: Uint8Array): void {
   if (!sawRoot || stack.length) malformed();
 }
 
+/** Tags as an array of strings, or one comma-separated string; empty ones are dropped. */
+export function parseTags(v: unknown): string[] {
+  if (v === undefined || v === null) return [];
+  const raw = typeof v === "string" ? v.split(",") : Array.isArray(v) ? v : null;
+  if (!raw) throw new Rejected("Tags must be a list of words");
+  const tags: string[] = [];
+  for (const t of raw) {
+    if (typeof t !== "string") throw new Rejected("Tags must be a list of words");
+    const s = clean(t, MAX_TAG_CHARS, "A tag");
+    if (s && !tags.some((x) => x.toLowerCase() === s.toLowerCase())) tags.push(s);
+  }
+  if (tags.length > MAX_TAGS) throw new Rejected(`At most ${MAX_TAGS} tags`);
+  return tags;
+}
+
 export function parseMeta(raw: unknown): Meta {
   const m = (typeof raw === "object" && raw) || {};
   const r = m as Record<string, unknown>;
@@ -143,13 +162,14 @@ export function parseMeta(raw: unknown): Meta {
     title: clean(r.title, 80, "Name", true),
     description: clean(r.description, 500, "Description"),
     category: clean(r.category, 60, "Category"),
+    tags: parseTags(r.tags),
     author: clean(r.author, 60, "Credit name") || "anonymous",
     license: String(r.license ?? ""),
   };
   if (!(LICENSES as readonly string[]).includes(meta.license)) throw new Rejected("License must be CC0-1.0 or CC-BY-4.0");
   // CC BY exists so the artist is credited: it needs a name to credit.
   if (meta.license === "CC-BY-4.0" && meta.author === "anonymous") throw new Rejected("CC BY 4.0 needs a credit name");
-  checkLanguage([meta.title, meta.description, meta.category, meta.author]);
+  checkLanguage([meta.title, meta.description, meta.category, meta.author, ...meta.tags]);
   // Only BioCartoon's own assets go under its name, and a reviewer gives it (src/publish.ts).
   if (impersonatesBioCartoon(meta.author)) throw new Rejected("Credit name can't include BioCartoon: that name is kept for BioCartoon's own assets.");
   return meta;
@@ -284,6 +304,7 @@ export function checkTemplate(raw: unknown, id: string, meta: Meta, uploaded: Se
       title: meta.title,
       description: meta.description,
       category: meta.category,
+      tags: meta.tags,
       author: meta.author,
       license: meta.license,
       created_at: createdAt,

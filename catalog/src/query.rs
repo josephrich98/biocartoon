@@ -121,6 +121,7 @@ impl Asset {
             variant: self.variant.clone(),
             category: self.category.clone(),
             description: self.description.clone(),
+            tags: self.tags.clone(),
             license: self.license.clone(),
             credit: self.credit.clone(),
             author: self.author.clone(),
@@ -132,6 +133,7 @@ impl Asset {
             stars: self.stars,
             starred: self.starred,
             taxa: crate::taxonomy::classify(&self.source, &self.category, &self.title, &self.tags.join(" ")),
+            layers: Vec::new(),
         }
     }
 }

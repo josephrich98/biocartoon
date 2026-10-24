@@ -47,6 +47,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 import readme_stats
+from build_assets_db import load_layers
 from config import PUBLISH_UA, R2_BUCKET, SUBMIT_URL
 
 DATA = Path(__file__).resolve().parent
@@ -65,10 +66,11 @@ TEMPLATES_SQL = """
 CREATE TABLE IF NOT EXISTS templates (
     id TEXT PRIMARY KEY, title TEXT NOT NULL, description TEXT, category TEXT, author TEXT,
     license TEXT, created_at TEXT, json_key TEXT NOT NULL, thumb_key TEXT,
-    json_local TEXT, thumb_local TEXT);
+    json_local TEXT, thumb_local TEXT,
+    tags TEXT NOT NULL DEFAULT '[]');  -- JSON array of strings
 """
 TEMPLATE_COLS = ["id", "title", "description", "category", "author", "license", "created_at", "json_key",
-                 "thumb_key", "json_local", "thumb_local"]
+                 "thumb_key", "json_local", "thumb_local", "tags"]
 NOT_PUBLISHED = ("sync_state", "sync_held", "sync_meta", "templates")
 # assets columns kept in the master but left out of the catalog. The hashes are ~40% of the gzipped
 # catalog and nothing in the app reads them; delete a name here to publish that column again.
@@ -119,7 +121,11 @@ def update_master(con: sqlite3.Connection, user_rows: list[dict] | None, tmpl_ro
     """Write the app uploads and star counts into the master (None: leave that part as it is)."""
     if not any(c[1] == "stars" for c in con.execute("PRAGMA table_info(assets)")):
         con.execute("ALTER TABLE assets ADD COLUMN stars INTEGER NOT NULL DEFAULT 0")
+    if not any(c[1] == "layers" for c in con.execute("PRAGMA table_info(assets)")):
+        con.execute("ALTER TABLE assets ADD COLUMN layers TEXT")
     con.executescript(TEMPLATES_SQL)
+    if not any(c[1] == "tags" for c in con.execute("PRAGMA table_info(templates)")):
+        con.execute("ALTER TABLE templates ADD COLUMN tags TEXT NOT NULL DEFAULT '[]'")
     with con:
         if user_rows is not None:
             keep = [r["id"] for r in user_rows]
@@ -137,6 +143,10 @@ def update_master(con: sqlite3.Connection, user_rows: list[dict] | None, tmpl_ro
         if stars is not None:
             con.execute("UPDATE assets SET stars = 0 WHERE stars != 0")
             con.executemany("UPDATE assets SET stars = ? WHERE id = ?", [(n, i) for i, n in stars.items()])
+        # layers.json is the record, so naming a layer needs no rebuild of the master.
+        layers = load_layers()
+        con.execute("UPDATE assets SET layers = NULL WHERE layers IS NOT NULL")
+        con.executemany("UPDATE assets SET layers = ? WHERE id = ?", [(v, i) for i, v in layers.items()])
 
 
 def build_templates(src: Path, out_dir: Path, with_uploads: bool) -> tuple[Path, str, int]:

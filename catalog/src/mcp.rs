@@ -5,7 +5,7 @@
 //! The server is generic over a [`Tools`] set: [`CatalogTools`] is the catalog's, and a program
 //! with tools of its own (the BioCartoon editor's canvas tools) wraps it and serves both.
 
-use crate::catalog::IconSort;
+use crate::catalog::{Filter, IconSort};
 use crate::query::{self, Asset, Catalog};
 use crate::templates;
 use base64::Engine;
@@ -135,6 +135,7 @@ impl Tools for CatalogTools {
         let search_props = json!({
             "query": str_prop("Words to look for (prefix match over title, tags, category, description)."),
             "sources": {"type": "array", "items": {"type": "string"}, "description": "Restrict to these collections: bioart, bioicons, servier, scidraw, healthicons, reactome, openmoji, user. Default: all."},
+            "tags": {"type": "array", "items": {"type": "string"}, "description": "Keep only assets with one of these tags (a whole tag, any case). Default: any."},
             "limit": int_prop("Most results to return (default 12, max 60)."),
             "sort": str_prop("Order of the returned set: relevance (default), az, za, popular."),
         });
@@ -174,7 +175,13 @@ impl CatalogTools {
                 let limit = n("limit").unwrap_or(12).clamp(1, 60) as usize;
                 // "relevance" keeps the editor's pick order (science collections first, then rank).
                 let sort = parse_sort(&s("sort").unwrap_or_default());
-                let hits = self.catalog()?.search(&q, &sources, limit, sort)?;
+                let tags: Vec<String> = args.get("tags").and_then(Value::as_array).map(|a| a.iter().filter_map(Value::as_str).map(str::to_string).collect()).unwrap_or_default();
+                let hits = if tags.is_empty() {
+                    self.catalog()?.search(&q, &sources, limit, sort)?
+                } else {
+                    let filter = Filter { tags, ..Filter::sources(&sources) };
+                    self.catalog()?.search_filtered(&q, &filter, 0, limit, sort)?.0
+                };
                 let note = if hits.is_empty() {
                     format!("No asset matches {q:?}. Try fewer or more general words, a synonym, or sql_query.")
                 } else {

@@ -20,6 +20,7 @@ pub struct PublishedTemplate {
     pub title: String,
     pub description: String,
     pub category: String,
+    pub tags: Vec<String>,
     pub author: String,
     pub license: String,
     pub created_at: String,
@@ -65,16 +66,19 @@ fn sync(base: &str, dir: &Path) -> Result<(), String> {
 }
 
 /// Every template in the list at `path`, newest first. `query` filters by words in the title,
-/// description or category (all must appear), as the editor's template search does.
+/// description, category or tags (all must appear), as the editor's template search does.
 pub fn search(path: &Path, query: &str) -> Result<Vec<PublishedTemplate>, String> {
     let conn = Connection::open_with_flags(path, OpenFlags::SQLITE_OPEN_READ_ONLY).map_err(|e| format!("open {}: {e}", path.display()))?;
     let base = asset_base_url();
     let url = |key: &str| format!("{}/{}", base.trim_end_matches('/'), key);
+    // Lists published before templates had tags have no `tags` column.
+    let has_tags = conn.prepare("SELECT tags FROM templates LIMIT 0").is_ok();
     let mut st = conn
-        .prepare(
+        .prepare(&format!(
             "SELECT id, title, coalesce(description,''), coalesce(category,''), coalesce(author,''), coalesce(license,''), \
-             coalesce(created_at,''), json_key, coalesce(thumb_key,'') FROM templates ORDER BY created_at DESC, title",
-        )
+             coalesce(created_at,''), json_key, coalesce(thumb_key,''), {} FROM templates ORDER BY created_at DESC, title",
+            if has_tags { "coalesce(tags,'[]')" } else { "'[]'" }
+        ))
         .map_err(|e| e.to_string())?;
     let rows = st
         .query_map([], |r| {
@@ -84,6 +88,7 @@ pub fn search(path: &Path, query: &str) -> Result<Vec<PublishedTemplate>, String
                 title: r.get(1)?,
                 description: r.get(2)?,
                 category: r.get(3)?,
+                tags: crate::catalog::tags_from_json(&r.get::<_, String>(9)?),
                 author: r.get(4)?,
                 license: r.get(5)?,
                 created_at: r.get(6)?,
@@ -96,7 +101,7 @@ pub fn search(path: &Path, query: &str) -> Result<Vec<PublishedTemplate>, String
     let terms: Vec<String> = crate::catalog::Worker::query_words(query).into_iter().filter(|t| t.chars().count() >= 2).collect();
     if !terms.is_empty() {
         out.retain(|t| {
-            let hay = format!("{} {} {}", t.title, t.description, t.category).to_lowercase();
+            let hay = format!("{} {} {} {}", t.title, t.description, t.category, t.tags.join(" ")).to_lowercase();
             terms.iter().all(|w| hay.contains(w.as_str()))
         });
     }
@@ -116,9 +121,9 @@ mod tests {
         let c = Connection::open(&path).unwrap();
         c.execute_batch(
             "CREATE TABLE templates (id TEXT PRIMARY KEY, title TEXT NOT NULL, description TEXT, category TEXT, author TEXT, \
-             license TEXT, created_at TEXT, json_key TEXT NOT NULL, thumb_key TEXT, json_local TEXT, thumb_local TEXT);
-             INSERT INTO templates VALUES ('a', 'Cell signaling', 'A receptor pathway', 'Biology', 'x', 'CC-BY-4.0', '2026-01-02', 'templates/a/template.json', 'templates/a/thumb.png', NULL, NULL);
-             INSERT INTO templates VALUES ('b', 'Lab workflow', 'Bench steps', 'Methods', 'y', 'CC0-1.0', '2026-01-01', 'templates/b/template.json', '', NULL, NULL);",
+             license TEXT, created_at TEXT, json_key TEXT NOT NULL, thumb_key TEXT, json_local TEXT, thumb_local TEXT, tags TEXT);
+             INSERT INTO templates VALUES ('a', 'Cell signaling', 'A receptor pathway', 'Biology', 'x', 'CC-BY-4.0', '2026-01-02', 'templates/a/template.json', 'templates/a/thumb.png', NULL, NULL, '[\"kinase\"]');
+             INSERT INTO templates VALUES ('b', 'Lab workflow', 'Bench steps', 'Methods', 'y', 'CC0-1.0', '2026-01-01', 'templates/b/template.json', '', NULL, NULL, NULL);",
         )
         .unwrap();
         drop(c);
@@ -129,6 +134,11 @@ mod tests {
         assert!(hits[0].thumb_url.as_deref().unwrap().ends_with("/templates/a/thumb.png"));
         assert!(search(&path, "workflow").unwrap()[0].thumb_url.is_none());
         assert!(search(&path, "receptor methods").unwrap().is_empty());
+        assert_eq!(search(&path, "kinase").unwrap()[0].tags, ["kinase"]);
+        assert!(search(&path, "workflow").unwrap()[0].tags.is_empty());
+        // A list from before templates had tags.
+        Connection::open(&path).unwrap().execute_batch("ALTER TABLE templates DROP COLUMN tags;").unwrap();
+        assert_eq!(search(&path, "").unwrap().len(), 2);
         let _ = std::fs::remove_dir_all(&dir);
     }
 }

@@ -14,7 +14,7 @@ import * as accounts from "./accounts.ts";
 import type { Env } from "./env.ts";
 import { guarded, json, sha256Hex } from "./http.ts";
 import {
-  MAX_OPEN_SUGGESTIONS, MAX_PENDING, MAX_PER_IP_PER_DAY, MAX_REQUEST_BYTES, MAX_SUGGESTIONS_PER_IP_PER_DAY, MAX_TEMPLATE_JSON_BYTES,
+  MAX_OPEN_SUGGESTIONS, MAX_PENDING, MAX_PER_IP_PER_DAY, MAX_PER_IP_PER_DAY_WITH_KEY, MAX_REQUEST_BYTES, MAX_SUGGESTIONS_PER_IP_PER_DAY, MAX_TEMPLATE_JSON_BYTES,
 } from "./limits.ts";
 import * as stars from "./stars.ts";
 import { Rejected, newId } from "./text.ts";
@@ -68,11 +68,22 @@ async function fileBytes(form: FormData, name: string): Promise<Uint8Array | nul
   return typeof v === "string" ? new TextEncoder().encode(v) : new Uint8Array(await v.arrayBuffer());
 }
 
+/** Whether the request carries the `UPLOAD_KEY` secret; a wrong key is refused rather than ignored. */
+async function uploadKey(req: Request, env: Env): Promise<boolean> {
+  const sent = req.headers.get("x-upload-key");
+  if (sent === null) return false;
+  // Comparing digests keeps the time taken independent of how much of the key matches.
+  if (!env.UPLOAD_KEY || (await sha256Hex(sent)) !== (await sha256Hex(env.UPLOAD_KEY))) throw new Rejected("Invalid upload key", 403);
+  return true;
+}
+
 async function submit(req: Request, env: Env): Promise<Response> {
   const length = Number(req.headers.get("content-length"));
   if (!length) throw new Rejected("Content-Length is required", 411);
   if (length > MAX_REQUEST_BYTES) throw new Rejected("Submission is too large", 413);
 
+  const keyed = await uploadKey(req, env);
+  const perDay = keyed ? MAX_PER_IP_PER_DAY_WITH_KEY : MAX_PER_IP_PER_DAY;
   const ipHash = (await sha256Hex(`${env.IP_SALT ?? "biocartoon"}:${req.headers.get("cf-connecting-ip") ?? "?"}`)).slice(0, 32);
   const now = new Date();
   const dayAgo = new Date(now.getTime() - 86_400_000).toISOString();
@@ -82,8 +93,8 @@ async function submit(req: Request, env: Env): Promise<Response> {
   )
     .bind(ipHash, dayAgo)
     .first<{ mine: number; pending: number }>();
-  if ((counts?.mine ?? 0) >= MAX_PER_IP_PER_DAY) throw new Rejected(`Limit reached: ${MAX_PER_IP_PER_DAY} submissions a day. Please try again tomorrow.`, 429);
-  if ((counts?.pending ?? 0) >= MAX_PENDING) throw new Rejected("The review queue is full. Please try again in a few days.", 503);
+  if ((counts?.mine ?? 0) >= perDay) throw new Rejected(`Limit reached: ${perDay} submissions a day. Please try again tomorrow.`, 429);
+  if (!keyed && (counts?.pending ?? 0) >= MAX_PENDING) throw new Rejected("The review queue is full. Please try again in a few days.", 503);
 
   const form = await req.formData();
   const kind = form.get("kind");
@@ -153,11 +164,11 @@ async function submit(req: Request, env: Env): Promise<Response> {
   for (const [key, body, contentType] of puts) await env.PENDING.put(key, body, { httpMetadata: { contentType } });
   try {
     await env.DB.prepare(
-      "INSERT INTO submissions (id, kind, title, description, category, author, license, files, texts, width, height, bytes, png_sha256, ip_hash, created_at, email) \
-       VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16)",
+      "INSERT INTO submissions (id, kind, title, description, category, author, license, files, texts, width, height, bytes, png_sha256, ip_hash, created_at, email, tags) \
+       VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17)",
     )
       .bind(id, kind, meta.title, meta.description, meta.category, meta.author, meta.license, JSON.stringify(puts.map((p) => p[0])),
-        JSON.stringify(texts.slice(0, 200)), width, height, puts.reduce((n, p) => n + p[1].length, 0), pngSha, ipHash, createdAt, email)
+        JSON.stringify(texts.slice(0, 200)), width, height, puts.reduce((n, p) => n + p[1].length, 0), pngSha, ipHash, createdAt, email, JSON.stringify(meta.tags))
       .run();
   } catch (e) {
     await env.PENDING.delete(puts.map((p) => p[0]));

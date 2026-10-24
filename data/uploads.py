@@ -35,6 +35,8 @@ MAX_TEMPLATE_JSON_BYTES = 1024 * 1024
 MAX_TEMPLATE_ITEMS = 300
 MAX_TEMPLATE_IMAGES = 24
 MAX_SIDECAR_BYTES = 16 * 1024
+MAX_TAGS = 20
+MAX_TAG_CHARS = 40
 LICENSES = {
     "CC0-1.0": ("https://creativecommons.org/publicdomain/zero/1.0/", 0),
     "CC-BY-4.0": ("https://creativecommons.org/licenses/by/4.0/", 1),
@@ -73,6 +75,21 @@ def text(v, limit: int, required=False) -> str:
     if len(v) > limit:
         raise ValueError(f"field longer than {limit}")
     return v
+
+
+def tags(v) -> str:
+    """A sidecar's or template's `tags` (a list of strings, as the Worker checked them) as the JSON
+    array the catalog stores; missing (sent before tags were kept) is no tags."""
+    if v is None:
+        return "[]"
+    if not isinstance(v, list) or len(v) > MAX_TAGS:
+        raise ValueError("bad tags")
+    out: list[str] = []
+    for t in v:
+        t = text(t, MAX_TAG_CHARS)
+        if t and t.lower() not in (x.lower() for x in out):
+            out.append(t)
+    return json.dumps(out, ensure_ascii=False)
 
 
 def png_size(s3, bucket: str, key: str, objs: dict) -> tuple[int, int]:
@@ -313,7 +330,7 @@ def asset_rows(s3, bucket: str, caps: Caps, blocked: set[str], log=print, upload
                 id=rid, source="user", source_name="User-generated", source_id=rid,
                 title=text(meta.get("title"), 80, required=True), variant=None,
                 description=text(meta.get("description"), 500), category=text(meta.get("category"), 60) or None,
-                tags="[]", license=lic, license_raw=lic, license_url=LICENSES[lic][0],
+                tags=tags(meta.get("tags")), license=lic, license_raw=lic, license_url=LICENSES[lic][0],
                 attribution_required=LICENSES[lic][1], share_alike=0, author=author, source_url=None, doi=None,
                 credit=text(meta.get("credit"), 600) or f'"{meta.get("title")}" by {author}, {lic}',
                 svg_key=svg_key, png_key=png_key, png_is_raster=int(svg_key is not None), png_width=w, png_height=h,
@@ -383,7 +400,7 @@ def template_rows(s3, bucket: str, catalog_keys: set[str], caps: Caps, blocked: 
             png_size(s3, bucket, meta["thumb_key"], objs)
             row = dict(
                 id=slug, title=text(meta.get("title"), 80, required=True), description=text(meta.get("description"), 500),
-                category=text(meta.get("category"), 60), author=author, license=meta["license"],
+                category=text(meta.get("category"), 60), tags=tags(meta.get("tags")), author=author, license=meta["license"],
                 created_at=o["LastModified"].isoformat(timespec="seconds"), json_key=key, thumb_key=meta["thumb_key"],
                 json_local=None, thumb_local=None,
             )

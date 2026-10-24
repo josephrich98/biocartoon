@@ -14,14 +14,16 @@
 import { reviewer } from "./access.ts";
 import type { Env } from "./env.ts";
 import { guarded } from "./http.ts";
-import { REJECTED_KEEP_DAYS, type Row, approve, purgeRejected, reject, undo } from "./publish.ts";
+import { REJECTED_KEEP_DAYS, type Row, approve, purgeRejected, reject, rowTags, undo } from "./publish.ts";
 import { Rejected } from "./text.ts";
 
 const ID = /^[a-z0-9][a-z0-9-]{0,100}$/;
 const SECURITY_HEADERS = {
   "content-security-policy": "default-src 'none'; img-src 'self'; style-src 'unsafe-inline'; form-action 'self'; frame-ancestors 'none'",
   "x-content-type-options": "nosniff",
-  "referrer-policy": "no-referrer",
+  // Not no-referrer: under that policy browsers send `Origin: null` on the page's own form posts,
+  // which sameOrigin() then refuses. same-origin still keeps the referrer from other sites.
+  "referrer-policy": "same-origin",
   "cache-control": "no-store",
 };
 // A pending SVG opened on its own: nothing in it may run or load (submit.ts checked it too).
@@ -61,7 +63,7 @@ async function route(req: Request, env: Env, who: string): Promise<Response> {
     });
   }
   if (req.method === "POST" && action === "done" && ID.test(rest[0] ?? "")) {
-    if (req.headers.get("origin") !== url.origin) return new Response("Bad origin", { status: 403 });
+    if (!sameOrigin(req, url)) return new Response("Bad origin", { status: 403 });
     const r = await env.DB.prepare("UPDATE suggestions SET status = 'done', reviewed_at = ?2, reviewed_by = ?3 WHERE id = ?1 AND status = 'open' RETURNING title")
       .bind(rest[0], new Date().toISOString().replace(/\.\d+Z$/, "Z"), who)
       .first<{ title: string }>();
@@ -69,7 +71,7 @@ async function route(req: Request, env: Env, who: string): Promise<Response> {
   }
   if (req.method === "POST" && (action === "approve" || action === "reject" || action === "undo") && ID.test(rest[0] ?? "")) {
     // Forms from other sites must not be able to approve anything.
-    if (req.headers.get("origin") !== url.origin) return new Response("Bad origin", { status: 403 });
+    if (!sameOrigin(req, url)) return new Response("Bad origin", { status: 403 });
     const row = await env.DB.prepare("SELECT * FROM submissions WHERE id = ?1").bind(rest[0]).first<Row>();
     if (!row) return new Response("Not found", { status: 404 });
     const back = (msg: string, undoable = false) =>
@@ -93,6 +95,13 @@ async function route(req: Request, env: Env, who: string): Promise<Response> {
   return new Response("Not found", { status: 404 });
 }
 
+/** Whether a POST came from this site's own page (forms from other sites must not act). */
+function sameOrigin(req: Request, url: URL): boolean {
+  const origin = req.headers.get("origin");
+  if (origin && origin !== "null") return origin === url.origin;
+  return req.headers.get("sec-fetch-site") === "same-origin";
+}
+
 const esc = (s: unknown) =>
   String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]!);
 
@@ -108,7 +117,7 @@ function card(r: Row): string {
   <div class="info">
     <h2>${esc(r.title)} <span class="kind">${esc(r.kind)}</span></h2>
     ${r.description ? `<p>${esc(r.description)}</p>` : ""}
-    <dl><dt>Category</dt><dd>${esc(r.category || "–")}</dd><dt>Credit</dt><dd>${esc(r.author)}</dd>
+    <dl><dt>Category</dt><dd>${esc(r.category || "–")}</dd><dt>Tags</dt><dd>${esc(rowTags(r).join(", ") || "–")}</dd><dt>Credit</dt><dd>${esc(r.author)}</dd>
     ${r.email ? `<dt>Email</dt><dd>${mailto(r.email)} (private)</dd>` : ""}
     <dt>License</dt><dd>${esc(r.license)}</dd><dt>Size</dt><dd>${r.width ? `${r.width}×${r.height}, ` : ""}${Math.max(1, Math.round(r.bytes / 1024))} KB${svg ? " SVG" : ""}</dd>
     <dt>Submitted</dt><dd>${esc(r.created_at)}</dd></dl>

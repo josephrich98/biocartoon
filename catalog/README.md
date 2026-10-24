@@ -50,6 +50,7 @@ server also lists the shared slide templates. The BioCartoon desktop editor ship
 - `biocartoon search "TERM"`: icons and templates matching TERM, best first. With no TERM it pages
   through everything.
     - `--icons` / `--templates`: only that kind
+    - `--tags T,...`: icons and templates with one of these tags (a whole tag, any case)
     - `--source S`: icons from a collection (a code or name from `biocartoon --sources`)
     - `--author A`: icons by an author (part of the name, any case)
     - `--category C`: icons in a category (a slug from `biocartoon --categories`)
@@ -71,7 +72,7 @@ server also lists the shared slide templates. The BioCartoon desktop editor ship
     - `--icons-ext svg|png`: default `svg`, with a PNG where the source publishes no SVG
     - `--templates-ext png|biocartoon`: the thumbnail (default), or a `.biocartoon` file the editor opens
     - `--output-dir DIR` (default `./biocartoon-catalog`), `--jobs N` (parallel downloads, default 8), `--limit N` (the first N of each, to try it out)
-- `biocartoon upload FILE...`: submit image files/folders to the database (approval required to merge in)
+- `biocartoon upload FILE...`: submit image files/folders to the database (approval required to merge in); `--tags T,...` adds words to find them by
 - `biocartoon mcp`: serve the same tools over MCP, mostly for agents (e.g., `claude mcp add biocartoon -- biocartoon mcp`)
 - `biocartoon --version`: the program's version, and when the local catalog was published and downloaded
 - `biocartoon --sources`: list icon sources for `biocartoon search --source S`
@@ -98,7 +99,7 @@ Contribute your own illustrations (held for review before they are published):
 
 ```bash
 biocartoon upload figures/ --license CC-BY-4.0 --credit "Your Name" --dry-run   # check first
-biocartoon upload figures/ --license CC-BY-4.0 --credit "Your Name" --category cells
+biocartoon upload figures/ --license CC-BY-4.0 --credit "Your Name" --category cells --tags "neuron, axon"
 ```
 
 Narrow a search by collection, category, author, license or file type:

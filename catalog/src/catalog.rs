@@ -28,6 +28,8 @@ pub struct AssetRow {
     pub category: String,
     /// The artist's or uploader's description (often empty).
     pub description: String,
+    /// Search words the source or the uploader gave it (the catalog's `tags`, a JSON array).
+    pub tags: Vec<String>,
     pub license: String,
     pub credit: String,
     pub author: String,
@@ -43,6 +45,26 @@ pub struct AssetRow {
     pub starred: bool,
     /// Its places in `crate::taxonomy`: (category, subcategory), at least one for a catalog row.
     pub taxa: Vec<crate::taxonomy::Taxon>,
+    /// Its named colour layers (the catalog's `layers`, a JSON array), which the editor recolours
+    /// or fades one at a time. Empty when nobody named them; the editor then offers the drawing's
+    /// own colours.
+    pub layers: Vec<AssetLayer>,
+}
+
+/// A part of a drawing that can be restyled on its own (a flask's liquid, its glass, the
+/// markings): every shape painted in one of `colors` (`#rrggbb`).
+#[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct AssetLayer {
+    pub name: String,
+    pub colors: Vec<String>,
+}
+
+/// The `layers` column's value as layers; none when it is empty or not valid.
+pub fn layers_from_json(s: &str) -> Vec<AssetLayer> {
+    if s.is_empty() {
+        return Vec::new();
+    }
+    serde_json::from_str(s).unwrap_or_default()
 }
 
 /// The latest star count of one asset, and whether this install's own star is among them.
@@ -193,6 +215,40 @@ pub struct Filter {
     pub db_cats: Vec<(String, String)>,
     /// File types, [`FORMAT_SVG`] (the source publishes an SVG) or [`FORMAT_PNG`] (a PNG only).
     pub formats: Vec<String>,
+    /// Tags, any case: an asset with any of them as one of its tags.
+    pub tags: Vec<String>,
+}
+
+/// Most tags one upload may have, and characters in one tag (the Worker's MAX_TAGS / MAX_TAG_CHARS).
+pub const MAX_TAGS: usize = 20;
+pub const MAX_TAG_CHARS: usize = 40;
+
+/// Tags as typed, separated by commas: each trimmed, empty ones and repeats (any case) dropped.
+pub fn parse_tags(s: &str) -> Vec<String> {
+    let mut tags: Vec<String> = Vec::new();
+    for t in s.split(',') {
+        let t = t.split_whitespace().collect::<Vec<_>>().join(" ");
+        if !t.is_empty() && !tags.iter().any(|x| x.to_lowercase() == t.to_lowercase()) {
+            tags.push(t);
+        }
+    }
+    tags
+}
+
+/// Why `tags` can't be sent with an upload, if they can't.
+pub fn check_tags(tags: &[String]) -> Result<(), String> {
+    if tags.len() > MAX_TAGS {
+        return Err(format!("{} tags; an upload can have up to {MAX_TAGS}", tags.len()));
+    }
+    match tags.iter().find(|t| t.chars().count() > MAX_TAG_CHARS) {
+        Some(t) => Err(format!("the tag {t:?} is longer than {MAX_TAG_CHARS} characters")),
+        None => Ok(()),
+    }
+}
+
+/// A `tags` column's JSON array (anything else is no tags).
+pub fn tags_from_json(s: &str) -> Vec<String> {
+    serde_json::from_str(s).unwrap_or_default()
 }
 
 pub const FORMAT_SVG: &str = "SVG";
@@ -279,6 +335,8 @@ fn row_from(r: &rusqlite::Row) -> rusqlite::Result<AssetRow> {
         svg_key: r.get(15)?,
         description: r.get(17)?,
         taxa: crate::taxonomy::classify(&source, &category, &title, &tags),
+        tags: tags_from_json(&tags),
+        layers: layers_from_json(&r.get::<_, String>(18)?),
     })
 }
 
@@ -300,6 +358,8 @@ pub struct Worker {
     style_key: &'static str,
     /// `a.svg_key`, or NULL in catalogs without the column.
     svg_key: &'static str,
+    /// `a.layers`, or NULL in catalogs without the column.
+    layers: &'static str,
     /// `usage.stars` exists (it can't be created on a read-only connection to an old usage file).
     local_stars: bool,
     /// `usage.uses` exists (it can't be created on a read-only connection with no usage file,
@@ -436,7 +496,8 @@ impl Worker {
         };
         let style_key = if has_col("source_id") { STYLE_KEY } else { STYLE_KEY_NO_SOURCE_ID };
         let svg_key = if has_col("svg_key") { "a.svg_key" } else { "NULL" };
-        Ok(Self { conn, fts, vocab: Default::default(), stars_col, group_key, dup, style_key, svg_key, local_stars, local_uses, taxa: Default::default() })
+        let layers = if has_col("layers") { "a.layers" } else { "NULL" };
+        Ok(Self { conn, fts, vocab: Default::default(), stars_col, group_key, dup, style_key, svg_key, layers, local_stars, local_uses, taxa: Default::default() })
     }
 
     /// The star columns of a `SELECT ... FROM assets a {stars_join}`: the count (the local
@@ -466,7 +527,7 @@ impl Worker {
 
     /// Every column of an [`AssetRow`] (see `row_from`).
     fn cols(&self) -> String {
-        format!("{COLS}, {}, {}, coalesce(a.tags,''), coalesce(a.description,'')", self.stars_cols(), self.svg_key)
+        format!("{COLS}, {}, {}, coalesce(a.tags,''), coalesce(a.description,''), coalesce({},'')", self.stars_cols(), self.svg_key, self.layers)
     }
 
     /// The words of a query as the index splits them (lowercase, alphanumeric runs).
@@ -630,6 +691,13 @@ impl Worker {
                 })
                 .collect();
             sql += &format!(" AND ({})", any.join(" OR "));
+        }
+        let tags: Vec<String> = f.tags.iter().map(|t| t.trim().to_lowercase()).filter(|t| !t.is_empty()).collect();
+        if !tags.is_empty() {
+            sql += &format!(
+                " AND EXISTS (SELECT 1 FROM json_each(CASE WHEN json_valid(a.tags) THEN a.tags ELSE '[]' END) WHERE lower(trim(value)) IN ({}))",
+                tags.iter().map(|t| q(t)).collect::<Vec<_>>().join(",")
+            );
         }
         let svg = f.formats.iter().any(|x| x == FORMAT_SVG);
         let png = f.formats.iter().any(|x| x == FORMAT_PNG);
@@ -1090,8 +1158,8 @@ impl Worker {
         let mut groups: std::collections::HashMap<String, Vec<AssetRow>> = Default::default();
         let mut rows = st.query(args.as_slice())?;
         while let Some(r) = rows.next()? {
-            // `{gk}` comes after the 18 columns of `row_from`.
-            groups.entry(r.get(18)?).or_default().push(row_from(r)?);
+            // `{gk}` comes after the 19 columns of `row_from`.
+            groups.entry(r.get(19)?).or_default().push(row_from(r)?);
         }
         for (key, group) in groups {
             if group.len() > 1 {
@@ -1127,7 +1195,7 @@ impl Worker {
             "INSERT OR REPLACE INTO assets (id, source, source_name, source_id, title, variant, description, category, \
              tags, license, license_raw, license_url, attribution_required, share_alike, author, source_url, doi, credit, \
              svg_key, png_key, png_is_raster, png_width, png_height, svg_bytes, png_bytes, \
-             svg_local, png_local, extra, uploaded_at) VALUES (?1, 'user', 'User-generated', ?2, ?3, '', ?4, ?5, '[]', \
+             svg_local, png_local, extra, uploaded_at) VALUES (?1, 'user', 'User-generated', ?2, ?3, '', ?4, ?5, ?17, \
              ?6, ?6, ?14, ?15, 0, ?7, NULL, NULL, ?8, ?16, ?9, 0, ?10, ?11, NULL, NULL, NULL, ?12, ?13, NULL)",
             params![
                 row.id,
@@ -1147,6 +1215,7 @@ impl Worker {
                 attribution,
                 // An SVG the app keeps beside the PNG (a drawing an AI model made): drawn and exported instead.
                 row.svg_key,
+                serde_json::to_string(&row.tags).unwrap_or_else(|_| "[]".into()),
             ],
         )?;
         if self.fts {
@@ -1160,7 +1229,7 @@ impl Worker {
         if self.taxa.get() {
             let rid: i64 = self.conn.query_row("SELECT rowid FROM assets WHERE id=?1", params![row.id], |r| r.get(0))?;
             self.conn.execute("DELETE FROM temp.asset_taxa WHERE rid=?1", params![rid])?;
-            for (c, s) in crate::taxonomy::classify("user", &row.category, &row.title, "") {
+            for (c, s) in crate::taxonomy::classify("user", &row.category, &row.title, &row.tags.join(" ")) {
                 self.conn.execute("INSERT INTO temp.asset_taxa (rid, cat, sub) VALUES (?1, ?2, ?3)", params![rid, c, s])?;
             }
         }
@@ -1365,6 +1434,17 @@ fn edit_distance(a: &[char], b: &[char]) -> usize {
 mod tests {
     use super::*;
 
+    #[test]
+    fn parses_tags() {
+        assert_eq!(parse_tags(" T  cell, neuron,, t cell ,Neuron "), ["T cell", "neuron"]);
+        assert!(parse_tags(" , ").is_empty());
+        assert!(check_tags(&parse_tags("a, b")).is_ok());
+        assert!(check_tags(&["x".repeat(41)]).unwrap_err().contains("40"));
+        assert!(check_tags(&(0..21).map(|i| i.to_string()).collect::<Vec<_>>()).unwrap_err().contains("21 tags"));
+        assert_eq!(tags_from_json(r#"["a", "b"]"#), ["a", "b"]);
+        assert!(tags_from_json("a, b").is_empty());
+    }
+
     /// The columns of the test catalog; `stars` is left out, as in a catalog published before
     /// stars, so opening adds it.
     const TEST_COLS: &str = "id, source, source_name, title, variant, description, category, tags, license, credit, author, \
@@ -1416,6 +1496,24 @@ mod tests {
         drop(w);
         let w = Worker::open(&dir.join("assets.sqlite"), &dir.join("usage.sqlite")).unwrap();
         assert_eq!(titles(w.search("cell", &[], 10, IconSort::Popular).unwrap()), pop);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn layers_are_read_when_the_catalog_has_them() {
+        let dir = std::env::temp_dir().join(format!("cc-catalog-layers-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let w = worker(&dir);
+        assert!(w.variants("k0").unwrap()[0].layers.is_empty());
+        w.conn.execute_batch("ALTER TABLE assets ADD COLUMN layers TEXT").unwrap();
+        w.conn.execute("UPDATE assets SET layers = ?1 WHERE id = 'k0'", params![r##"[{"name": "Liquid", "colors": ["#f49dc0"]}]"##]).unwrap();
+        w.conn.execute("UPDATE assets SET layers = 'not json' WHERE id = 'k1'", []).unwrap();
+        drop(w);
+        let w = Worker::open(&dir.join("assets.sqlite"), &dir.join("usage.sqlite")).unwrap();
+        assert_eq!(w.variants("k0").unwrap()[0].layers, vec![AssetLayer { name: "Liquid".into(), colors: vec!["#f49dc0".into()] }]);
+        assert!(w.variants("k1").unwrap()[0].layers.is_empty());
+        assert!(w.variants("k2").unwrap()[0].layers.is_empty());
         let _ = std::fs::remove_dir_all(&dir);
     }
 
@@ -1640,6 +1738,7 @@ mod tests {
             variant: String::new(),
             category: String::new(),
             description: "one I drew".into(),
+            tags: vec!["Sketch".into()],
             license: "CC0-1.0".into(),
             credit: String::new(),
             author: String::new(),
@@ -1651,6 +1750,7 @@ mod tests {
             stars: 0,
             starred: false,
             taxa: Vec::new(),
+            layers: Vec::new(),
         };
         w.insert_user(&row).unwrap();
         row.id = "user/painted".into();
@@ -1661,6 +1761,8 @@ mod tests {
         let svgs: Vec<_> = rows.iter().map(|r| (r.title.as_str(), r.svg_key.as_deref())).collect();
         assert_eq!(svgs, vec![("drawn", Some("/data/user_generated/drawn.svg")), ("painted", None)]);
         assert_eq!(rows[0].description, "one I drew");
+        assert_eq!(rows[0].tags, ["Sketch"]);
+        assert_eq!(w.search_filtered("", &Filter { tags: vec!["sketch".into()], ..Filter::default() }, 0, 10, IconSort::Alphabetical).unwrap().len(), 2);
         let _ = std::fs::remove_dir_all(&dir);
     }
 
@@ -1835,6 +1937,7 @@ mod tests {
             .unwrap();
         }
         c.execute_batch("ALTER TABLE assets ADD COLUMN svg_key TEXT; UPDATE assets SET svg_key = id || '.svg' WHERE id IN ('a', 'c');").unwrap();
+        c.execute_batch(r#"UPDATE assets SET tags = '["Cell", "Virus"]' WHERE id = 'a'; UPDATE assets SET tags = '[" cell "]' WHERE id = 'c'; UPDATE assets SET tags = 'virus' WHERE id = 'd';"#).unwrap();
         drop(c);
         let w = Worker::open(&db, &dir.join("usage.sqlite")).unwrap();
         let ids = |f: &Filter| {
@@ -1869,6 +1972,11 @@ mod tests {
         assert_eq!(fc.db_cats, [("bioicons".to_string(), "Cells".to_string(), 2), ("bioicons".to_string(), "Viruses".to_string(), 1)]);
         // File type: an SVG when the source publishes one, else a PNG only; both keeps everything.
         assert_eq!(ids(&Filter { formats: s(&[FORMAT_SVG]), ..Filter::default() }), ["a", "c"]);
+        // Whole tags, any case; several are any of them. A `tags` that isn't a JSON array has none.
+        assert_eq!(ids(&Filter { tags: s(&["CELL"]), ..Filter::default() }), ["a", "c"]);
+        assert_eq!(ids(&Filter { tags: s(&["virus", "nothing"]), ..Filter::default() }), ["a"]);
+        assert_eq!(ids(&Filter { tags: s(&["cel"]), ..Filter::default() }), Vec::<String>::new());
+        assert_eq!(ids(&Filter { tags: s(&["cell"]), licenses: s(&["MIT"]), ..Filter::default() }), ["a"]);
         assert_eq!(ids(&Filter { formats: s(&[FORMAT_PNG]), ..Filter::default() }), ["b", "d"]);
         assert_eq!(ids(&Filter { formats: s(&[FORMAT_SVG, FORMAT_PNG]), ..Filter::default() }), ["a", "b", "c", "d"]);
         let fc = w.facets("", &Filter { sources: s(&["bioicons"]), formats: s(&[FORMAT_SVG]), ..Filter::default() }).unwrap();

@@ -20,6 +20,8 @@ export interface Row {
   title: string;
   description: string;
   category: string;
+  /** JSON array of strings. */
+  tags: string;
   author: string;
   license: string;
   /** Optional contact address for reviewers; never published. */
@@ -71,7 +73,7 @@ export async function approve(env: Env, row: Row, reviewer: string, official = f
     }
     const credit = official ? creditLine(row.title, "", row.license, BIOCARTOON_AUTHOR) : creditLine(row.title, row.author, row.license);
     const sidecar = {
-      id: `user/${row.id}`, title: row.title, description: row.description, category: row.category, license: row.license,
+      id: `user/${row.id}`, title: row.title, description: row.description, category: row.category, tags: rowTags(row), license: row.license,
       credit, author, png_key: key, ...image, created_at: row.created_at, ...(official && { official: true }),
     };
     await env.PUBLIC.put(`user/${row.id}.json`, JSON.stringify(sidecar), { httpMetadata: { contentType: "application/json" } });
@@ -92,6 +94,16 @@ export async function approve(env: Env, row: Row, reviewer: string, official = f
   }
   await env.PENDING.delete(files);
   await setStatus(env, row.id, "approved", reviewer, official);
+}
+
+/** A row's tags (rows from before tags were kept have none). */
+export function rowTags(row: Pick<Row, "tags">): string[] {
+  try {
+    const t: unknown = JSON.parse(row.tags ?? "[]");
+    return Array.isArray(t) ? t.filter((x): x is string => typeof x === "string") : [];
+  } catch {
+    return [];
+  }
 }
 
 export async function reject(env: Env, row: Row, reviewer: string): Promise<void> {

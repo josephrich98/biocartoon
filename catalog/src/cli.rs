@@ -2,7 +2,7 @@
 //! The BioCartoon editor's own `biocartoon` runs these same commands through [`run_command`],
 //! adding its templates to `search` and the `app` command.
 
-use crate::catalog::{resolve_source, Filter, IconSort, FORMAT_PNG, FORMAT_SVG, SOURCES};
+use crate::catalog::{check_tags, parse_tags, resolve_source, Filter, IconSort, FORMAT_PNG, FORMAT_SVG, SOURCES};
 use crate::mcp;
 use crate::query::{self, Asset, Catalog};
 use crate::taxonomy;
@@ -17,6 +17,7 @@ COMMANDS
   search [TERM]             icons and templates matching TERM, best first (one per icon;
                             science collections first). An empty TERM pages through them all.
       --icons | --templates only icons, or only templates
+      --tags T,...          with one of these tags (a whole tag, any case; icons and templates)
       Icon filters. Repeat one for several values: an icon matching any of them passes. An icon
       has to pass every filter given.
       --source S            from a collection: a code or name from --sources
@@ -31,7 +32,7 @@ COMMANDS
       --limit N             how many of each (default 12)  [--offset N]
       --sort relevance|az|za|popular
       --columns C,C,...     which columns of the icon table to show, in this order (default all):
-                            id, title, source, category, description, author, license, filetype
+                            id, title, source, category, description, tags, author, license, filetype
       --facets              instead of icons, how many each filter's choices find under TERM and
                             the other filters (as the editor's dropdowns count them)
       --sql                 run TERM as read-only SQL on the catalog instead (no TERM: the schema)
@@ -61,10 +62,12 @@ COMMANDS
                             and join the catalog once approved; an SVG is published as SVG,
                             with a PNG rendered from it (no scripts, links or web fonts in it).
                             Up to 20 a day.
-      --license L           CC0-1.0 or CC-BY-4.0 (required): you confirm you may share them so
+      --license L           CC0-1.0 or CC-BY-4.0 (required): you confirm you may share them under it
       --credit NAME         who to credit (default anonymous)
       --title T             the name (default: from the file name; one file only)
-      --description D  --category C   (C: a slug from --categories, or free text)
+      --description D       what it shows (up to 500 characters)
+      --category C          a slug from --categories, or free text
+      --tags T,...          words to find it by, separated by commas (up to 20, 40 characters each)
       --dry-run             check and list what would be submitted, without submitting
   --version                 this program's version, and when the catalog was published and downloaded
   --sources                 the collections: code, name, icons, licenses, what they hold
@@ -107,10 +110,10 @@ pub struct Args {
 impl Args {
     /// `valued` names the options that take a value (the catalog's are always included).
     pub fn parse(argv: Vec<String>, valued: &[&str]) -> Self {
-        const VALUED: [&str; 28] = [
+        const VALUED: [&str; 30] = [
             "source", "limit", "sort", "category", "offset", "out", "max-side", "max-rows", "db", "url", "license", "credit", "title",
             "description", "submit-url", "author", "subcategory", "source-category", "db-category", "file-type", "columns", "files",
-            "metadata-ext", "artwork-ext", "icons-ext", "templates-ext", "output-dir", "jobs",
+            "metadata-ext", "artwork-ext", "icons-ext", "templates-ext", "output-dir", "jobs", "key", "tags",
         ];
         let mut a = Self { pos: Vec::new(), opts: HashMap::new() };
         let mut it = argv.into_iter();
@@ -183,12 +186,13 @@ pub fn print_json(v: &impl serde::Serialize) {
 }
 
 /// The columns of `search`'s icon table, in order, with what fills them. `--columns` picks some.
-const ICON_COLUMNS: [(&str, fn(&Asset) -> String); 8] = [
+const ICON_COLUMNS: [(&str, fn(&Asset) -> String); 9] = [
     ("ID", |a| a.id.clone()),
     ("Title", |a| if a.variant.is_empty() { a.title.clone() } else { format!("{} [{}]", a.title, a.variant) }),
     ("Source", |a| a.source.clone()),
     ("Category", |a| a.category.clone()),
     ("Description", |a| a.description.clone()),
+    ("Tags", |a| a.tags.join(", ")),
     ("Author", |a| a.author.clone()),
     ("License", |a| a.license.clone()),
     ("File type", |a| if a.svg_key.is_some() { FORMAT_SVG } else { FORMAT_PNG }.to_string()),
@@ -224,7 +228,7 @@ fn print_assets(rows: &[Asset], cols: &[usize]) {
 }
 
 /// Templates a program adds to `search` (the editor's): JSON objects with at least `id`,
-/// `title`, `description` and `category`, filtered by the search term.
+/// `title`, `description`, `category` and `tags`, filtered by the search term.
 pub type Templates<'a> = &'a dyn Fn(&str) -> Vec<Value>;
 
 fn print_templates(rows: &[Value]) {
@@ -233,8 +237,17 @@ fn print_templates(rows: &[Value]) {
         return;
     }
     let s = |t: &Value, k: &str| t[k].as_str().unwrap_or_default().to_string();
-    let body: Vec<Vec<String>> = rows.iter().map(|t| vec![s(t, "id"), s(t, "title"), s(t, "category"), s(t, "description")]).collect();
-    print_table(&["ID", "Title", "Category", "Description"], &body);
+    let body: Vec<Vec<String>> = rows.iter().map(|t| vec![s(t, "id"), s(t, "title"), s(t, "category"), s(t, "description"), template_tags(t).join(", ")]).collect();
+    print_table(&["ID", "Title", "Category", "Description", "Tags"], &body);
+}
+
+fn template_tags(t: &Value) -> Vec<&str> {
+    t["tags"].as_array().into_iter().flatten().filter_map(Value::as_str).collect()
+}
+
+/// Every `--tags` value, split at its commas.
+fn tag_args(a: &Args) -> Vec<String> {
+    values(a, "tags").flat_map(parse_tags).collect()
 }
 
 /// Longest a cell other than an ID (which is never cut) is shown, in characters.
@@ -370,6 +383,7 @@ const ICON_FILTERS: [&str; 7] = ["source", "author", "category", "subcategory", 
 fn icon_filter(a: &Args, cat: &Catalog) -> Result<Option<Filter>, String> {
     let mut f = Filter { sources: source_args(a)?, ..Filter::default() };
     f.authors = values(a, "author").map(str::to_string).collect();
+    f.tags = tag_args(a);
 
     let mut cats = Vec::new();
     for c in values(a, "category") {
@@ -581,10 +595,15 @@ fn upload(a: &Args) -> Result<(), String> {
         },
         None => String::new(),
     };
+    let tags = tag_args(a);
+    check_tags(&tags).map_err(|e| format!("--tags: {e}"))?;
     let author = a.opt("credit").map(str::trim).filter(|c| !c.is_empty()).unwrap_or("anonymous");
     let clip = |s: &str, n: usize| s.trim().chars().take(n).collect::<String>();
-    if files.len() > upload::MAX_PER_DAY {
-        eprintln!("warning: {} images; the server takes {} a day from one address, so the rest will be refused", files.len(), upload::MAX_PER_DAY);
+    // Undocumented: `--key K` sends the Worker's UPLOAD_KEY secret for the higher daily limit.
+    let key = a.opt("key").map(str::trim).filter(|k| !k.is_empty());
+    let per_day = if key.is_some() { upload::MAX_PER_DAY_WITH_KEY } else { upload::MAX_PER_DAY };
+    if files.len() > per_day {
+        eprintln!("warning: {} images; the server takes {per_day} a day from one address, so the rest will be refused", files.len());
     }
     let (dry, json) = (a.flag("dry-run"), a.flag("json"));
     let url = upload::submit_url();
@@ -596,6 +615,7 @@ fn upload(a: &Args) -> Result<(), String> {
             title: title.clone(),
             description: clip(a.opt("description").unwrap_or_default(), 500),
             category: clip(&category, 60),
+            tags: tags.clone(),
             author: clip(author, 60),
             license: license.to_string(),
         };
@@ -606,9 +626,9 @@ fn upload(a: &Args) -> Result<(), String> {
             if dry {
                 return Ok((None, up.size));
             }
-            match upload::submit_asset(&url, &meta, &up) {
+            match upload::submit_asset(&url, &meta, &up, key) {
                 Ok(id) => Ok((Some(id), up.size)),
-                Err(r) if r.status == 429 || r.status == 503 => Err(format!("stopped: {}", r.message)),
+                Err(r) if r.status == 429 || r.status == 503 || r.status == 403 => Err(format!("stopped: {}", r.message)),
                 Err(r) => Err(r.message),
             }
         });
@@ -691,7 +711,13 @@ fn search(a: &Args, q: &str, templates: Option<Templates>) -> Result<(), String>
     }
     let mut temps = Vec::new();
     if let (true, Some(t)) = (want_templates, templates) {
-        temps = t(q).into_iter().skip(offset).take(limit).collect();
+        let tags: Vec<String> = tag_args(a).iter().map(|t| t.to_lowercase()).collect();
+        temps = t(q)
+            .into_iter()
+            .filter(|t| tags.is_empty() || template_tags(t).iter().any(|x| tags.contains(&x.trim().to_lowercase())))
+            .skip(offset)
+            .take(limit)
+            .collect();
         out.insert("templates".into(), json!(temps));
     }
     if a.flag("json") {

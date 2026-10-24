@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { checkSvg, checkTemplate, creditLine, parseEmail, parseMeta, parseSuggestion, pngSize } from "../src/validate.ts";
+import { checkSvg, checkTemplate, creditLine, parseEmail, parseMeta, parseSuggestion, parseTags, pngSize } from "../src/validate.ts";
 
 const png = (w: number, h: number) => {
   const b = new Uint8Array(33);
@@ -9,7 +9,7 @@ const png = (w: number, h: number) => {
   new DataView(b.buffer).setUint32(20, h);
   return b;
 };
-const meta = { title: "Pathway", description: "", category: "", author: "ann", license: "CC0-1.0" };
+const meta = { title: "Pathway", description: "", category: "", tags: ["signaling"], author: "ann", license: "CC0-1.0" };
 const img = (key: string) => ({ name: "pic", kind: { Image: { source: { Asset: { id: key, key, title: "pic", source: "x" } }, crop: [0, 0, 1, 1], overlay: [0, 0, 0, 0] } } });
 const text = (t: string) => ({ name: "Title", kind: { Text: { text: t, size: 12, color: [0, 0, 0, 255], align: "Left", bold: false } } });
 const tmpl = (items: unknown[]) => ({ meta: {}, width: 960, height: 672, background: [255, 255, 255, 255], slide: { name: "x", items } });
@@ -82,6 +82,18 @@ test("meta checks", () => {
   assert.throws(() => parseMeta({ title: "ok", license: "CC-BY-4.0" }), /credit name/);
   assert.equal(parseMeta({ title: "ok", author: "Ann", license: "CC-BY-4.0" }).author, "Ann");
   assert.throws(() => parseMeta({ title: "ok", author: "BioCartoon team", license: "CC0-1.0" }), /BioCartoon/);
+  assert.deepEqual(parseMeta({ title: "ok", license: "CC0-1.0" }).tags, []);
+  assert.throws(() => parseMeta({ title: "ok", tags: ["cell", "shit"], license: "CC0-1.0" }), /language/);
+});
+
+test("tags", () => {
+  assert.deepEqual(parseTags(undefined), []);
+  assert.deepEqual(parseTags([" T  cell ", "", "t cell", "Neuron"]), ["T cell", "Neuron"]);
+  assert.deepEqual(parseTags("cell, neuron,,"), ["cell", "neuron"]);
+  assert.throws(() => parseTags([1]), /list/);
+  assert.throws(() => parseTags({ a: 1 }), /list/);
+  assert.throws(() => parseTags(["x".repeat(41)]), /40/);
+  assert.throws(() => parseTags(Array.from({ length: 21 }, (_, i) => `t${i}`)), /20 tags/);
 });
 
 test("emails", () => {
@@ -102,6 +114,7 @@ test("template images are re-keyed and references collected", () => {
   assert.deepEqual(t.references, ["bioart/a.png"]);
   assert.deepEqual(t.images, ["img-1.png"]);
   assert.equal((t.doc.meta as any).thumb_key, "templates/path-1/thumb.png");
+  assert.deepEqual((t.doc.meta as any).tags, ["signaling"]);
   assert.ok(t.texts.includes("Step 1"));
   assert.equal(items[1].kind.Image.source.Asset.credit, '"pic" by ann, template "Pathway", CC0');
   assert.equal(items[1].kind.Image.source.Asset.license, "CC0-1.0");

@@ -50,7 +50,7 @@ function setup(row: Row, pending: string[]) {
 }
 
 const asset = (id: string, files: string[]): Row => ({
-  id, kind: "asset", title: "Cell", description: "", category: "", author: "Me", license: "CC0-1.0", files: JSON.stringify(files),
+  id, kind: "asset", title: "Cell", description: "", category: "", tags: '["cell", "membrane"]', author: "Me", license: "CC0-1.0", files: JSON.stringify(files),
   texts: "[]", width: 10, height: 10, bytes: 3, png_sha256: null, created_at: "2026-10-01T00:00:00Z", status: "pending",
   reviewed_at: null, reviewed_by: null, official: 0,
 });
@@ -101,6 +101,7 @@ test("an official approval credits BioCartoon, and undoing it clears the flag", 
   const { env, PUBLIC } = setup(row, ["cell/image.png"]);
   await approve(env, row, "me");
   assert.equal(sidecar(PUBLIC, "user/cell.json").author, "Me");
+  assert.deepEqual(sidecar(PUBLIC, "user/cell.json").tags, ["cell", "membrane"]);
   assert.equal(sidecar(PUBLIC, "user/cell.json").official, undefined);
   await undo(env, row);
   await approve(env, row, "me", true);

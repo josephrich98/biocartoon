@@ -12,8 +12,9 @@ pub const DEFAULT_SUBMIT_URL: &str = "https://api.biocartoon.com";
 pub const MAX_PNG_BYTES: usize = 8 * 1024 * 1024;
 pub const MAX_SVG_BYTES: usize = 4 * 1024 * 1024;
 pub const MAX_IMAGE_SIDE: u32 = 4096;
-/// Submissions the Worker accepts per address per rolling day.
+/// Submissions the Worker accepts per address per rolling day, and with the upload key.
 pub const MAX_PER_DAY: usize = 20;
+pub const MAX_PER_DAY_WITH_KEY: usize = 9999;
 pub const LICENSES: [&str; 2] = ["CC0-1.0", "CC-BY-4.0"];
 
 /// File extensions `upload` reads (what the `image` crate decodes here, and SVG).
@@ -25,6 +26,8 @@ pub struct Meta {
     pub title: String,
     pub description: String,
     pub category: String,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub tags: Vec<String>,
     pub author: String,
     pub license: String,
 }
@@ -122,8 +125,8 @@ pub struct Refused {
     pub message: String,
 }
 
-/// Submit one asset; returns the submission id.
-pub fn submit_asset(url: &str, meta: &Meta, file: &Prepared) -> Result<String, Refused> {
+/// Submit one asset, with the upload key if one is given; returns the submission id.
+pub fn submit_asset(url: &str, meta: &Meta, file: &Prepared, key: Option<&str>) -> Result<String, Refused> {
     let refused = |message: String| Refused { status: 0, message };
     let meta = serde_json::to_string(meta).map_err(|e| refused(e.to_string()))?;
     let boundary = format!("biocartoon-{:x}", std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0, |d| d.as_nanos()));
@@ -139,9 +142,11 @@ pub fn submit_asset(url: &str, meta: &Meta, file: &Prepared) -> Result<String, R
     body.extend_from_slice(format!("\r\n--{boundary}--\r\n").as_bytes());
 
     let agent: ureq::Agent = ureq::Agent::config_builder().timeout_global(Some(Duration::from_secs(120))).http_status_as_error(false).build().into();
-    let mut res = agent
-        .post(&format!("{}/submit", url.trim_end_matches('/')))
-        .header("Content-Type", &format!("multipart/form-data; boundary={boundary}"))
+    let mut req = agent.post(&format!("{}/submit", url.trim_end_matches('/'))).header("Content-Type", &format!("multipart/form-data; boundary={boundary}"));
+    if let Some(key) = key {
+        req = req.header("X-Upload-Key", key);
+    }
+    let mut res = req
         .send(&body[..])
         .map_err(|e| refused(format!("couldn't reach the submission server: {e}")))?;
     let status = res.status().as_u16();

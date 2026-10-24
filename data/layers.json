@@ -1,0 +1,8 @@
+{
+  "_comment": "Named colour layers per asset id: the parts of a drawing the editor recolours or fades one at a time. A layer is every shape painted in one of its colours (lowercase #rrggbb, as the SVG resolves them). Assets not listed offer their own colours instead. Applied to the master by publish_catalog.py and build_assets_db.py.",
+  "bioart/631_660913": [
+    {"name": "Liquid", "colors": ["#f49dc0"]},
+    {"name": "Glass", "colors": ["#eaeaea", "#ffffff"]},
+    {"name": "Outline and markings", "colors": ["#303030"]}
+  ]
+}

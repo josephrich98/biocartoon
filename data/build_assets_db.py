@@ -86,6 +86,7 @@ CREATE TABLE assets (
     png_local            TEXT,
     extra                TEXT,               -- JSON: source-specific fields
     uploaded_at          TEXT,               -- set by upload_r2.py
+    layers               TEXT,               -- JSON: named colour layers, from layers.json
     stars                INTEGER NOT NULL DEFAULT 0  -- app users' stars, filled in by publish_catalog.py
 );
 CREATE INDEX assets_source ON assets(source);
@@ -95,6 +96,26 @@ CREATE INDEX assets_category ON assets(category);
 """
 COLS = [c.split()[0] for c in SCHEMA.split("(", 1)[1].split(");")[0].strip().splitlines()
         if c.strip() and not c.strip().startswith("--")]
+
+
+LAYERS_FILE = DATA / "layers.json"
+
+
+def load_layers() -> dict[str, str]:
+    """`{asset id: layers JSON}` from layers.json, whose entries name the parts of a drawing the
+    editor can recolour or fade one at a time: `{"<id>": [{"name": "Liquid", "colors": ["#f49dc0"]},
+    ...]}`, each part being every shape painted in one of its colours (as the SVG resolves them)."""
+    if not LAYERS_FILE.exists():
+        return {}
+    out = {}
+    for rid, layers in json.loads(LAYERS_FILE.read_text()).items():
+        if rid.startswith("_"):  # comments
+            continue
+        for la in layers:
+            if not la.get("name") or not all(re.fullmatch(r"#[0-9a-f]{6}", c) for c in la.get("colors") or [None]):
+                raise ValueError(f"layers.json: {rid}: each layer needs a name and colours as lowercase #rrggbb")
+        out[rid] = json.dumps(layers, separators=(",", ":"))
+    return out
 
 
 def clean(s: str | None) -> str:
@@ -310,9 +331,11 @@ def main():
         if any(c[1] == "stars" for c in con.execute("PRAGMA old.table_info(assets)")):
             stars = dict(con.execute("SELECT id, stars FROM old.assets WHERE stars > 0"))
         con.execute("DETACH old")
+    layers = load_layers()
     for r in rows:
         r["uploaded_at"] = prev.get(r["id"])
         r["stars"] = stars.get(r["id"], 0)
+        r["layers"] = layers.get(r["id"])
     con.executemany(f"INSERT INTO assets ({','.join(COLS)}) VALUES ({','.join('?' * len(COLS))})",
                     ([r[c] for c in COLS] for r in rows))
     con.commit()
