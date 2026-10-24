@@ -87,6 +87,9 @@ The package is the compiled program alone, with no Python dependencies. To build
 instead, run `cd catalog && cargo build --release` (giving `target/release/biocartoon`). This
 build searches icons; its MCP server also lists the shared slide templates. The BioCartoon desktop
 editor ships a fuller `biocartoon` that adds templates to `search` and the `app` command.
+On Windows, the build also needs the Visual Studio Build Tools with the C++ workload
+(`winget install Microsoft.VisualStudio.2022.BuildTools --override "--passive --wait --add Microsoft.VisualStudio.Workload.VCTools --includeRecommended"`),
+and must run from PowerShell or cmd: Git Bash's own `link` command shadows the MSVC linker.
 
 - `biocartoon search "TERM"`: icons and templates matching TERM, best first. With no TERM it pages
   through everything.
