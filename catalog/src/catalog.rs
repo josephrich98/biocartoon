@@ -49,6 +49,11 @@ pub struct AssetRow {
     /// or fades one at a time. Empty when nobody named them; the editor then offers the drawing's
     /// own colours.
     pub layers: Vec<AssetLayer>,
+    /// Whether generative AI made it (the catalog's `generative_ai_used`): `None` when nobody
+    /// knows, as for most uploads and for catalogs published before the column.
+    pub generative_ai_used: Option<bool>,
+    /// Bytes of the file the editor places (the SVG when there is one, else the PNG); 0 if unknown.
+    pub file_bytes: u64,
 }
 
 /// A part of a drawing that can be restyled on its own (a flask's liquid, its glass, the
@@ -149,7 +154,8 @@ const USES_JOIN: &str = "LEFT JOIN usage.uses us ON us.source = a.source AND us.
 /// Stand-in for [`USES_JOIN`] when `usage.uses` doesn't exist: every asset has no uses.
 const NO_USES_JOIN: &str = "LEFT JOIN (SELECT NULL AS source, NULL AS title, NULL AS n) us ON 0";
 
-/// Pseudo-source for BioCartoon's own icons: uploads (source `user`) whose author is BioCartoon.
+/// Pseudo-source for BioCartoon's own icons: uploads (source `user`) a reviewer accepted to the
+/// BioCartoon library (their `source_name` is BioCartoon; before authors were kept, their author was).
 pub const BIOCARTOON_SOURCE: &str = "biocartoon";
 pub const BIOCARTOON_AUTHOR: &str = "BioCartoon";
 
@@ -172,9 +178,10 @@ pub fn resolve_source(s: &str) -> Option<&'static str> {
 }
 
 /// The database an asset is listed under: [`BIOCARTOON_SOURCE`] for the uploads (source `user`)
-/// whose author is [`BIOCARTOON_AUTHOR`], which a reviewer approved as BioCartoon's own; its
-/// source otherwise. As biocartoon-app's `theme::asset_source`.
-const SHOWN_SOURCE: &str = "CASE WHEN a.source = 'user' AND a.author = 'BioCartoon' THEN 'biocartoon' ELSE a.source END";
+/// a reviewer accepted to the BioCartoon library, whose `source_name` is [`BIOCARTOON_AUTHOR`]
+/// (or, accepted before authors were kept, whose author is); its source otherwise. As
+/// biocartoon-app's `theme::asset_source`.
+const SHOWN_SOURCE: &str = "CASE WHEN a.source = 'user' AND 'BioCartoon' IN (a.source_name, a.author) THEN 'biocartoon' ELSE a.source END";
 
 /// The `source` column of a database's assets (`user` for BioCartoon's own).
 fn stored_source(source: &str) -> &str {
@@ -337,6 +344,8 @@ fn row_from(r: &rusqlite::Row) -> rusqlite::Result<AssetRow> {
         taxa: crate::taxonomy::classify(&source, &category, &title, &tags),
         tags: tags_from_json(&tags),
         layers: layers_from_json(&r.get::<_, String>(18)?),
+        generative_ai_used: r.get::<_, Option<i64>>(19)?.map(|v| v != 0),
+        file_bytes: r.get::<_, Option<i64>>(20)?.unwrap_or(0).max(0) as u64,
     })
 }
 
@@ -360,6 +369,10 @@ pub struct Worker {
     svg_key: &'static str,
     /// `a.layers`, or NULL in catalogs without the column.
     layers: &'static str,
+    /// `a.generative_ai_used`, or NULL in catalogs without the column.
+    ai: &'static str,
+    /// The placed file's size: `a.svg_bytes` or `a.png_bytes`, or NULL in catalogs without them.
+    file_bytes: &'static str,
     /// `usage.stars` exists (it can't be created on a read-only connection to an old usage file).
     local_stars: bool,
     /// `usage.uses` exists (it can't be created on a read-only connection with no usage file,
@@ -496,8 +509,20 @@ impl Worker {
         };
         let style_key = if has_col("source_id") { STYLE_KEY } else { STYLE_KEY_NO_SOURCE_ID };
         let svg_key = if has_col("svg_key") { "a.svg_key" } else { "NULL" };
-        let layers = if has_col("layers") { "a.layers" } else { "NULL" };
-        Ok(Self { conn, fts, vocab: Default::default(), stars_col, group_key, dup, style_key, svg_key, layers, local_stars, local_uses, taxa: Default::default() })
+        // Added like generative_ai_used, so the layers the user names on their own uploads are kept.
+        let layers = if has_col("layers") || conn.execute_batch("ALTER TABLE assets ADD COLUMN layers TEXT;").is_ok() { "a.layers" } else { "NULL" };
+        // Catalogs published before the column: added like stars, so the user's own uploads keep theirs.
+        let ai = if has_col("generative_ai_used") || conn.execute_batch("ALTER TABLE assets ADD COLUMN generative_ai_used INTEGER;").is_ok() {
+            "a.generative_ai_used"
+        } else {
+            "NULL"
+        };
+        let file_bytes = match (has_col("svg_key") && has_col("svg_bytes"), has_col("png_bytes")) {
+            (true, true) => "CASE WHEN a.svg_key IS NOT NULL THEN a.svg_bytes ELSE a.png_bytes END",
+            (false, true) => "a.png_bytes",
+            _ => "NULL",
+        };
+        Ok(Self { conn, fts, vocab: Default::default(), stars_col, group_key, dup, style_key, svg_key, layers, ai, file_bytes, local_stars, local_uses, taxa: Default::default() })
     }
 
     /// The star columns of a `SELECT ... FROM assets a {stars_join}`: the count (the local
@@ -527,7 +552,14 @@ impl Worker {
 
     /// Every column of an [`AssetRow`] (see `row_from`).
     fn cols(&self) -> String {
-        format!("{COLS}, {}, {}, coalesce(a.tags,''), coalesce(a.description,''), coalesce({},'')", self.stars_cols(), self.svg_key, self.layers)
+        format!(
+            "{COLS}, {}, {}, coalesce(a.tags,''), coalesce(a.description,''), coalesce({},''), {}, {}",
+            self.stars_cols(),
+            self.svg_key,
+            self.layers,
+            self.ai,
+            self.file_bytes
+        )
     }
 
     /// The words of a query as the index splits them (lowercase, alphanumeric runs).
@@ -1158,8 +1190,8 @@ impl Worker {
         let mut groups: std::collections::HashMap<String, Vec<AssetRow>> = Default::default();
         let mut rows = st.query(args.as_slice())?;
         while let Some(r) = rows.next()? {
-            // `{gk}` comes after the 19 columns of `row_from`.
-            groups.entry(r.get(19)?).or_default().push(row_from(r)?);
+            // `{gk}` comes after the 21 columns of `row_from`.
+            groups.entry(r.get(21)?).or_default().push(row_from(r)?);
         }
         for (key, group) in groups {
             if group.len() > 1 {
@@ -1218,6 +1250,12 @@ impl Worker {
                 serde_json::to_string(&row.tags).unwrap_or_else(|_| "[]".into()),
             ],
         )?;
+        if self.ai != "NULL" {
+            self.conn.execute("UPDATE assets SET generative_ai_used = ?1 WHERE id = ?2", params![row.generative_ai_used, row.id])?;
+        }
+        if self.layers != "NULL" && !row.layers.is_empty() {
+            self.conn.execute("UPDATE assets SET layers = ?1 WHERE id = ?2", params![serde_json::to_string(&row.layers).unwrap_or_default(), row.id])?;
+        }
         if self.fts {
             // External-content FTS tables must be told about new rows explicitly.
             let _ = self.conn.execute(
@@ -1500,13 +1538,32 @@ mod tests {
     }
 
     #[test]
+    fn generative_ai_and_file_size_are_read() {
+        let dir = std::env::temp_dir().join(format!("cc-catalog-genai-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let w = worker(&dir);
+        // A catalog from before the column gets it (empty) when it can be written.
+        let r = &w.variants("k0").unwrap()[0];
+        assert_eq!((r.generative_ai_used, r.file_bytes), (None, 0));
+        w.conn.execute_batch("ALTER TABLE assets ADD COLUMN png_bytes INTEGER; UPDATE assets SET generative_ai_used = 0, png_bytes = 1234 WHERE id = 'k0'; UPDATE assets SET generative_ai_used = 1 WHERE id = 'k1';").unwrap();
+        drop(w);
+        let w = Worker::open(&dir.join("assets.sqlite"), &dir.join("usage.sqlite")).unwrap();
+        let r = &w.variants("k0").unwrap()[0];
+        assert_eq!((r.generative_ai_used, r.file_bytes), (Some(false), 1234));
+        assert_eq!(w.variants("k1").unwrap()[0].generative_ai_used, Some(true));
+        assert_eq!(w.variants("k2").unwrap()[0].generative_ai_used, None);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
     fn layers_are_read_when_the_catalog_has_them() {
         let dir = std::env::temp_dir().join(format!("cc-catalog-layers-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(&dir).unwrap();
         let w = worker(&dir);
+        // Opening a catalog without the column adds it, so uploads can keep the layers named on them.
         assert!(w.variants("k0").unwrap()[0].layers.is_empty());
-        w.conn.execute_batch("ALTER TABLE assets ADD COLUMN layers TEXT").unwrap();
         w.conn.execute("UPDATE assets SET layers = ?1 WHERE id = 'k0'", params![r##"[{"name": "Liquid", "colors": ["#f49dc0"]}]"##]).unwrap();
         w.conn.execute("UPDATE assets SET layers = 'not json' WHERE id = 'k1'", []).unwrap();
         drop(w);
@@ -1750,10 +1807,13 @@ mod tests {
             stars: 0,
             starred: false,
             taxa: Vec::new(),
-            layers: Vec::new(),
+            layers: vec![AssetLayer { name: "Glass".into(), colors: vec!["#303030".into()] }],
+            generative_ai_used: None,
+            file_bytes: 0,
         };
         w.insert_user(&row).unwrap();
         row.id = "user/painted".into();
+        row.layers = Vec::new();
         row.title = "painted".into();
         row.svg_key = None;
         w.insert_user(&row).unwrap();
@@ -1762,6 +1822,9 @@ mod tests {
         assert_eq!(svgs, vec![("drawn", Some("/data/user_generated/drawn.svg")), ("painted", None)]);
         assert_eq!(rows[0].description, "one I drew");
         assert_eq!(rows[0].tags, ["Sketch"]);
+        // The layers the contributor named, though the catalog had no layers column.
+        assert_eq!(rows[0].layers, vec![AssetLayer { name: "Glass".into(), colors: vec!["#303030".into()] }]);
+        assert!(rows[1].layers.is_empty());
         assert_eq!(w.search_filtered("", &Filter { tags: vec!["sketch".into()], ..Filter::default() }, 0, 10, IconSort::Alphabetical).unwrap().len(), 2);
         let _ = std::fs::remove_dir_all(&dir);
     }
@@ -1890,24 +1953,25 @@ mod tests {
              png_local TEXT, png_width INTEGER, png_height INTEGER, extra TEXT);",
         )
         .unwrap();
-        for (id, source, author) in [("user/logo", "user", "BioCartoon"), ("user/cell", "user", "Ann"), ("bioicons/x", "bioicons", "")] {
+        let rows = [("user/logo", "user", "User-generated", "BioCartoon"), ("user/cell", "user", "User-generated", "Ann"), ("user/flask", "user", "BioCartoon", "Bo"), ("bioicons/x", "bioicons", "User-generated", "")];
+        for (id, source, name, author) in rows {
             c.execute(
-                "INSERT INTO assets VALUES (?1, ?2, 'User-generated', ?1, '', '', 'Lab', '[]', 'CC0-1.0', '', ?3, ?1, NULL, 1, 1, '{}')",
-                params![id, source, author],
+                "INSERT INTO assets VALUES (?1, ?2, ?3, ?1, '', '', 'Lab', '[]', 'CC0-1.0', '', ?4, ?1, NULL, 1, 1, '{}')",
+                params![id, source, name, author],
             )
             .unwrap();
         }
         drop(c);
         let w = Worker::open(&db, &dir.join("usage.sqlite")).unwrap();
         let ids = |rows: Vec<AssetRow>| rows.into_iter().map(|r| r.id).collect::<Vec<_>>();
-        assert_eq!(ids(w.browse(BIOCARTOON_SOURCE, None, 0, 10, IconSort::Alphabetical).unwrap()), ["user/logo"]);
+        assert_eq!(ids(w.browse(BIOCARTOON_SOURCE, None, 0, 10, IconSort::Alphabetical).unwrap()), ["user/flask", "user/logo"]);
         assert_eq!(ids(w.browse("user", None, 0, 10, IconSort::Alphabetical).unwrap()), ["user/cell"]);
-        assert_eq!((w.browse_total(BIOCARTOON_SOURCE, None).unwrap(), w.browse_total("user", Some("Lab")).unwrap()), (1, 1));
-        assert_eq!(w.categories(BIOCARTOON_SOURCE).unwrap().iter().map(|c| c.count).sum::<i64>(), 1);
+        assert_eq!((w.browse_total(BIOCARTOON_SOURCE, None).unwrap(), w.browse_total("user", Some("Lab")).unwrap()), (2, 1));
+        assert_eq!(w.categories(BIOCARTOON_SOURCE).unwrap().iter().map(|c| c.count).sum::<i64>(), 2);
         assert_eq!(ids(w.search("", &["user".into()], 10, IconSort::Alphabetical).unwrap()), ["user/cell"]);
-        assert_eq!(ids(w.search("", &[BIOCARTOON_SOURCE.into(), "bioicons".into()], 10, IconSort::Alphabetical).unwrap()), ["bioicons/x", "user/logo"]);
+        assert_eq!(ids(w.search("", &[BIOCARTOON_SOURCE.into(), "bioicons".into()], 10, IconSort::Alphabetical).unwrap()), ["bioicons/x", "user/flask", "user/logo"]);
         let srcs: Vec<(String, String, i64)> = w.sources().unwrap().into_iter().map(|s| (s.source, s.name, s.icons)).collect();
-        assert_eq!(srcs, [("biocartoon".into(), "BioCartoon".into(), 1), ("user".into(), "User-generated".into(), 1), ("bioicons".into(), "User-generated".into(), 1)]);
+        assert_eq!(srcs, [("biocartoon".into(), "BioCartoon".into(), 2), ("user".into(), "User-generated".into(), 1), ("bioicons".into(), "User-generated".into(), 1)]);
         let _ = std::fs::remove_dir_all(&dir);
     }
 

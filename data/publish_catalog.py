@@ -47,7 +47,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 import readme_stats
-from build_assets_db import load_layers
+from build_assets_db import generative_ai, load_generative_ai, load_layers
 from config import PUBLISH_UA, R2_BUCKET, SUBMIT_URL
 
 DATA = Path(__file__).resolve().parent
@@ -67,10 +67,12 @@ CREATE TABLE IF NOT EXISTS templates (
     id TEXT PRIMARY KEY, title TEXT NOT NULL, description TEXT, category TEXT, author TEXT,
     license TEXT, created_at TEXT, json_key TEXT NOT NULL, thumb_key TEXT,
     json_local TEXT, thumb_local TEXT,
-    tags TEXT NOT NULL DEFAULT '[]');  -- JSON array of strings
+    tags TEXT NOT NULL DEFAULT '[]',  -- JSON array of strings
+    generative_ai_used INTEGER,       -- 1 / 0 / NULL (not known), as the uploader said
+    official INTEGER NOT NULL DEFAULT 0);  -- 1: listed under BioCartoon (accepted to its official library)
 """
 TEMPLATE_COLS = ["id", "title", "description", "category", "author", "license", "created_at", "json_key",
-                 "thumb_key", "json_local", "thumb_local", "tags"]
+                 "thumb_key", "json_local", "thumb_local", "tags", "generative_ai_used", "official"]
 NOT_PUBLISHED = ("sync_state", "sync_held", "sync_meta", "templates")
 # assets columns kept in the master but left out of the catalog. The hashes are ~40% of the gzipped
 # catalog and nothing in the app reads them; delete a name here to publish that column again.
@@ -123,9 +125,15 @@ def update_master(con: sqlite3.Connection, user_rows: list[dict] | None, tmpl_ro
         con.execute("ALTER TABLE assets ADD COLUMN stars INTEGER NOT NULL DEFAULT 0")
     if not any(c[1] == "layers" for c in con.execute("PRAGMA table_info(assets)")):
         con.execute("ALTER TABLE assets ADD COLUMN layers TEXT")
+    if not any(c[1] == "generative_ai_used" for c in con.execute("PRAGMA table_info(assets)")):
+        con.execute("ALTER TABLE assets ADD COLUMN generative_ai_used INTEGER")
     con.executescript(TEMPLATES_SQL)
     if not any(c[1] == "tags" for c in con.execute("PRAGMA table_info(templates)")):
         con.execute("ALTER TABLE templates ADD COLUMN tags TEXT NOT NULL DEFAULT '[]'")
+    if not any(c[1] == "generative_ai_used" for c in con.execute("PRAGMA table_info(templates)")):
+        con.execute("ALTER TABLE templates ADD COLUMN generative_ai_used INTEGER")
+    if not any(c[1] == "official" for c in con.execute("PRAGMA table_info(templates)")):
+        con.execute("ALTER TABLE templates ADD COLUMN official INTEGER NOT NULL DEFAULT 0")
     with con:
         if user_rows is not None:
             keep = [r["id"] for r in user_rows]
@@ -143,10 +151,16 @@ def update_master(con: sqlite3.Connection, user_rows: list[dict] | None, tmpl_ro
         if stars is not None:
             con.execute("UPDATE assets SET stars = 0 WHERE stars != 0")
             con.executemany("UPDATE assets SET stars = ? WHERE id = ?", [(n, i) for i, n in stars.items()])
-        # layers.json is the record, so naming a layer needs no rebuild of the master.
+        # layers.json is the record, so naming a layer needs no rebuild of the master; an upload's
+        # own sidecar names its layers (uploads.py), unless layers.json names them too.
         layers = load_layers()
-        con.execute("UPDATE assets SET layers = NULL WHERE layers IS NOT NULL")
+        con.execute("UPDATE assets SET layers = NULL WHERE layers IS NOT NULL AND source != 'user'")
         con.executemany("UPDATE assets SET layers = ? WHERE id = ?", [(v, i) for i, v in layers.items()])
+        # So is generative_ai.json, for everything but the uploads (whose sidecars say).
+        genai = load_generative_ai()
+        con.executemany("UPDATE assets SET generative_ai_used = ? WHERE id = ?",
+                        [(generative_ai({"id": i, "source": s}, genai), i)
+                         for i, s in con.execute("SELECT id, source FROM assets WHERE source != 'user'").fetchall()])
 
 
 def build_templates(src: Path, out_dir: Path, with_uploads: bool) -> tuple[Path, str, int]:

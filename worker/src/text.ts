@@ -44,8 +44,8 @@ export function profanity(text: string): string | null {
   return null;
 }
 
-/** The author of BioCartoon's own assets (catalog crate: BIOCARTOON_AUTHOR). Only a reviewer can
- *  give it, by approving a submission as official (src/publish.ts). */
+/** The author of BioCartoon's own assets (catalog crate: BIOCARTOON_AUTHOR), which no contributor
+ *  can take as a credit name. Uploads accepted to the official library keep their own author. */
 export const BIOCARTOON_AUTHOR = "BioCartoon";
 
 // Characters that pass for a letter of "biocartoon": digits and symbols, and Cyrillic/Greek lookalikes.

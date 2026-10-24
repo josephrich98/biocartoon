@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { checkSvg, checkTemplate, creditLine, parseEmail, parseMeta, parseSuggestion, parseTags, pngSize } from "../src/validate.ts";
+import { checkSvg, checkTemplate, creditLine, parseEmail, parseLayers, parseMeta, parseRemoval, parseSuggestion, parseTags, pngSize } from "../src/validate.ts";
 
 const png = (w: number, h: number) => {
   const b = new Uint8Array(33);
@@ -84,6 +84,21 @@ test("meta checks", () => {
   assert.throws(() => parseMeta({ title: "ok", author: "BioCartoon team", license: "CC0-1.0" }), /BioCartoon/);
   assert.deepEqual(parseMeta({ title: "ok", license: "CC0-1.0" }).tags, []);
   assert.throws(() => parseMeta({ title: "ok", tags: ["cell", "shit"], license: "CC0-1.0" }), /language/);
+  assert.deepEqual(parseMeta({ title: "ok", license: "CC0-1.0" }).layers, []);
+  assert.deepEqual(parseMeta({ title: "ok", license: "CC0-1.0", layers: [{ name: " Liquid ", colors: ["#F49DC0"] }] }).layers, [{ name: "Liquid", colors: ["#f49dc0"] }]);
+  assert.throws(() => parseMeta({ title: "ok", license: "CC0-1.0", layers: [{ name: "shit", colors: ["#000000"] }] }), /language/);
+});
+
+test("generative AI", () => {
+  assert.equal(parseMeta({ title: "ok", license: "CC0-1.0" }).generative_ai_used, null);
+  assert.equal(parseMeta({ title: "ok", license: "CC0-1.0", generative_ai_used: true }).generative_ai_used, true);
+  assert.equal(parseMeta({ title: "ok", license: "CC0-1.0", generative_ai_used: "no" }).generative_ai_used, null);
+  assert.equal(parseMeta({ title: "ok", author: "Ann", license: "CC-BY-4.0", generative_ai_used: false }).generative_ai_used, false);
+  for (const v of [true, null]) {
+    assert.throws(() => parseMeta({ title: "ok", author: "Ann", license: "CC-BY-4.0", generative_ai_used: v }), /generative AI/);
+  }
+  // Apps from before the question.
+  assert.equal(parseMeta({ title: "ok", author: "Ann", license: "CC-BY-4.0" }).generative_ai_used, null);
 });
 
 test("tags", () => {
@@ -140,4 +155,24 @@ test("suggestions are checked", () => {
   assert.throws(() => parseSuggestion({ kind: "asset", title: "x" }), /kind/);
   assert.throws(() => parseSuggestion({ kind: "template", title: "" }), /Title/);
   assert.throws(() => parseSuggestion({ kind: "icon", title: "shit cell" }), /language/);
+});
+
+test("removal requests are checked", () => {
+  assert.deepEqual(parseRemoval({ asset_id: "user/t-cell-1a2b", title: "T cell", reason: " I drew it ", email: " ann@lab.org " }), {
+    asset_id: "user/t-cell-1a2b", title: "T cell", reason: "I drew it", name: "", email: "ann@lab.org",
+  });
+  assert.throws(() => parseRemoval({ asset_id: "user/x", reason: "" }), /Reason/);
+  assert.throws(() => parseRemoval({ asset_id: "", reason: "mine" }), /Icon id/);
+  assert.throws(() => parseRemoval({ asset_id: "user/<x>", reason: "mine" }), /Icon id/);
+  assert.throws(() => parseRemoval({ asset_id: "user/x", reason: "mine", email: "ann" }), /email/);
+});
+
+test("layers", () => {
+  assert.deepEqual(parseLayers(undefined), []);
+  assert.throws(() => parseLayers("Liquid"), /list/);
+  assert.throws(() => parseLayers([{ name: "", colors: ["#000000"] }]), /required/);
+  assert.throws(() => parseLayers([{ name: "Glass", colors: [] }]), /colours/);
+  assert.throws(() => parseLayers([{ name: "Glass", colors: ["red"] }]), /colours/);
+  assert.throws(() => parseLayers([{ name: "Glass", colors: ["#000000;background:url(x)"] }]), /colours/);
+  assert.throws(() => parseLayers(Array.from({ length: 9 }, (_, i) => ({ name: `L${i}`, colors: ["#000000"] }))), /At most 8/);
 });

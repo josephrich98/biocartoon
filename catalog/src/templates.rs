@@ -24,6 +24,8 @@ pub struct PublishedTemplate {
     pub author: String,
     pub license: String,
     pub created_at: String,
+    /// Whether generative AI made it; `None` when the uploader didn't say.
+    pub generative_ai_used: Option<bool>,
     /// The template's slide JSON (the editor's `TemplateFile`).
     pub json_url: String,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -73,11 +75,13 @@ pub fn search(path: &Path, query: &str) -> Result<Vec<PublishedTemplate>, String
     let url = |key: &str| format!("{}/{}", base.trim_end_matches('/'), key);
     // Lists published before templates had tags have no `tags` column.
     let has_tags = conn.prepare("SELECT tags FROM templates LIMIT 0").is_ok();
+    let has_ai = conn.prepare("SELECT generative_ai_used FROM templates LIMIT 0").is_ok();
     let mut st = conn
         .prepare(&format!(
             "SELECT id, title, coalesce(description,''), coalesce(category,''), coalesce(author,''), coalesce(license,''), \
-             coalesce(created_at,''), json_key, coalesce(thumb_key,''), {} FROM templates ORDER BY created_at DESC, title",
-            if has_tags { "coalesce(tags,'[]')" } else { "'[]'" }
+             coalesce(created_at,''), json_key, coalesce(thumb_key,''), {}, {} FROM templates ORDER BY created_at DESC, title",
+            if has_tags { "coalesce(tags,'[]')" } else { "'[]'" },
+            if has_ai { "generative_ai_used" } else { "NULL" }
         ))
         .map_err(|e| e.to_string())?;
     let rows = st
@@ -92,6 +96,7 @@ pub fn search(path: &Path, query: &str) -> Result<Vec<PublishedTemplate>, String
                 author: r.get(4)?,
                 license: r.get(5)?,
                 created_at: r.get(6)?,
+                generative_ai_used: r.get::<_, Option<i64>>(10)?.map(|v| v != 0),
                 json_url: url(&r.get::<_, String>(7)?),
                 thumb_url: (!thumb.is_empty()).then(|| url(&thumb)),
             })

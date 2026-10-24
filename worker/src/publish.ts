@@ -8,8 +8,8 @@
 
 import type { Env } from "./env.ts";
 import { sha256Hex } from "./http.ts";
-import { BIOCARTOON_AUTHOR, Rejected } from "./text.ts";
-import { creditLine } from "./validate.ts";
+import { Rejected } from "./text.ts";
+import { type Layer, creditLine, parseLayers } from "./validate.ts";
 
 /** How long a rejected submission's files are kept, so the rejection can be undone. */
 export const REJECTED_KEEP_DAYS = 30;
@@ -22,8 +22,12 @@ export interface Row {
   category: string;
   /** JSON array of strings. */
   tags: string;
+  /** JSON array of `{name, colors}` (an SVG asset's named colour layers). */
+  layers: string;
   author: string;
   license: string;
+  /** 1 / 0 / null (not said, or submitted before the question). */
+  generative_ai_used: number | null;
   /** Optional contact address for reviewers; never published. */
   email: string;
   files: string;
@@ -34,7 +38,9 @@ export interface Row {
   png_sha256: string | null;
   created_at: string;
   status: string;
-  /** 1 when approved as BioCartoon's own (credited to BioCartoon, whatever name it was sent under). */
+  /** 1 when the contributor asked for it to go in the official BioCartoon library. */
+  official_requested: number;
+  /** 1 when a reviewer accepted it to the official BioCartoon library (its author unchanged). */
   official: number;
   reviewed_at: string | null;
   reviewed_by: string | null;
@@ -54,11 +60,11 @@ async function copy(env: Env, from: string, to: string, contentType: string, edi
   return body;
 }
 
-/** Publishes a submission. `official` publishes it as BioCartoon's own: credited to BioCartoon, so
- *  the app lists it under the BioCartoon database rather than the user-generated one. */
+/** Publishes a submission. `official` lists it under the official BioCartoon library rather than
+ *  the user-generated one (data/uploads.py reads the flag from an asset's sidecar, or a template's
+ *  template.json); it stays credited to its contributor. */
 export async function approve(env: Env, row: Row, reviewer: string, official = false): Promise<void> {
   const files: string[] = JSON.parse(row.files);
-  const author = official ? BIOCARTOON_AUTHOR : row.author;
   if (row.kind === "asset") {
     const key = `user/${row.id}.png`;
     let image;
@@ -71,25 +77,26 @@ export async function approve(env: Env, row: Row, reviewer: string, official = f
       const bytes = (await copy(env, `${row.id}/image.png`, key, "image/png")).byteLength;
       image = { png_width: row.width, png_height: row.height, png_bytes: bytes, png_sha256: row.png_sha256 };
     }
-    const credit = official ? creditLine(row.title, "", row.license, BIOCARTOON_AUTHOR) : creditLine(row.title, row.author, row.license);
+    const credit = creditLine(row.title, row.author, row.license);
     const sidecar = {
       id: `user/${row.id}`, title: row.title, description: row.description, category: row.category, tags: rowTags(row), license: row.license,
-      credit, author, png_key: key, ...image, created_at: row.created_at, ...(official && { official: true }),
+      credit, author: row.author, png_key: key, ...image, created_at: row.created_at, ...(official && { official: true }),
+      generative_ai_used: row.generative_ai_used == null ? null : row.generative_ai_used === 1,
+      ...(image.svg_key && rowLayers(row).length && { layers: rowLayers(row) }),
     };
     await env.PUBLIC.put(`user/${row.id}.json`, JSON.stringify(sidecar), { httpMetadata: { contentType: "application/json" } });
   } else {
     // template.json last: publishing only looks for it, so it never sees a partial template.
     const ordered = [...files.filter((f) => !f.endsWith("template.json")), ...files.filter((f) => f.endsWith("template.json"))];
-    // An official template's credit is in its template.json (data/uploads.py reads meta.author).
-    const credit = (b: ArrayBuffer) => {
+    const markOfficial = (b: ArrayBuffer) => {
       const t = JSON.parse(new TextDecoder().decode(b));
-      t.meta = { ...t.meta, author };
+      t.meta = { ...t.meta, official: true };
       return new TextEncoder().encode(JSON.stringify(t)).buffer as ArrayBuffer;
     };
     for (const f of ordered) {
       const name = f.slice(row.id.length + 1);
       const json = name.endsWith(".json");
-      await copy(env, f, `templates/${row.id}/${name}`, json ? "application/json" : "image/png", json && official ? credit : undefined);
+      await copy(env, f, `templates/${row.id}/${name}`, json ? "application/json" : "image/png", json && official ? markOfficial : undefined);
     }
   }
   await env.PENDING.delete(files);
@@ -101,6 +108,15 @@ export function rowTags(row: Pick<Row, "tags">): string[] {
   try {
     const t: unknown = JSON.parse(row.tags ?? "[]");
     return Array.isArray(t) ? t.filter((x): x is string => typeof x === "string") : [];
+  } catch {
+    return [];
+  }
+}
+
+/** A row's layers (rows from before layers were kept, or malformed ones, have none). */
+export function rowLayers(row: Pick<Row, "layers">): Layer[] {
+  try {
+    return parseLayers(JSON.parse(row.layers ?? "[]"));
   } catch {
     return [];
   }

@@ -216,6 +216,7 @@ def sync_source(con, source: str, a, s3, rep: Report, taken: set[str]):
     approved = [json.loads(item) for reason, item in held.values() if reason == "approved"]
     prev = (con.execute("SELECT signal FROM sync_state WHERE source = ?", (source,)).fetchone() or (None,))[0]
     allowed = {lic for (lic,) in con.execute("SELECT DISTINCT license FROM assets WHERE source = ?", (source,))}
+    genai = B.load_generative_ai()
 
     work = Path(tempfile.mkdtemp(prefix=f"sync-{source}-", dir=a.work))
     try:
@@ -283,7 +284,9 @@ def sync_source(con, source: str, a, s3, rep: Report, taken: set[str]):
                 taken.discard(row["id"])
                 complete = False
                 continue
-            row.update(uploaded_at=now(), svg_local=None, png_local=None, stars=0)
+            # layers.json is applied by publish_catalog.py; generative_ai.json is applied there too.
+            row.update(uploaded_at=now(), svg_local=None, png_local=None, stars=0, layers=None,
+                       generative_ai_used=B.generative_ai(row, genai))
             rows.append(row)
 
         with con:

@@ -6,6 +6,7 @@
 //     kind=asset     meta=<JSON>  image=<PNG> | svg=<SVG> (publishing renders an SVG's PNG; one sent along is ignored)
 //     kind=template  meta=<JSON>  template=<JSON>  thumb=<PNG>  img-1.png=<PNG> ...
 //   POST /suggest  application/json {kind: "icon" | "template" | "other", title, description?, name?, email?}
+//   POST /removal  application/json {asset_id, title?, reason, name?, email?}: ask to take an icon out of the library
 //   GET  /status?ids=<id>,<id>   -> {"<id>": "pending" | "approved" | "rejected"}
 //   POST /star, GET /stars, GET /stars/all: star counts on catalog assets (src/stars.ts)
 //   /auth/*, /me, /cloud/projects/*: optional accounts that keep projects online (src/accounts.ts)
@@ -14,11 +15,12 @@ import * as accounts from "./accounts.ts";
 import type { Env } from "./env.ts";
 import { guarded, json, sha256Hex } from "./http.ts";
 import {
-  MAX_OPEN_SUGGESTIONS, MAX_PENDING, MAX_PER_IP_PER_DAY, MAX_PER_IP_PER_DAY_WITH_KEY, MAX_REQUEST_BYTES, MAX_SUGGESTIONS_PER_IP_PER_DAY, MAX_TEMPLATE_JSON_BYTES,
+  MAX_OPEN_REMOVALS, MAX_OPEN_SUGGESTIONS, MAX_PENDING, MAX_PER_IP_PER_DAY, MAX_PER_IP_PER_DAY_WITH_KEY, MAX_REMOVALS_PER_IP_PER_DAY, MAX_REQUEST_BYTES,
+  MAX_SUGGESTIONS_PER_IP_PER_DAY, MAX_TEMPLATE_JSON_BYTES,
 } from "./limits.ts";
 import * as stars from "./stars.ts";
 import { Rejected, newId } from "./text.ts";
-import { checkSvg, checkTemplate, parseEmail, parseMeta, parseSuggestion, pngSize } from "./validate.ts";
+import { type Layer, checkSvg, checkTemplate, parseEmail, parseMeta, parseRemoval, parseSuggestion, pngSize } from "./validate.ts";
 
 const ID = /^[a-z0-9][a-z0-9-]{0,100}$/;
 
@@ -27,6 +29,7 @@ export default {
     const url = new URL(req.url);
     if (url.pathname === "/submit" && req.method === "POST") return guarded(() => submit(req, env));
     if (url.pathname === "/suggest" && req.method === "POST") return guarded(() => suggest(req, env));
+    if (url.pathname === "/removal" && req.method === "POST") return guarded(() => removal(req, env));
     if (url.pathname === "/status" && req.method === "GET") return guarded(() => status(url, env));
     if (url.pathname === "/star" || url.pathname === "/stars" || url.pathname === "/stars/all") {
       if (req.method === "OPTIONS") return stars.preflight();
@@ -107,6 +110,8 @@ async function submit(req: Request, env: Env): Promise<Response> {
   const meta = parseMeta(metaRaw);
   // Kept apart from meta, which is published: the address is only for the reviewers.
   const email = parseEmail((metaRaw as Record<string, unknown> | null)?.email);
+  // Kept apart from meta too: only a reviewer can make it official (src/publish.ts).
+  const officialRequested = (metaRaw as Record<string, unknown> | null)?.official === true;
   const id = newId(meta.title);
   const createdAt = now.toISOString().replace(/\.\d+Z$/, "Z");
   const puts: [string, Uint8Array, string][] = [];
@@ -114,12 +119,15 @@ async function submit(req: Request, env: Env): Promise<Response> {
   let height: number | null = null;
   let pngSha: string | null = null;
   let texts: string[] = [];
+  // Layers are colours of an SVG: a PNG or a template has none.
+  let layers: Layer[] = [];
 
   if (kind === "asset") {
     const svg = await fileBytes(form, "svg");
     const png = svg ? null : await fileBytes(form, "image");
     if (svg) {
       checkSvg(svg);
+      layers = meta.layers;
       puts.push([`${id}/image.svg`, svg, "image/svg+xml"]);
     } else if (png) {
       ({ width, height } = pngSize(png));
@@ -164,11 +172,12 @@ async function submit(req: Request, env: Env): Promise<Response> {
   for (const [key, body, contentType] of puts) await env.PENDING.put(key, body, { httpMetadata: { contentType } });
   try {
     await env.DB.prepare(
-      "INSERT INTO submissions (id, kind, title, description, category, author, license, files, texts, width, height, bytes, png_sha256, ip_hash, created_at, email, tags) \
-       VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17)",
+      "INSERT INTO submissions (id, kind, title, description, category, author, license, files, texts, width, height, bytes, png_sha256, ip_hash, created_at, email, tags, generative_ai_used, official_requested, layers) \
+       VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20)",
     )
       .bind(id, kind, meta.title, meta.description, meta.category, meta.author, meta.license, JSON.stringify(puts.map((p) => p[0])),
-        JSON.stringify(texts.slice(0, 200)), width, height, puts.reduce((n, p) => n + p[1].length, 0), pngSha, ipHash, createdAt, email, JSON.stringify(meta.tags))
+        JSON.stringify(texts.slice(0, 200)), width, height, puts.reduce((n, p) => n + p[1].length, 0), pngSha, ipHash, createdAt, email, JSON.stringify(meta.tags),
+        meta.generative_ai_used === null ? null : Number(meta.generative_ai_used), Number(officialRequested), JSON.stringify(layers))
       .run();
   } catch (e) {
     await env.PENDING.delete(puts.map((p) => p[0]));
@@ -202,6 +211,35 @@ async function suggest(req: Request, env: Env): Promise<Response> {
   const id = newId(s.title);
   await env.DB.prepare("INSERT INTO suggestions (id, kind, title, description, name, email, ip_hash, created_at) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)")
     .bind(id, s.kind, s.title, s.description, s.name, s.email, ipHash, now.toISOString().replace(/\.\d+Z$/, "Z"))
+    .run();
+  return json({ id, status: "open" }, 201);
+}
+
+async function removal(req: Request, env: Env): Promise<Response> {
+  const length = Number(req.headers.get("content-length"));
+  if (!length) throw new Rejected("Content-Length is required", 411);
+  if (length > 16 * 1024) throw new Rejected("Request is too large", 413);
+  const ipHash = (await sha256Hex(`${env.IP_SALT ?? "biocartoon"}:${req.headers.get("cf-connecting-ip") ?? "?"}`)).slice(0, 32);
+  const now = new Date();
+  const dayAgo = new Date(now.getTime() - 86_400_000).toISOString();
+  const counts = await env.DB.prepare(
+    "SELECT (SELECT count(*) FROM removal_requests WHERE ip_hash = ?1 AND created_at > ?2) AS mine, \
+            (SELECT count(*) FROM removal_requests WHERE status = 'open') AS open",
+  )
+    .bind(ipHash, dayAgo)
+    .first<{ mine: number; open: number }>();
+  if ((counts?.mine ?? 0) >= MAX_REMOVALS_PER_IP_PER_DAY) throw new Rejected(`Limit reached: ${MAX_REMOVALS_PER_IP_PER_DAY} removal requests a day. Please try again tomorrow.`, 429);
+  if ((counts?.open ?? 0) >= MAX_OPEN_REMOVALS) throw new Rejected("Too many removal requests are waiting. Please try again in a few days.", 503);
+  let raw: unknown;
+  try {
+    raw = await req.json();
+  } catch {
+    throw new Rejected("Body must be JSON", 400);
+  }
+  const r = parseRemoval(raw);
+  const id = newId(r.title || r.asset_id.split("/").pop() || "removal");
+  await env.DB.prepare("INSERT INTO removal_requests (id, asset_id, title, reason, name, email, ip_hash, created_at) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)")
+    .bind(id, r.asset_id, r.title, r.reason, r.name, r.email, ipHash, now.toISOString().replace(/\.\d+Z$/, "Z"))
     .run();
   return json({ id, status: "open" }, 201);
 }

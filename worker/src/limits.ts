@@ -9,6 +9,10 @@ export const MAX_TEMPLATE_IMAGES = 24;
 /** Tags on one submission, and characters in one tag. */
 export const MAX_TAGS = 20;
 export const MAX_TAG_CHARS = 40;
+/** Named colour layers on one SVG asset, characters in a layer's name, and colours in one layer. */
+export const MAX_LAYERS = 8;
+export const MAX_LAYER_NAME_CHARS = 40;
+export const MAX_LAYER_COLORS = 16;
 /** Whole request (a template with its images). */
 export const MAX_REQUEST_BYTES = 16 * 1024 * 1024;
 /** Submissions per IP address per rolling day. */
@@ -17,6 +21,10 @@ export const MAX_PER_IP_PER_DAY = 20;
 export const MAX_PER_IP_PER_DAY_WITH_KEY = 9999;
 /** Suggestions per IP address per rolling day. */
 export const MAX_SUGGESTIONS_PER_IP_PER_DAY = 20;
+/** Removal requests per IP address per rolling day. */
+export const MAX_REMOVALS_PER_IP_PER_DAY = 20;
+/** New removal requests are refused while this many are open. */
+export const MAX_OPEN_REMOVALS = 2000;
 /** New suggestions are refused while this many are open. */
 export const MAX_OPEN_SUGGESTIONS = 2000;
 /** New submissions are refused while this many await review. */

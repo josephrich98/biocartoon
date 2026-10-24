@@ -87,7 +87,8 @@ CREATE TABLE assets (
     extra                TEXT,               -- JSON: source-specific fields
     uploaded_at          TEXT,               -- set by upload_r2.py
     layers               TEXT,               -- JSON: named colour layers, from layers.json
-    stars                INTEGER NOT NULL DEFAULT 0  -- app users' stars, filled in by publish_catalog.py
+    stars                INTEGER NOT NULL DEFAULT 0, -- app users' stars, filled in by publish_catalog.py
+    generative_ai_used   INTEGER             -- 1 / 0 / NULL (not known), from generative_ai.json
 );
 CREATE INDEX assets_source ON assets(source);
 CREATE UNIQUE INDEX assets_source_id ON assets(source, source_id);
@@ -116,6 +117,31 @@ def load_layers() -> dict[str, str]:
                 raise ValueError(f"layers.json: {rid}: each layer needs a name and colours as lowercase #rrggbb")
         out[rid] = json.dumps(layers, separators=(",", ":"))
     return out
+
+
+GENAI_FILE = DATA / "generative_ai.json"
+
+
+def load_generative_ai() -> tuple[dict[str, bool | None], dict[str, bool | None]]:
+    """`(per source, per asset id)` from generative_ai.json: whether generative AI made an asset
+    (true / false / null for not known). An asset's own entry wins over its source's; a source
+    with no entry is not known. App uploads say so themselves (uploads.py)."""
+    if not GENAI_FILE.exists():
+        return {}, {}
+    d = json.loads(GENAI_FILE.read_text())
+    out = []
+    for part in ("sources", "assets"):
+        m = {k: v for k, v in (d.get(part) or {}).items() if not k.startswith("_")}
+        if bad := [k for k, v in m.items() if v not in (True, False, None)]:
+            raise ValueError(f"generative_ai.json: {part}: {bad[:3]} must be true, false or null")
+        out.append(m)
+    return out[0], out[1]
+
+
+def generative_ai(row: dict, rec: tuple[dict, dict]) -> int | None:
+    """The `generative_ai_used` column for a row, from [`load_generative_ai`]'s record."""
+    v = rec[1][row["id"]] if row["id"] in rec[1] else rec[0].get(row["source"])
+    return None if v is None else int(v)
 
 
 def clean(s: str | None) -> str:
@@ -331,11 +357,12 @@ def main():
         if any(c[1] == "stars" for c in con.execute("PRAGMA old.table_info(assets)")):
             stars = dict(con.execute("SELECT id, stars FROM old.assets WHERE stars > 0"))
         con.execute("DETACH old")
-    layers = load_layers()
+    layers, genai = load_layers(), load_generative_ai()
     for r in rows:
         r["uploaded_at"] = prev.get(r["id"])
         r["stars"] = stars.get(r["id"], 0)
         r["layers"] = layers.get(r["id"])
+        r["generative_ai_used"] = generative_ai(r, genai)
     con.executemany(f"INSERT INTO assets ({','.join(COLS)}) VALUES ({','.join('?' * len(COLS))})",
                     ([r[c] for c in COLS] for r in rows))
     con.commit()

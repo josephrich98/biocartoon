@@ -1,7 +1,7 @@
 // Validation of submitted assets and templates. Pure functions (no bindings) so they are unit-tested.
 
 import {
-  LICENSES, LICENSE_URLS, MAX_IMAGE_SIDE, MAX_PNG_BYTES, MAX_SVG_BYTES, MAX_TAGS, MAX_TAG_CHARS, MAX_TEMPLATE_IMAGES, MAX_TEMPLATE_ITEMS,
+  LICENSES, LICENSE_URLS, MAX_IMAGE_SIDE, MAX_LAYERS, MAX_LAYER_COLORS, MAX_LAYER_NAME_CHARS, MAX_PNG_BYTES, MAX_SVG_BYTES, MAX_TAGS, MAX_TAG_CHARS, MAX_TEMPLATE_IMAGES, MAX_TEMPLATE_ITEMS,
 } from "./limits.ts";
 import { Rejected, checkLanguage, clean, impersonatesBioCartoon } from "./text.ts";
 
@@ -11,8 +11,36 @@ export interface Meta {
   category: string;
   /** Optional search words, each one trimmed, no duplicates (any case). */
   tags: string[];
+  /** An SVG's colour layers as the contributor named them (none for a PNG or a template). */
+  layers: Layer[];
   author: string;
   license: string;
+  /** false: "No generative AI was used to create this asset"; true: the app knows AI made it;
+   *  null: not said (apps from before the question never send it). */
+  generative_ai_used: boolean | null;
+}
+
+/** A part of an SVG the app restyles on its own: every shape painted in one of `colors`. */
+export interface Layer {
+  name: string;
+  /** Lowercase `#rrggbb`. */
+  colors: string[];
+}
+
+/** Layers as the app sends them: a list of `{name, colors}`; missing (older apps) is none. */
+export function parseLayers(v: unknown): Layer[] {
+  if (v === undefined || v === null) return [];
+  if (!Array.isArray(v)) throw new Rejected("Layers must be a list");
+  if (v.length > MAX_LAYERS) throw new Rejected(`At most ${MAX_LAYERS} layers`);
+  return v.map((l: unknown) => {
+    const r = ((typeof l === "object" && l) || {}) as Record<string, unknown>;
+    const name = clean(r.name, MAX_LAYER_NAME_CHARS, "A layer name", true);
+    const colors = Array.isArray(r.colors) ? r.colors : [];
+    if (!colors.length || colors.length > MAX_LAYER_COLORS || !colors.every((c) => typeof c === "string" && /^#[0-9a-fA-F]{6}$/.test(c))) {
+      throw new Rejected(`Layer "${name}" needs 1 to ${MAX_LAYER_COLORS} colours as #rrggbb`);
+    }
+    return { name, colors: colors.map((c: string) => c.toLowerCase()) };
+  });
 }
 
 export function pngSize(b: Uint8Array): { width: number; height: number } {
@@ -163,13 +191,20 @@ export function parseMeta(raw: unknown): Meta {
     description: clean(r.description, 500, "Description"),
     category: clean(r.category, 60, "Category"),
     tags: parseTags(r.tags),
+    layers: parseLayers(r.layers),
     author: clean(r.author, 60, "Credit name") || "anonymous",
     license: String(r.license ?? ""),
+    generative_ai_used: typeof r.generative_ai_used === "boolean" ? r.generative_ai_used : null,
   };
   if (!(LICENSES as readonly string[]).includes(meta.license)) throw new Rejected("License must be CC0-1.0 or CC-BY-4.0");
   // CC BY exists so the artist is credited: it needs a name to credit.
   if (meta.license === "CC-BY-4.0" && meta.author === "anonymous") throw new Rejected("CC BY 4.0 needs a credit name");
-  checkLanguage([meta.title, meta.description, meta.category, meta.author, ...meta.tags]);
+  // AI output may not be copyrightable, so it can't be licensed on condition of credit. Apps from
+  // before the question don't send the field and are let through.
+  if (meta.license === "CC-BY-4.0" && "generative_ai_used" in r && meta.generative_ai_used !== false) {
+    throw new Rejected("CC BY 4.0 is only for artwork made without generative AI: choose CC0");
+  }
+  checkLanguage([meta.title, meta.description, meta.category, meta.author, ...meta.tags, ...meta.layers.map((l) => l.name)]);
   // Only BioCartoon's own assets go under its name, and a reviewer gives it (src/publish.ts).
   if (impersonatesBioCartoon(meta.author)) throw new Rejected("Credit name can't include BioCartoon: that name is kept for BioCartoon's own assets.");
   return meta;
@@ -203,6 +238,29 @@ export function parseSuggestion(raw: unknown): Suggestion {
   };
   checkLanguage([s.title, s.description, s.name]);
   return s;
+}
+
+export interface RemovalRequest {
+  asset_id: string;
+  title: string;
+  reason: string;
+  name: string;
+  email: string;
+}
+
+/** A removal request. Only reviewers read it, so the reason is not language-filtered (it may
+ * quote what is wrong with the icon). */
+export function parseRemoval(raw: unknown): RemovalRequest {
+  const r = ((typeof raw === "object" && raw) || {}) as Record<string, unknown>;
+  const asset_id = clean(r.asset_id, 200, "Icon id", true);
+  if (!/^[A-Za-z0-9_.\/:-]+$/.test(asset_id)) throw new Rejected("Icon id has unexpected characters");
+  return {
+    asset_id,
+    title: clean(r.title, 200, "Title"),
+    reason: clean(r.reason, 1000, "Reason", true),
+    name: clean(r.name, 60, "Name"),
+    email: parseEmail(r.email),
+  };
 }
 
 /** A bucket key a template may point at (an existing published object, checked by the caller). */
@@ -307,6 +365,7 @@ export function checkTemplate(raw: unknown, id: string, meta: Meta, uploaded: Se
       tags: meta.tags,
       author: meta.author,
       license: meta.license,
+      generative_ai_used: meta.generative_ai_used,
       created_at: createdAt,
       thumb_key: `templates/${id}/thumb.png`,
     },

@@ -52,7 +52,7 @@ function setup(row: Row, pending: string[]) {
 const asset = (id: string, files: string[]): Row => ({
   id, kind: "asset", title: "Cell", description: "", category: "", tags: '["cell", "membrane"]', author: "Me", license: "CC0-1.0", files: JSON.stringify(files),
   texts: "[]", width: 10, height: 10, bytes: 3, png_sha256: null, created_at: "2026-10-01T00:00:00Z", status: "pending",
-  reviewed_at: null, reviewed_by: null, official: 0,
+  reviewed_at: null, reviewed_by: null, official_requested: 0, official: 0, generative_ai_used: 0,
 });
 const sidecar = (PUBLIC: ReturnType<typeof bucket>, k: string) => {
   const b: unknown = PUBLIC.m.get(k)!.body; // the sidecar is put as a string
@@ -96,28 +96,31 @@ test("undoing an approved template", async () => {
   assert.deepEqual([...PENDING.m.keys()].sort(), [...files].sort());
 });
 
-test("an official approval credits BioCartoon, and undoing it clears the flag", async () => {
+test("an official approval keeps the author, and undoing it clears the flag", async () => {
   const row = asset("cell", ["cell/image.png"]);
   const { env, PUBLIC } = setup(row, ["cell/image.png"]);
   await approve(env, row, "me");
   assert.equal(sidecar(PUBLIC, "user/cell.json").author, "Me");
   assert.deepEqual(sidecar(PUBLIC, "user/cell.json").tags, ["cell", "membrane"]);
   assert.equal(sidecar(PUBLIC, "user/cell.json").official, undefined);
+  assert.equal(sidecar(PUBLIC, "user/cell.json").generative_ai_used, false);
+  assert.equal(sidecar(PUBLIC, "user/cell.json").layers, undefined);
   await undo(env, row);
   await approve(env, row, "me", true);
   const s = sidecar(PUBLIC, "user/cell.json");
-  assert.deepEqual([s.author, s.credit, s.official, row.official], ["BioCartoon", '"Cell", BioCartoon, CC0', true, 1]);
+  assert.deepEqual([s.author, s.credit, s.official, row.official], ["Me", '"Cell" by Me, BioCartoon community contribution, CC0', true, 1]);
   await undo(env, row);
   assert.equal(row.official, 0);
 });
 
-test("an official template is credited to BioCartoon in its template.json", async () => {
+test("an official template is marked so in its template.json, and keeps its author", async () => {
   const files = ["t/thumb.png", "t/template.json"];
   const row = { ...asset("t", files), kind: "template" as const };
   const { env, PENDING, PUBLIC } = setup(row, files);
   PENDING.m.set("t/template.json", { body: new TextEncoder().encode(JSON.stringify({ meta: { id: "t", author: "Me" }, width: 1 })).buffer });
   await approve(env, row, "me", true);
-  assert.deepEqual(sidecar(PUBLIC, "templates/t/template.json"), { meta: { id: "t", author: "BioCartoon" }, width: 1 });
+  assert.deepEqual(sidecar(PUBLIC, "templates/t/template.json"), { meta: { id: "t", author: "Me", official: true }, width: 1 });
+  assert.equal(row.official, 1);
 });
 
 test("undoing an approval whose public files are gone fails without changing anything", async () => {
@@ -147,4 +150,11 @@ test("rejections keep their files until purged, and can be undone until then", a
   assert.equal(row.files, "[]");
   await assert.rejects(undo(env, row), Rejected);
   assert.equal(row.status, "rejected");
+});
+
+test("an SVG's named layers go in its sidecar", async () => {
+  const row = { ...asset("flask", ["flask/image.svg"]), layers: '[{"name":"Liquid","colors":["#f49dc0"]}]' };
+  const { env, PUBLIC } = setup(row, ["flask/image.svg"]);
+  await approve(env, row, "me");
+  assert.deepEqual(sidecar(PUBLIC, "user/flask.json").layers, [{ name: "Liquid", colors: ["#f49dc0"] }]);
 });

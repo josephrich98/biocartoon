@@ -37,6 +37,9 @@ MAX_TEMPLATE_IMAGES = 24
 MAX_SIDECAR_BYTES = 16 * 1024
 MAX_TAGS = 20
 MAX_TAG_CHARS = 40
+MAX_LAYERS = 8
+MAX_LAYER_NAME_CHARS = 40
+MAX_LAYER_COLORS = 16
 LICENSES = {
     "CC0-1.0": ("https://creativecommons.org/publicdomain/zero/1.0/", 0),
     "CC-BY-4.0": ("https://creativecommons.org/licenses/by/4.0/", 1),
@@ -90,6 +93,23 @@ def tags(v) -> str:
         if t and t.lower() not in (x.lower() for x in out):
             out.append(t)
     return json.dumps(out, ensure_ascii=False)
+
+
+def layers(v) -> str | None:
+    """A sidecar's `layers` (an SVG's colour layers as its contributor named them, as the Worker
+    checked them) as the JSON the catalog stores, in layers.json's form; None when there are none."""
+    if v is None:
+        return None
+    if not isinstance(v, list) or len(v) > MAX_LAYERS:
+        raise ValueError("bad layers")
+    out = []
+    for la in v:
+        colors = la.get("colors") if isinstance(la, dict) else None
+        if not isinstance(colors, list) or not 0 < len(colors) <= MAX_LAYER_COLORS \
+                or not all(isinstance(c, str) and re.fullmatch(r"#[0-9a-fA-F]{6}", c) for c in colors):
+            raise ValueError("bad layer colours")
+        out.append({"name": text(la.get("name"), MAX_LAYER_NAME_CHARS, required=True), "colors": [c.lower() for c in colors]})
+    return json.dumps(out, ensure_ascii=False, separators=(",", ":")) if out else None
 
 
 def png_size(s3, bucket: str, key: str, objs: dict) -> tuple[int, int]:
@@ -290,6 +310,13 @@ class Caps:
         return None
 
 
+def genai_flag(meta: dict) -> int | None:
+    """`generative_ai_used` from an upload's metadata: 0 when the uploader checked "No generative AI
+    was used", 1 when the app knew AI made it, NULL when they didn't say (and for older uploads)."""
+    v = meta.get("generative_ai_used")
+    return int(v) if isinstance(v, bool) else None
+
+
 def asset_rows(s3, bucket: str, caps: Caps, blocked: set[str], log=print, upload_renders=False) -> list[dict]:
     """Rows for the `assets` table (schema in build_assets_db.py) from valid asset sidecars. SVG
     uploads are rendered to PNG, and the PNGs put in the bucket with `upload_renders`."""
@@ -327,7 +354,9 @@ def asset_rows(s3, bucket: str, caps: Caps, blocked: set[str], log=print, upload
                                   Metadata={"asset-id": rid, "license": lic, "sha256": png_sha})
                 objs[png_key] = {"Key": png_key, "Size": len(png)}
             row = dict(
-                id=rid, source="user", source_name="User-generated", source_id=rid,
+                # A reviewer accepted it to the official library (worker/src/publish.ts): listed under
+                # BioCartoon, still credited to its author.
+                id=rid, source="user", source_name="BioCartoon" if meta.get("official") is True else "User-generated", source_id=rid,
                 title=text(meta.get("title"), 80, required=True), variant=None,
                 description=text(meta.get("description"), 500), category=text(meta.get("category"), 60) or None,
                 tags=tags(meta.get("tags")), license=lic, license_raw=lic, license_url=LICENSES[lic][0],
@@ -337,7 +366,8 @@ def asset_rows(s3, bucket: str, caps: Caps, blocked: set[str], log=print, upload
                 svg_bytes=objs[svg_key]["Size"] if svg_key else None, png_bytes=objs[png_key]["Size"],
                 svg_sha256=text(meta.get("svg_sha256"), 64) or None, png_sha256=png_sha,
                 svg_local=None, png_local=None, extra=json.dumps({"uploaded": True}),
-                uploaded_at=o["LastModified"].isoformat(timespec="seconds"),
+                uploaded_at=o["LastModified"].isoformat(timespec="seconds"), generative_ai_used=genai_flag(meta),
+                layers=layers(meta.get("layers")) if svg_key else None,
             )
             why = caps.take(author)
             if why:
@@ -402,7 +432,10 @@ def template_rows(s3, bucket: str, catalog_keys: set[str], caps: Caps, blocked: 
                 id=slug, title=text(meta.get("title"), 80, required=True), description=text(meta.get("description"), 500),
                 category=text(meta.get("category"), 60), tags=tags(meta.get("tags")), author=author, license=meta["license"],
                 created_at=o["LastModified"].isoformat(timespec="seconds"), json_key=key, thumb_key=meta["thumb_key"],
-                json_local=None, thumb_local=None,
+                json_local=None, thumb_local=None, generative_ai_used=genai_flag(meta),
+                # A reviewer accepted it to the official library (worker/src/publish.ts); BioCartoon's
+                # own (authored by it) are listed there too.
+                official=int(meta.get("official") is True or author == "BioCartoon"),
             )
             why = caps.take(author)
             if why:
