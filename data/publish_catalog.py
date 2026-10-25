@@ -69,10 +69,11 @@ CREATE TABLE IF NOT EXISTS templates (
     json_local TEXT, thumb_local TEXT,
     tags TEXT NOT NULL DEFAULT '[]',  -- JSON array of strings
     generative_ai_used INTEGER,       -- 1 / 0 / NULL (not known), as the uploader said
-    official INTEGER NOT NULL DEFAULT 0);  -- 1: listed under BioCartoon (accepted to its official library)
+    official INTEGER NOT NULL DEFAULT 0,  -- 1: listed under BioCartoon (accepted to its official library)
+    credit TEXT);                     -- the ready-to-print attribution line, when the template.json carries one
 """
 TEMPLATE_COLS = ["id", "title", "description", "category", "author", "license", "created_at", "json_key",
-                 "thumb_key", "json_local", "thumb_local", "tags", "generative_ai_used", "official"]
+                 "thumb_key", "json_local", "thumb_local", "tags", "generative_ai_used", "official", "credit"]
 NOT_PUBLISHED = ("sync_state", "sync_held", "sync_meta", "templates")
 # assets columns kept in the master but left out of the catalog. The hashes are ~40% of the gzipped
 # catalog and nothing in the app reads them; delete a name here to publish that column again.
@@ -134,6 +135,8 @@ def update_master(con: sqlite3.Connection, user_rows: list[dict] | None, tmpl_ro
         con.execute("ALTER TABLE templates ADD COLUMN generative_ai_used INTEGER")
     if not any(c[1] == "official" for c in con.execute("PRAGMA table_info(templates)")):
         con.execute("ALTER TABLE templates ADD COLUMN official INTEGER NOT NULL DEFAULT 0")
+    if not any(c[1] == "credit" for c in con.execute("PRAGMA table_info(templates)")):
+        con.execute("ALTER TABLE templates ADD COLUMN credit TEXT")
     with con:
         if user_rows is not None:
             keep = [r["id"] for r in user_rows]

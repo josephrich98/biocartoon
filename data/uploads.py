@@ -436,6 +436,8 @@ def template_rows(s3, bucket: str, catalog_keys: set[str], caps: Caps, blocked: 
                 # A reviewer accepted it to the official library (worker/src/publish.ts); BioCartoon's
                 # own (authored by it) are listed there too.
                 official=int(meta.get("official") is True or author == "BioCartoon"),
+                # The attribution line the editor shows (BioCartoon's own templates carry one).
+                credit=text(meta.get("credit"), 300) or None,
             )
             why = caps.take(author)
             if why:
