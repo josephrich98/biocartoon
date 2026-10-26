@@ -1,5 +1,6 @@
 // Optional accounts (biocartoon-app: app/src/account.rs is the client). Signing in keeps an online
-// copy of every project, so work survives a browser clearing its storage. Nobody has to: guests
+// copy of every project and of Your library (own icons, saved templates, favorites), so work
+// survives a browser clearing its storage. Nobody has to: guests
 // keep everything in the browser, as before.
 //
 // Sign-in is Google or GitHub OAuth, run here, so no passwords are stored. The app gets a random
@@ -17,10 +18,15 @@
 //   PUT    /cloud/projects/<id>   body: the .biocartoon file; headers x-project-name (URI-encoded),
 //                                 x-project-modified (Unix ms)
 //   DELETE /cloud/projects/<id>
+//   GET    /cloud/library                                -> {"items": [{"id", "modified", "bytes"}]}
+//   GET    /cloud/library/<id>                           -> the item's JSON, as the app sent it
+//   PUT    /cloud/library/<id>    body: JSON; header x-item-modified (Unix ms)
+//   DELETE /cloud/library/<id>
+//   Library ids are "asset.<slug>", "template.<slug>" or "favorites".
 
 import type { Env } from "./env.ts";
 import { json, sha256Hex } from "./http.ts";
-import { MAX_CLOUD_PROJECT_BYTES, MAX_CLOUD_PROJECTS, MAX_CLOUD_USER_BYTES, MAX_SIGNUPS_PER_IP_PER_DAY, SESSION_IDLE_DAYS } from "./limits.ts";
+import { MAX_CLOUD_LIBRARY_ITEM_BYTES, MAX_CLOUD_LIBRARY_ITEMS, MAX_CLOUD_PROJECT_BYTES, MAX_CLOUD_PROJECTS, MAX_CLOUD_USER_BYTES, MAX_SIGNUPS_PER_IP_PER_DAY, SESSION_IDLE_DAYS } from "./limits.ts";
 import { Rejected } from "./text.ts";
 
 type Provider = "google" | "github";
@@ -38,6 +44,7 @@ const PROVIDERS: Record<Provider, { authorize: string; token: string; scope: str
 
 const STATE_COOKIE = "__Host-biocartoon_oauth";
 const PROJECT_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
+const LIBRARY_ID = /^(?:(?:asset|template)\.[a-z0-9][a-z0-9_-]{0,159}|favorites)$/;
 const DEFAULT_ORIGINS = "https://app.biocartoon.com";
 
 const now = () => new Date().toISOString().replace(/\.\d+Z$/, "Z");
@@ -48,6 +55,10 @@ export function isProvider(p: string): p is Provider {
 
 export function validProjectId(id: string): boolean {
   return PROJECT_ID.test(id);
+}
+
+export function validLibraryId(id: string): boolean {
+  return LIBRARY_ID.test(id);
 }
 
 /** Origins the app is served from (`APP_ORIGINS`, comma-separated): where sign-in may return to
@@ -213,12 +224,19 @@ async function session(req: Request, env: Env): Promise<Session> {
 }
 
 const projectKey = (userId: string, id: string) => `users/${userId}/projects/${id}.biocartoon`;
+const libraryKey = (userId: string, id: string) => `users/${userId}/library/${id}.json`;
 
-async function usedBytes(env: Env, userId: string, except = ""): Promise<{ bytes: number; count: number }> {
-  const r = await env.DB.prepare("SELECT coalesce(sum(bytes), 0) AS bytes, count(*) AS count FROM cloud_projects WHERE user_id = ?1 AND id != ?2")
-    .bind(userId, except)
-    .first<{ bytes: number; count: number }>();
-  return { bytes: r?.bytes ?? 0, count: r?.count ?? 0 };
+/** Online space used by projects and library items together, leaving out the project or library
+ *  item `except` (about to be replaced); `count` counts only that table's rows. */
+async function usedBytes(env: Env, userId: string, except = "", table: "cloud_projects" | "cloud_library" = "cloud_projects"): Promise<{ bytes: number; count: number }> {
+  const other = table === "cloud_projects" ? "cloud_library" : "cloud_projects";
+  const [mine, theirs] = await env.DB.batch<{ bytes: number; count: number }>([
+    env.DB.prepare(`SELECT coalesce(sum(bytes), 0) AS bytes, count(*) AS count FROM ${table} WHERE user_id = ?1 AND id != ?2`).bind(userId, except),
+    env.DB.prepare(`SELECT coalesce(sum(bytes), 0) AS bytes, count(*) AS count FROM ${other} WHERE user_id = ?1`).bind(userId),
+  ]);
+  const a = mine.results[0];
+  const b = theirs.results[0];
+  return { bytes: (a?.bytes ?? 0) + (b?.bytes ?? 0), count: a?.count ?? 0 };
 }
 
 export async function logout(req: Request, env: Env): Promise<Response> {
@@ -235,7 +253,7 @@ export async function me(req: Request, env: Env): Promise<Response> {
   return json({ ...u, used: used.bytes, projects: used.count, quota: MAX_CLOUD_USER_BYTES });
 }
 
-/** Delete the account: every online project, every session, the user row. */
+/** Delete the account: every online project and library item, every session, the user row. */
 export async function deleteAccount(req: Request, env: Env): Promise<Response> {
   const s = await session(req, env);
   const prefix = `users/${s.userId}/`;
@@ -247,6 +265,7 @@ export async function deleteAccount(req: Request, env: Env): Promise<Response> {
   } while (cursor);
   await env.DB.batch([
     env.DB.prepare("DELETE FROM cloud_projects WHERE user_id = ?1").bind(s.userId),
+    env.DB.prepare("DELETE FROM cloud_library WHERE user_id = ?1").bind(s.userId),
     env.DB.prepare("DELETE FROM sessions WHERE user_id = ?1").bind(s.userId),
     env.DB.prepare("DELETE FROM users WHERE id = ?1").bind(s.userId),
   ]);
@@ -304,6 +323,53 @@ export async function remove(req: Request, id: string, env: Env): Promise<Respon
   return json({ ok: true });
 }
 
+// ---------- Your library ----------
+
+export async function libraryList(req: Request, env: Env): Promise<Response> {
+  const s = await session(req, env);
+  const { results } = await env.DB.prepare("SELECT id, modified, bytes FROM cloud_library WHERE user_id = ?1 ORDER BY modified DESC")
+    .bind(s.userId)
+    .all<{ id: string; modified: number; bytes: number }>();
+  return json({ items: results });
+}
+
+export async function libraryGet(req: Request, id: string, env: Env): Promise<Response> {
+  const s = await session(req, env);
+  const obj = await env.USERS.get(libraryKey(s.userId, id));
+  if (!obj) throw new Rejected("No such library item", 404);
+  return new Response(obj.body, { headers: { "content-type": "application/json", "cache-control": "no-store" } });
+}
+
+export async function libraryPut(req: Request, id: string, env: Env): Promise<Response> {
+  const s = await session(req, env);
+  const length = Number(req.headers.get("content-length"));
+  if (!length) throw new Rejected("Content-Length is required", 411);
+  if (length > MAX_CLOUD_LIBRARY_ITEM_BYTES) throw new Rejected(`This library item is over ${MAX_CLOUD_LIBRARY_ITEM_BYTES >> 20} MB, too large to keep online`, 413);
+  const modified = Number(req.headers.get("x-item-modified"));
+  if (!Number.isSafeInteger(modified) || modified <= 0) throw new Rejected("x-item-modified must be Unix milliseconds", 400);
+  const used = await usedBytes(env, s.userId, id, "cloud_library");
+  if (used.count >= MAX_CLOUD_LIBRARY_ITEMS) throw new Rejected(`Limit reached: ${MAX_CLOUD_LIBRARY_ITEMS} library items online`, 413);
+  if (used.bytes + length > MAX_CLOUD_USER_BYTES) throw new Rejected(`Your online space (${MAX_CLOUD_USER_BYTES >> 20} MB) is full; delete some projects or library items to make room`, 413);
+  const body = new Uint8Array(await req.arrayBuffer());
+  if (body.length !== length) throw new Rejected("The upload was cut short", 400);
+  if (body[0] !== 0x7b && body[0] !== 0x5b) throw new Rejected("Expected a JSON library item", 400); // "{" or "["
+  await env.USERS.put(libraryKey(s.userId, id), body, { httpMetadata: { contentType: "application/json" } });
+  await env.DB.prepare(
+    "INSERT INTO cloud_library (user_id, id, modified, bytes, updated_at) VALUES (?1, ?2, ?3, ?4, ?5) \
+     ON CONFLICT (user_id, id) DO UPDATE SET modified = ?3, bytes = ?4, updated_at = ?5",
+  )
+    .bind(s.userId, id, modified, body.length, now())
+    .run();
+  return json({ id, bytes: body.length, used: used.bytes + body.length, quota: MAX_CLOUD_USER_BYTES });
+}
+
+export async function libraryRemove(req: Request, id: string, env: Env): Promise<Response> {
+  const s = await session(req, env);
+  await env.USERS.delete(libraryKey(s.userId, id));
+  await env.DB.prepare("DELETE FROM cloud_library WHERE user_id = ?1 AND id = ?2").bind(s.userId, id).run();
+  return json({ ok: true });
+}
+
 // ---------- CORS ----------
 
 /** The app runs on another origin, so the signed-in routes answer its origin (and only its). */
@@ -313,7 +379,7 @@ export function cors(req: Request, res: Response, env: Env): Response {
   if (origin && appOrigins(env).includes(origin)) {
     r.headers.set("access-control-allow-origin", origin);
     r.headers.set("access-control-allow-methods", "GET, PUT, POST, DELETE, OPTIONS");
-    r.headers.set("access-control-allow-headers", "authorization, content-type, x-project-name, x-project-modified");
+    r.headers.set("access-control-allow-headers", "authorization, content-type, x-project-name, x-project-modified, x-item-modified");
     r.headers.set("access-control-max-age", "86400");
     r.headers.set("vary", "origin");
   }

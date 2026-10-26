@@ -9,7 +9,9 @@
 //   POST /removal  application/json {asset_id, title?, reason, name?, email?}: ask to take an icon out of the library
 //   GET  /status?ids=<id>,<id>   -> {"<id>": "pending" | "approved" | "rejected"}
 //   POST /star, GET /stars, GET /stars/all: star counts on catalog assets (src/stars.ts)
-//   /auth/*, /me, /cloud/projects/*: optional accounts that keep projects online (src/accounts.ts)
+//   /auth/*, /me, /cloud/projects/*, /cloud/library/*: optional accounts that keep projects and
+//     Your library online (src/accounts.ts)
+//   POST /publish/claim, /publish/finish: the Mac running queued catalog publishes (src/publish_requests.ts)
 
 import * as accounts from "./accounts.ts";
 import type { Env } from "./env.ts";
@@ -18,6 +20,7 @@ import {
   MAX_OPEN_REMOVALS, MAX_OPEN_SUGGESTIONS, MAX_PENDING, MAX_PER_IP_PER_DAY, MAX_PER_IP_PER_DAY_WITH_KEY, MAX_REMOVALS_PER_IP_PER_DAY, MAX_REQUEST_BYTES,
   MAX_SUGGESTIONS_PER_IP_PER_DAY, MAX_TEMPLATE_JSON_BYTES,
 } from "./limits.ts";
+import * as publishRequests from "./publish_requests.ts";
 import * as stars from "./stars.ts";
 import { Rejected, newId } from "./text.ts";
 import { type Layer, checkSvg, checkTemplate, parseEmail, parseMeta, parseRemoval, parseSuggestion, pngSize } from "./validate.ts";
@@ -31,6 +34,7 @@ export default {
     if (url.pathname === "/suggest" && req.method === "POST") return guarded(() => suggest(req, env));
     if (url.pathname === "/removal" && req.method === "POST") return guarded(() => removal(req, env));
     if (url.pathname === "/status" && req.method === "GET") return guarded(() => status(url, env));
+    if (url.pathname.startsWith("/publish/")) return guarded(async () => (await publishRequests.route(req, url, env)) ?? json({ error: "Not found" }, 404));
     if (url.pathname === "/star" || url.pathname === "/stars" || url.pathname === "/stars/all") {
       if (req.method === "OPTIONS") return stars.preflight();
       if (url.pathname === "/star" && req.method === "POST") return stars.cors(await guarded(() => stars.toggle(req, env)));
@@ -43,10 +47,11 @@ export default {
       return guarded(() => (auth[2] === "start" ? accounts.start(url, p, env) : accounts.callback(req, url, p, env)));
     }
     const project = /^\/cloud\/projects\/([^/]+)$/.exec(url.pathname);
-    if (url.pathname === "/me" || url.pathname === "/auth/logout" || url.pathname === "/cloud/projects" || project) {
+    const item = /^\/cloud\/library\/([^/]+)$/.exec(url.pathname);
+    if (["/me", "/auth/logout", "/cloud/projects", "/cloud/library"].includes(url.pathname) || project || item) {
       if (req.method === "OPTIONS") return accounts.cors(req, new Response(null, { status: 204 }), env);
-      const route = `${req.method} ${project ? "/cloud/projects/:id" : url.pathname}`;
-      const id = project?.[1] ?? "";
+      const route = `${req.method} ${project ? "/cloud/projects/:id" : item ? "/cloud/library/:id" : url.pathname}`;
+      const id = project?.[1] ?? item?.[1] ?? "";
       const handler: Record<string, () => Promise<Response>> = {
         "GET /me": () => accounts.me(req, env),
         "DELETE /me": () => accounts.deleteAccount(req, env),
@@ -55,9 +60,14 @@ export default {
         "GET /cloud/projects/:id": () => accounts.get(req, id, env),
         "PUT /cloud/projects/:id": () => accounts.put(req, id, env),
         "DELETE /cloud/projects/:id": () => accounts.remove(req, id, env),
+        "GET /cloud/library": () => accounts.libraryList(req, env),
+        "GET /cloud/library/:id": () => accounts.libraryGet(req, id, env),
+        "PUT /cloud/library/:id": () => accounts.libraryPut(req, id, env),
+        "DELETE /cloud/library/:id": () => accounts.libraryRemove(req, id, env),
       };
       const f = handler[route];
       if (project && !accounts.validProjectId(id)) return accounts.cors(req, json({ error: "Invalid project id" }, 400), env);
+      if (item && !accounts.validLibraryId(id)) return accounts.cors(req, json({ error: "Invalid library item id" }, 400), env);
       return accounts.cors(req, f ? await guarded(f) : json({ error: "Not found" }, 404), env);
     }
     if (url.pathname === "/") return new Response("BioCartoon submissions\n");

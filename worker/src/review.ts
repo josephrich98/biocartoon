@@ -9,6 +9,7 @@
 //   POST /undo/<id>        put an approved or rejected submission back in the queue
 //   POST /done/<id>        mark a suggestion (icon or template requests from the app) handled
 //   POST /resolved/<id>    mark a removal request handled (take the icon down first, if agreed)
+//   POST /publish          queue "Publish catalog now" (run by the Mac, see src/publish_requests.ts)
 //
 // A daily cron (wrangler.review.jsonc) deletes the files of old rejections.
 
@@ -16,6 +17,7 @@ import { reviewer } from "./access.ts";
 import type { Env } from "./env.ts";
 import { guarded } from "./http.ts";
 import { REJECTED_KEEP_DAYS, type Row, approve, purgeRejected, reject, rowLayers, rowTags, undo } from "./publish.ts";
+import { type PublishRequest, STALE_RUN_MINUTES, latest as latestPublish, request as requestPublish } from "./publish_requests.ts";
 import { Rejected } from "./text.ts";
 
 const ID = /^[a-z0-9][a-z0-9-]{0,100}$/;
@@ -76,6 +78,12 @@ async function route(req: Request, env: Env, who: string): Promise<Response> {
       .bind(rest[0], new Date().toISOString().replace(/\.\d+Z$/, "Z"), who)
       .first<{ title: string; asset_id: string }>();
     return Response.redirect(`${url.origin}/?done=${encodeURIComponent(r ? `Marked the removal request for “${r.title || r.asset_id}” done` : "That removal request was already done")}`, 303);
+  }
+  if (req.method === "POST" && url.pathname === "/publish") {
+    if (!sameOrigin(req, url)) return new Response("Bad origin", { status: 403 });
+    const queued = await requestPublish(env, who);
+    const msg = queued ? "Publish requested: the Mac picks it up within 5 minutes" : "A publish is already waiting or running";
+    return Response.redirect(`${url.origin}/?done=${encodeURIComponent(msg)}`, 303);
   }
   if (req.method === "POST" && (action === "approve" || action === "reject" || action === "undo") && ID.test(rest[0] ?? "")) {
     // Forms from other sites must not be able to approve anything.
@@ -184,6 +192,20 @@ const removalRow = (r: RemovalRow) =>
   `<tr><td><b>${esc(r.title || "–")}</b><br><code>${esc(r.asset_id)}</code></td><td>${esc(r.reason)}</td><td>${esc(r.name || "–")}${r.email ? `<br>${mailto(r.email)}` : ""}</td><td>${esc(r.created_at)}</td>
   <td><form method="post" class="inline"><button formaction="/resolved/${esc(r.id)}" class="undo">Done</button></form></td></tr>`;
 
+/** The "Publish catalog now" button and how the latest publish went. */
+function publishBox(p: PublishRequest | null): string {
+  const state = !p
+    ? "No publish requested from here yet."
+    : p.status === "requested"
+      ? `Requested ${esc(p.requested_at)} by ${esc(p.requested_by)}; waiting for the Mac (it checks every 5 minutes while awake).`
+      : p.status === "running"
+        ? `Running since ${esc(p.started_at)} (requested by ${esc(p.requested_by)}). A run that has not reported back after ${STALE_RUN_MINUTES} minutes can be requested again.`
+        : `Last publish ${p.status === "done" ? "finished" : "<b>failed</b>"} ${esc(p.finished_at)} (requested by ${esc(p.requested_by)}).`;
+  const log = p?.message ? `<details${p.status === "failed" || /skip /.test(p.message) ? " open" : ""}><summary>Output</summary><pre>${esc(p.message)}</pre></details>` : "";
+  return `<div class="publish"><form method="post" class="inline"><button formaction="/publish" class="ok">Publish catalog now</button></form>
+<span>${state}</span>${log}</div>`;
+}
+
 const undoForm = (id: string, cls = "") =>
   `<form method="post" class="inline"><button formaction="/undo/${esc(id)}" class="undo ${cls}">Undo</button></form>`;
 
@@ -193,6 +215,7 @@ async function page(env: Env, done: string | null, undoId: string | null): Promi
   const recent = await env.DB.prepare("SELECT * FROM submissions WHERE status != 'pending' ORDER BY reviewed_at DESC LIMIT 20").all<Row>();
   const suggestions = await env.DB.prepare("SELECT * FROM suggestions WHERE status = 'open' ORDER BY created_at LIMIT 100").all<SuggestionRow>();
   const removals = await env.DB.prepare("SELECT * FROM removal_requests WHERE status = 'open' ORDER BY created_at LIMIT 100").all<RemovalRow>();
+  const publish = await latestPublish(env);
   const html = `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width">
 <title>BioCartoon review (${total?.n ?? 0})</title><style>
 body{font:15px system-ui,sans-serif;margin:0 auto;max-width:1000px;padding:16px;color:#1d1d22;background:#f6f6f8}
@@ -206,10 +229,13 @@ li{overflow-wrap:anywhere}button{font:inherit;padding:7px 18px;border-radius:6px
 .ok{background:#2e7d32}.no{background:#b3261e}.done{background:#e8f5e9;border:1px solid #a5d6a7;padding:8px 12px;border-radius:6px;display:flex;align-items:center;gap:12px}
 .undo{background:#55555f;padding:3px 12px;font-size:13px}.done .undo{margin-left:auto}form.inline{display:inline;margin:0}
 .swatch{display:inline-block;width:10px;height:10px;border:1px solid #999;margin-right:1px;vertical-align:middle}label.official{display:block;margin:0 0 10px;font-size:14px}label.official span{display:block;margin-left:22px;color:#777;font-size:12px}label.official.off{opacity:.45}
+.publish{background:#fff;border:1px solid #dcdce2;border-radius:10px;padding:10px 14px;margin:12px 0;font-size:14px}.publish span{color:#555}
+.publish pre{white-space:pre-wrap;overflow-wrap:anywhere;font-size:12px;max-height:300px;overflow:auto;background:#f6f6f8;padding:8px;border-radius:6px}
 table{border-collapse:collapse;font-size:13px;width:100%}td{border-top:1px solid #ddd;padding:4px 6px}
 </style></head><body>
 <h1>Review queue: ${total?.n ?? 0} pending</h1>
 ${done ? `<div class="done"><span>${esc(done)}</span>${undoId ? undoForm(undoId) : ""}</div>` : ""}
+${publishBox(publish)}
 ${pending.results.map(card).join("") || "<p>Nothing to review.</p>"}
 <h3>Removal requests (${removals.results.length})</h3>
 ${removals.results.length ? `<table>${removals.results.map(removalRow).join("")}</table>
@@ -219,7 +245,7 @@ ${suggestions.results.length ? `<table>${suggestions.results.map(suggestionRow).
 <h3>Recent decisions</h3><table>${recent.results
     .map((r) => `<tr><td>${esc(r.status)}${r.official ? " (official)" : ""}</td><td>${esc(r.kind)}</td><td>${esc(r.title)}</td><td>${esc(r.author)}</td><td>${esc(r.reviewed_by)}</td><td>${esc(r.reviewed_at)}</td><td>${r.status === "approved" || r.files !== "[]" ? undoForm(r.id) : ""}</td></tr>`)
     .join("")}</table>
-<p style="color:#777;font-size:13px">Approved items reach the app the next time <code>data/publish_catalog.py</code> runs, and an undone approval leaves it then too.
+<p style="color:#777;font-size:13px">Approved items reach the app the next time <code>data/publish_catalog.py</code> runs (Publish catalog now above, or the weekly sync), and an undone approval leaves it then too.
 Rejections can be undone for ${REJECTED_KEEP_DAYS} days.</p>
 </body></html>`;
   return new Response(html, { headers: { ...SECURITY_HEADERS, "content-type": "text/html; charset=utf-8" } });

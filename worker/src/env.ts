@@ -17,6 +17,8 @@ export interface Env {
   IP_SALT?: string;
   /** Optional secret: a submission sending it as `X-Upload-Key` gets MAX_PER_IP_PER_DAY_WITH_KEY. */
   UPLOAD_KEY?: string;
+  /** Secret the Mac that publishes the catalog sends to /publish/* (src/publish_requests.ts). */
+  PUBLISH_TOKEN?: string;
   ACCESS_TEAM?: string;
   ACCESS_AUD?: string;
   /** Local `wrangler dev` only (.dev.vars): skip the Access check on the review Worker. */

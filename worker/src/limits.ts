@@ -41,6 +41,9 @@ export const MAX_CLOUD_PROJECT_BYTES = 32 * 1024 * 1024;
 /** Online space per account. */
 export const MAX_CLOUD_USER_BYTES = 500 * 1024 * 1024;
 export const MAX_CLOUD_PROJECTS = 1000;
+/** One item of Your library online (an icon with its PNG and SVG, a template with its picture). */
+export const MAX_CLOUD_LIBRARY_ITEM_BYTES = 8 * 1024 * 1024;
+export const MAX_CLOUD_LIBRARY_ITEMS = 5000;
 /** New accounts per IP address per rolling day. */
 export const MAX_SIGNUPS_PER_IP_PER_DAY = 10;
 /** A session unused for this long ends; the online projects stay. */

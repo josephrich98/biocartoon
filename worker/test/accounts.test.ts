@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { b64url, callback, cookie, returnUrl, start, unb64url, validProjectId } from "../src/accounts.ts";
+import { b64url, callback, cookie, returnUrl, start, unb64url, validLibraryId, validProjectId } from "../src/accounts.ts";
 
 const env = { APP_ORIGINS: "https://app.biocartoon.com, http://localhost:8080", GOOGLE_CLIENT_ID: "gid", GOOGLE_CLIENT_SECRET: "gsecret" } as any;
 
@@ -17,6 +17,11 @@ test("sign-in only returns to the app", () => {
 test("project ids are UUIDs", () => {
   assert.ok(validProjectId("0f8fad5b-d9cb-469f-a165-70867728950e"));
   for (const bad of ["", "..", "0F8FAD5B-D9CB-469F-A165-70867728950E", "0f8fad5b-d9cb-469f-a165-70867728950e/x", "abc"]) assert.equal(validProjectId(bad), false, bad);
+});
+
+test("library ids name one icon, template or the favorites", () => {
+  for (const ok of ["asset.cell-diagram-202610261200001a2b", "template.my_slide-1", "favorites", "asset.dna-3f9a0c12bd"]) assert.ok(validLibraryId(ok), ok);
+  for (const bad of ["", "favorites2", "asset.", "asset/x", "asset.../x", "asset.Cell", "project.x", "template.-x", `asset.${"a".repeat(161)}`]) assert.equal(validLibraryId(bad), false, bad);
 });
 
 test("cookies and base64url", () => {
