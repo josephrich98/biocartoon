@@ -763,6 +763,28 @@ impl Worker {
             let rows = st.query_map(params![limit as i64, offset as i64], row_from)?.collect();
             return rows;
         }
+        if let Some(e) = crate::syntax::parse(q) {
+            let cond = format!("{src_filter} AND ({})", self.expr_sql(&e)?);
+            // Ranked by how well the wanted words match; icons kept only by fields come after.
+            let (inner, order) = match self.rank_fts(&e)? {
+                Some(rank) => {
+                    let dup = self.dup;
+                    (
+                        format!(
+                            "SELECT a.rowid AS rid, MIN(coalesce(f.r, 0) + CASE WHEN coalesce(a.variant,'')='' THEN 0 ELSE 0.001 END + 0.002 * {dup}) AS score \
+                             FROM assets a LEFT JOIN (SELECT rowid, rank AS r FROM assets_fts WHERE assets_fts MATCH '{}') f ON f.rowid = a.rowid \
+                             WHERE a.png_key IS NOT NULL {cond} GROUP BY {gk}",
+                            rank.replace('\'', "''")
+                        ),
+                        sort.sql(),
+                    )
+                }
+                None => (format!("SELECT a.rowid AS rid, {pf} AS score FROM assets a WHERE a.png_key IS NOT NULL {cond} GROUP BY {gk}"), sort.without_score().sql()),
+            };
+            let mut st = self.conn.prepare(&wrap(inner, &order, "LIMIT ?1 OFFSET ?2"))?;
+            let rows = st.query_map(params![limit as i64, offset as i64], row_from)?.collect();
+            return rows;
+        }
         if !self.fts {
             let sql = wrap(
                 format!(
@@ -822,6 +844,95 @@ impl Worker {
         rows
     }
 
+    /// The SQL condition on `assets a` keeping what an advanced query's expression (see
+    /// [`crate::syntax`]) keeps.
+    fn expr_sql(&self, e: &crate::syntax::Expr) -> rusqlite::Result<String> {
+        use crate::syntax::{Expr, Field};
+        let lit = |s: &str| format!("'{}'", s.replace('\'', "''"));
+        let has = |col: &str, v: &str| format!("instr(lower(coalesce({col},'')), {}) > 0", lit(v));
+        let join = |v: &[Expr], op: &str| -> rusqlite::Result<String> {
+            Ok(v.iter().map(|e| self.expr_sql(e).map(|s| format!("({s})"))).collect::<rusqlite::Result<Vec<_>>>()?.join(op))
+        };
+        Ok(match e {
+            Expr::Not(e) => format!("NOT ({})", self.expr_sql(e)?),
+            Expr::And(v) => join(v, " AND ")?,
+            Expr::Or(v) => join(v, " OR ")?,
+            Expr::Words(text) | Expr::Phrase(text) => {
+                let words = Self::query_words(text);
+                if words.is_empty() {
+                    "1".into()
+                } else if !self.fts {
+                    let like = |w: &str| {
+                        let l = lit(&format!("%{w}%"));
+                        format!("(a.title LIKE {l} OR a.tags LIKE {l})")
+                    };
+                    match e {
+                        Expr::Phrase(_) => like(text),
+                        _ => words.iter().map(|w| like(w)).collect::<Vec<_>>().join(" AND "),
+                    }
+                } else {
+                    match self.words_fts(e)? {
+                        Some(m) => format!("a.rowid IN (SELECT rowid FROM assets_fts WHERE assets_fts MATCH {})", lit(&m)),
+                        None => "0".into(),
+                    }
+                }
+            }
+            Expr::Field(f, v) => match f {
+                Field::Database => has(&format!("({SHOWN_SOURCE}) || ' ' || coalesce(a.source_name,'')"), v),
+                Field::Author => has("a.author", v),
+                Field::Category | Field::Subcategory => {
+                    self.ensure_taxa()?;
+                    let col = if *f == Field::Category { "cat" } else { "sub" };
+                    format!("a.rowid IN (SELECT rid FROM temp.asset_taxa WHERE instr(lower({col}), {}) > 0)", lit(v))
+                }
+                Field::DatabaseCategory => has("a.category", v),
+                Field::License => has("a.license", v),
+                Field::FileType => match (crate::syntax::file_type_matches(v, true), crate::syntax::file_type_matches(v, false)) {
+                    (true, _) => format!("{} IS NOT NULL", self.svg_key),
+                    (_, true) => format!("{} IS NULL", self.svg_key),
+                    _ => "0".into(),
+                },
+                Field::Tags => format!(
+                    "EXISTS (SELECT 1 FROM json_each(CASE WHEN json_valid(a.tags) THEN a.tags ELSE '[]' END) WHERE instr(lower(value), {}) > 0)",
+                    lit(v)
+                ),
+                Field::Id => format!("lower(a.id) = {}", lit(v)),
+            },
+        })
+    }
+
+    /// The FTS5 expression of a `Words` term (each word as the plain search takes it, see
+    /// [`Self::fts_term`]) or a `Phrase`; `None` when some word matches nothing.
+    fn words_fts(&self, e: &crate::syntax::Expr) -> rusqlite::Result<Option<String>> {
+        use crate::syntax::Expr;
+        match e {
+            Expr::Words(text) => {
+                let mut terms = Vec::new();
+                for w in Self::query_words(text) {
+                    match self.fts_term(&w)? {
+                        Some(t) => terms.push(t.expr),
+                        None => return Ok(None),
+                    }
+                }
+                Ok(Some(terms.join(" AND ")))
+            }
+            Expr::Phrase(text) => Ok(Some(format!("\"{}\"", Self::query_words(text).join(" ")))),
+            _ => Ok(None),
+        }
+    }
+
+    /// An FTS5 expression for ranking an advanced query's matches: any of the words it wants.
+    fn rank_fts(&self, e: &crate::syntax::Expr) -> rusqlite::Result<Option<String>> {
+        if !self.fts {
+            return Ok(None);
+        }
+        let mut any = Vec::new();
+        for w in e.wanted_words() {
+            any.extend(self.words_fts(w)?.filter(|m| !m.is_empty()).map(|m| format!("({m})")));
+        }
+        Ok(if any.is_empty() { None } else { Some(any.join(" OR ")) })
+    }
+
     /// The FTS5 terms of a query's words (see [`Self::fts_term`]).
     fn fts_terms(&self, q: &str) -> rusqlite::Result<Vec<String>> {
         Ok(self.fts_query(q)?.into_iter().map(|t| t.expr).collect())
@@ -856,6 +967,9 @@ impl Worker {
         let q = query.trim();
         if q.is_empty() {
             return count(format!("SELECT 1 FROM assets a WHERE a.png_key IS NOT NULL {src_filter}"), None);
+        }
+        if let Some(e) = crate::syntax::parse(q) {
+            return count(format!("SELECT 1 FROM assets a WHERE a.png_key IS NOT NULL {src_filter} AND ({})", self.expr_sql(&e)?), None);
         }
         if !self.fts {
             return count(
@@ -1076,6 +1190,9 @@ impl Worker {
         if q.is_empty() {
             return Ok(String::new());
         }
+        if let Some(e) = crate::syntax::parse(q) {
+            return Ok(format!(" AND ({})", self.expr_sql(&e)?));
+        }
         if !self.fts {
             let like = lit(&format!("%{q}%"));
             return Ok(format!(" AND (a.title LIKE {like} OR a.tags LIKE {like})"));
@@ -1223,6 +1340,17 @@ impl Worker {
             "CC0-1.0" => (Some("https://creativecommons.org/publicdomain/zero/1.0/"), 0),
             _ => (None, 0),
         };
+        // The user's own icons are `user/<slug>`; published, the same upload has `source_id` <slug>
+        // and an id of its own (US000123). The own copy, whose files are on disk, takes its place.
+        let slug = row.id.strip_prefix("user/").unwrap_or(&row.id);
+        let published: Vec<i64> = self
+            .conn
+            .prepare("SELECT rowid FROM assets WHERE source='user' AND source_id=?1 AND id!=?2 AND png_local IS NULL")?
+            .query_map(params![slug, row.id], |r| r.get(0))?
+            .collect::<rusqlite::Result<_>>()?;
+        for rid in published {
+            self.delete_row(rid)?;
+        }
         self.conn.execute(
             "INSERT OR REPLACE INTO assets (id, source, source_name, source_id, title, variant, description, category, \
              tags, license, license_raw, license_url, attribution_required, share_alike, author, source_url, doi, credit, \
@@ -1231,7 +1359,7 @@ impl Worker {
              ?6, ?6, ?14, ?15, 0, ?7, NULL, NULL, ?8, ?16, ?9, 0, ?10, ?11, NULL, NULL, NULL, ?12, ?13, NULL)",
             params![
                 row.id,
-                row.id,
+                slug,
                 row.title,
                 row.description,
                 row.category,
@@ -1282,6 +1410,11 @@ impl Worker {
         let Some(rid) = self.conn.query_row(&format!("SELECT rowid FROM assets WHERE id=?1 AND {own}"), params![id], |r| r.get::<_, i64>(0)).optional()? else {
             return Ok(false);
         };
+        self.delete_row(rid)?;
+        Ok(true)
+    }
+
+    fn delete_row(&self, rid: i64) -> rusqlite::Result<()> {
         if self.fts {
             // External-content FTS tables are told about deletions with the row's old values.
             let _ = self.conn.execute(
@@ -1294,7 +1427,7 @@ impl Worker {
             self.conn.execute("DELETE FROM temp.asset_taxa WHERE rid=?1", params![rid])?;
         }
         self.conn.execute("DELETE FROM assets WHERE rowid=?1", params![rid])?;
-        Ok(true)
+        Ok(())
     }
 
     pub fn record_use(&self, source: &str, title: &str) -> rusqlite::Result<()> {
@@ -1811,6 +1944,14 @@ mod tests {
             generative_ai_used: None,
             file_bytes: 0,
         };
+        // Published, "painted" has an id of its own; the user's own copy takes its place.
+        w.conn
+            .execute(
+                "INSERT INTO assets (id, source, source_name, source_id, title, tags, license, png_key, png_width, png_height) \
+                 VALUES ('US000001', 'user', 'User-generated', 'painted', 'painted', '[]', 'CC0-1.0', 'user/painted.png', 4, 2)",
+                [],
+            )
+            .unwrap();
         w.insert_user(&row).unwrap();
         row.id = "user/painted".into();
         row.layers = Vec::new();

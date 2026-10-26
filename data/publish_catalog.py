@@ -47,7 +47,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 import readme_stats
-from build_assets_db import generative_ai, load_generative_ai, load_layers
+from build_assets_db import Ids, generative_ai, load_generative_ai, load_layers
 from config import PUBLISH_UA, R2_BUCKET, SUBMIT_URL
 
 DATA = Path(__file__).resolve().parent
@@ -74,7 +74,7 @@ CREATE TABLE IF NOT EXISTS templates (
 """
 TEMPLATE_COLS = ["id", "title", "description", "category", "author", "license", "created_at", "json_key",
                  "thumb_key", "json_local", "thumb_local", "tags", "generative_ai_used", "official", "credit"]
-NOT_PUBLISHED = ("sync_state", "sync_held", "sync_meta", "templates")
+NOT_PUBLISHED = ("sync_state", "sync_held", "sync_meta", "templates", "id_seq")
 # assets columns kept in the master but left out of the catalog. The hashes are ~40% of the gzipped
 # catalog and nothing in the app reads them; delete a name here to publish that column again.
 UNPUBLISHED_COLS = ("svg_sha256", "png_sha256")
@@ -139,6 +139,10 @@ def update_master(con: sqlite3.Connection, user_rows: list[dict] | None, tmpl_ro
         con.execute("ALTER TABLE templates ADD COLUMN credit TEXT")
     with con:
         if user_rows is not None:
+            # an upload keeps the id it was first published with; a new one gets the next
+            ids, have = Ids(con), dict(con.execute("SELECT source_id, id FROM assets WHERE source = 'user'"))
+            for r in user_rows:
+                r["id"] = have.get(r["source_id"]) or ids.new("user")
             keep = [r["id"] for r in user_rows]
             con.execute(f"DELETE FROM assets WHERE source = 'user' AND id NOT IN ({','.join('?' * len(keep))})", keep)
             if user_rows:

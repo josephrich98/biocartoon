@@ -20,6 +20,7 @@
 pub mod bulk;
 pub mod catalog;
 pub mod synonyms;
+pub mod syntax;
 pub mod taxonomy;
 #[cfg(not(target_arch = "wasm32"))]
 pub mod cli;

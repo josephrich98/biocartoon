@@ -1,6 +1,6 @@
 """Upload every asset in data/assets.sqlite to a Cloudflare R2 bucket (resumable).
 
-Each row's files go to `svg_key` / `png_key` (= `<id>.svg` / `<id>.png`). Rows are marked with
+Each row's files go to `svg_key` / `png_key` (`<source>/<slug>.svg` / `.png`). Rows are marked with
 `uploaded_at` once all their files are in the bucket, so re-running only sends what is missing.
 
     pip install boto3

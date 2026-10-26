@@ -356,7 +356,9 @@ def asset_rows(s3, bucket: str, caps: Caps, blocked: set[str], log=print, upload
             row = dict(
                 # A reviewer accepted it to the official library (worker/src/publish.ts): listed under
                 # BioCartoon, still credited to its author.
-                id=rid, source="user", source_name="BioCartoon" if meta.get("official") is True else "User-generated", source_id=rid,
+                # The id is given when it goes in the master (publish_catalog.update_master).
+                id=None, source="user", source_name="BioCartoon" if meta.get("official") is True else "User-generated",
+                source_id=m.group(1),
                 title=text(meta.get("title"), 80, required=True), variant=None,
                 description=text(meta.get("description"), 500), category=text(meta.get("category"), 60) or None,
                 tags=tags(meta.get("tags")), license=lic, license_raw=lic, license_url=LICENSES[lic][0],

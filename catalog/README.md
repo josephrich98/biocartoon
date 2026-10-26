@@ -87,12 +87,12 @@ Find an icon, check its license, and download it:
 
 ```bash
 $ biocartoon search mitochondria --icons --limit 2
-bioart/353_641587                  bioart       Mitochondria  (Cells and Organelles; 2084x2084)  matched: title,description
-bioart/101_628750                  bioart       Damaged Mitochondria  (Cells and Organelles; 1705x1174)  matched: title,tags,description
+BA001199                           bioart       Mitochondria  (Cells and Organelles; 2084x2084)  matched: title,description
+BA000413                           bioart       Damaged Mitochondria  (Cells and Organelles; 1705x1174)  matched: title,tags,description
 
-$ biocartoon get bioart/424_633913              # credit, license, PNG/SVG URLs, colour variants
-$ biocartoon fetch bioart/424_633913 --out ~/Desktop               # the SVG
-$ biocartoon fetch bioart/424_633913 --max-side 512 --out neuron.png   # a smaller PNG
+$ biocartoon get BA001505              # credit, license, PNG/SVG URLs, colour variants
+$ biocartoon fetch BA001505 --out ~/Desktop               # the SVG
+$ biocartoon fetch BA001505 --max-side 512 --out neuron.png   # a smaller PNG
 ```
 
 Contribute your own illustrations (held for review before they are published):
@@ -137,7 +137,7 @@ for t in neuron astrocyte microglia; do
   id=$(biocartoon search "$t" --icons --limit 10 --json | jq -r '[.icons[] | select(.svg_url)][0].id')
   biocartoon fetch "$id" --svg --out icons/
 done
-biocartoon get bioart/424_633913 --json | jq -r .credit     # the attribution line to print
+biocartoon get BA001505 --json | jq -r .credit     # the attribution line to print
 ```
 
 Download the whole catalog (well over 1 GB), or parts of it:

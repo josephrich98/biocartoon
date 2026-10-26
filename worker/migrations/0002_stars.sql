@@ -1,7 +1,7 @@
 -- Stars: anyone using the app can star a catalog asset (once per app install, the "client").
 -- `stars.n` is the live count the app shows and publish_catalog.py bakes into the catalog.
 CREATE TABLE stars (
-    asset_id    TEXT PRIMARY KEY,             -- catalog `assets.id`, e.g. bioart/2_626557
+    asset_id    TEXT PRIMARY KEY,             -- catalog `assets.id`, e.g. BA000123
     n           INTEGER NOT NULL DEFAULT 0
 );
 -- One row per (asset, client), kept when unstarred (`on` = 0) so toggling back and forth

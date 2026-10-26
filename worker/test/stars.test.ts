@@ -4,10 +4,10 @@ import { parseIds, validClient, validId } from "../src/stars.ts";
 import { MAX_STAR_IDS } from "../src/limits.ts";
 
 test("catalog ids are accepted, junk is not", () => {
-  for (const id of ["bioart/2_626557", "bioicons/bsd/Machine_Learning/PyTorch", "openmoji/1F600", "user/t-cell-0a1b2c3d4e", "servier/8-well-pcr-tube-strip"]) {
+  for (const id of ["BA000001", "BI004816", "OM013699", "US020061", "SV1234567"]) {
     assert.ok(validId(id), id);
   }
-  for (const id of ["", "bioart", "/bioart/1", "bioart//1", "bioart/../x", "bioart/1/", "bioart/a b", "bioart/1.png?x=1", "x".repeat(201), 5, null]) {
+  for (const id of ["", "BA", "BA12345", "ba000001", "XX000001", "BA000001 ", "BA0000001234", "bioart/2_626557", "user/t-cell-0a1b2c3d4e", 5, null]) {
     assert.equal(validId(id), false, String(id));
   }
 });
@@ -20,8 +20,8 @@ test("client ids are lowercase hex", () => {
 });
 
 test("id lists are deduplicated, cleaned and capped", () => {
-  assert.deepEqual(parseIds("bioart/1,bioart/1,bad id,servier/x"), ["bioart/1", "servier/x"]);
+  assert.deepEqual(parseIds("BA000001,BA000001,bad id,SV017041"), ["BA000001", "SV017041"]);
   assert.deepEqual(parseIds(null), []);
-  const many = Array.from({ length: MAX_STAR_IDS + 10 }, (_, i) => `bioart/${i}`).join(",");
+  const many = Array.from({ length: MAX_STAR_IDS + 10 }, (_, i) => `BA${String(i).padStart(6, "0")}`).join(",");
   assert.equal(parseIds(many).length, MAX_STAR_IDS);
 });

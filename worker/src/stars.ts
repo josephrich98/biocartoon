@@ -12,11 +12,12 @@ import { json, sha256Hex } from "./http.ts";
 import { MAX_STAR_IDS, MAX_STARS_PER_IP_PER_DAY } from "./limits.ts";
 import { Rejected } from "./text.ts";
 
-/** Catalog ids look like `bioart/2_626557`, `bioicons/bsd/Machine_Learning/PyTorch`, `user/<slug>`. */
+/** The two-letter codes of catalog ids (data/build_assets_db.py's ID_PREFIX). */
+const ID_PREFIXES = ["BA", "BI", "HI", "OM", "RE", "SD", "SV", "US"];
+
+/** Catalog ids look like `BA000123`: the source's code, then a number unique across the catalog. */
 export function validId(id: unknown): id is string {
-  if (typeof id !== "string" || id.length === 0 || id.length > 200) return false;
-  if (!/^[A-Za-z0-9][A-Za-z0-9_.-]*(\/[A-Za-z0-9_.-]+)+$/.test(id)) return false;
-  return !id.split("/").some((s) => /^\.+$/.test(s));
+  return typeof id === "string" && /^[A-Z]{2}[0-9]{6,9}$/.test(id) && ID_PREFIXES.includes(id.slice(0, 2));
 }
 
 export function validClient(c: unknown): c is string {
@@ -77,8 +78,8 @@ export async function toggle(req: Request, env: Env): Promise<Response> {
     const dayAgo = new Date(Date.now() - 86_400_000).toISOString();
     const mine = await env.DB.prepare("SELECT count(*) AS n FROM starred WHERE ip_hash = ?1 AND created_at > ?2").bind(ipHash, dayAgo).first<{ n: number }>();
     if ((mine?.n ?? 0) >= MAX_STARS_PER_IP_PER_DAY) throw new Rejected(`Limit reached: ${MAX_STARS_PER_IP_PER_DAY} new stars a day. Please try again tomorrow.`, 429);
-    // Only assets that exist get a row, so junk ids can't fill the table.
-    if (!(await env.PUBLIC.head(`${id}.png`))) throw new Rejected("No such asset", 404);
+    // The Worker has no catalog to look ids up in: well-formed ones are taken, and the daily quota
+    // above bounds what junk one address can add.
   }
   const delta = on ? 1 : -1;
   await env.DB.batch([

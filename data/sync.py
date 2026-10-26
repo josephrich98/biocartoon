@@ -21,7 +21,7 @@ Per source (scrape_sources.DISCOVER, scrape_bioart.discover):
                 -> the whole source is skipped this run and reported (scraper or upstream broke)
   4. fetch      download only the new files into a scratch dir
   5. rasterize  SVG -> PNG with rasterize.py, when there is no big-enough shipped PNG
-  6. row        build_assets_db.finish(); a new id that collides with nothing
+  6. row        build_assets_db.finish(); the next id (build_assets_db.Ids), and file keys that collide with nothing
   7. upload     upload_r2.upload_row(); keys that already exist in the bucket are never overwritten
   8. insert     one transaction per source; then the source's signal is saved
 Then publish_catalog.py on every --apply run (it also merges approved app uploads and star
@@ -184,17 +184,18 @@ def key_exists(s3, bucket: str, key: str) -> bool:
         raise
 
 
-def assign_id(row: dict, taken: set[str], s3, bucket: str):
-    base = f"{row['source']}/{B.slug(row['source_id'])}"
-    rid, k = base, 1
+def assign_id(row: dict, ids: B.Ids, taken: set[str], s3, bucket: str):
+    """Give `row` the next id, and file keys under a stem no row (`taken`) or bucket object has."""
+    base = B.key_stem(row["source"], row["source_id"])
+    stem, k = base, 1
     while True:
-        svg_key, png_key = (f"{rid}.svg" if row["svg_local"] else None), (f"{rid}.png" if row["png_local"] else None)
-        if rid not in taken and not any(key and s3 and key_exists(s3, bucket, key) for key in (svg_key, png_key)):
+        svg_key, png_key = (f"{stem}.svg" if row["svg_local"] else None), (f"{stem}.png" if row["png_local"] else None)
+        if stem not in taken and not any(key and s3 and key_exists(s3, bucket, key) for key in (svg_key, png_key)):
             break
         k += 1
-        rid = f"{base}-{k}"
-    taken.add(rid)
-    row.update(id=rid, svg_key=svg_key, png_key=png_key)
+        stem = f"{base}-{k}"
+    taken.add(stem)
+    row.update(id=ids.new(row["source"]), svg_key=svg_key, png_key=png_key)
 
 
 # ----------------------------------------------------------------------------
@@ -260,7 +261,7 @@ def sync_source(con, source: str, a, s3, rep: Report, taken: set[str]):
         if not a.apply:
             return
 
-        rows, complete = [], a.limit is None or a.limit >= len(ok_items) + len(approved)
+        rows, complete, ids = [], a.limit is None or a.limit >= len(ok_items) + len(approved), B.Ids(con)
         # most common spelling last, so it wins
         spelled = {au.lower(): au for (au,) in con.execute(
             "SELECT author FROM assets WHERE author IS NOT NULL GROUP BY author ORDER BY count(*)")}
@@ -274,14 +275,14 @@ def sync_source(con, source: str, a, s3, rep: Report, taken: set[str]):
                 rep.alert(f"[{source}] held {it['source_id']!r}: {why}")
                 continue
             adopt_author(row, spelled)
-            assign_id(row, taken, s3, a.bucket)
+            assign_id(row, ids, taken, s3, a.bucket)
             try:
                 from upload_r2 import upload_row
 
                 upload_row(s3, a.bucket, row)
             except Exception as e:  # noqa: BLE001
                 rep.alert(f"[{source}] upload of {row['id']} failed ({e}); retried next run")
-                taken.discard(row["id"])
+                taken.discard((row["png_key"] or row["svg_key"]).rsplit(".", 1)[0])
                 complete = False
                 continue
             # layers.json is applied by publish_catalog.py; generative_ai.json is applied there too.
@@ -373,7 +374,7 @@ def main():
             src.close()
             con.executescript(STATE_SQL)
     Path(a.work).mkdir(parents=True, exist_ok=True)
-    taken = {i for (i,) in con.execute("SELECT id FROM assets")}
+    taken = {k.rsplit(".", 1)[0] for (k,) in con.execute("SELECT coalesce(png_key, svg_key) FROM assets") if k}
 
     for source in a.sources.split(","):
         sync_source(con, source, a, s3, rep, taken)

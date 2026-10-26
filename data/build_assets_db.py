@@ -1,8 +1,9 @@
 """Build the asset catalog (SQLite + CSV) for every downloaded illustration.
 
-One row per asset (a BioArt colour variant, a Bioicons icon, an OpenMoji emoji, ...).
-`id` doubles as the R2 object-key stem: the files live at `<id>.svg` / `<id>.png` in the bucket
-(`svg_key` / `png_key` columns; NULL when that format does not exist for the asset).
+One row per asset (a BioArt colour variant, a Bioicons icon, an OpenMoji emoji, ...), with an
+`id` like BA000123 (see `Ids`). Its files live at `svg_key` / `png_key` in the bucket
+(`<source>/<slug of source_id>.svg` / `.png`; NULL when that format does not exist for the asset).
+Ids carry over from the previous --db, matched by (source, source_id).
 
     python data/build_assets_db.py                 # -> data/assets.sqlite, data/assets.csv
     python data/build_assets_db.py --no-hash       # skip sha256 (fast, ~120 GB less IO)
@@ -55,7 +56,7 @@ LICENSES = {
 
 SCHEMA = """
 CREATE TABLE assets (
-    id                   TEXT PRIMARY KEY,   -- R2 key stem: <source>/<slug>
+    id                   TEXT PRIMARY KEY,   -- e.g. BA000123 (see Ids)
     source               TEXT NOT NULL,
     source_name          TEXT NOT NULL,
     source_id            TEXT NOT NULL,      -- id in the upstream collection
@@ -97,6 +98,34 @@ CREATE INDEX assets_category ON assets(category);
 """
 COLS = [c.split()[0] for c in SCHEMA.split("(", 1)[1].split(");")[0].strip().splitlines()
         if c.strip() and not c.strip().startswith("--")]
+
+
+# Asset ids: two letters for the source the asset came from, then a number unique across the
+# whole catalog (BA000123). A number is given once and never again, even after its asset is gone,
+# so an id always means one asset; the master's `id_seq` keeps the highest one given.
+ID_PREFIX = {"bioart": "BA", "bioicons": "BI", "healthicons": "HI", "openmoji": "OM",
+             "reactome": "RE", "scidraw": "SD", "servier": "SV", "user": "US"}
+ID_RE = re.compile(r"[A-Z]{2}[0-9]{6,}")
+ID_SQL = "CREATE TABLE IF NOT EXISTS id_seq (n INTEGER NOT NULL);"
+
+
+class Ids:
+    """Gives new asset ids in `con`'s database, after the highest number it has used."""
+
+    def __init__(self, con: sqlite3.Connection, floor: int = 0):
+        con.executescript(ID_SQL)
+        used = con.execute("SELECT max(CAST(substr(id, 3) AS INTEGER)) FROM assets WHERE id GLOB '[A-Z][A-Z][0-9]*'").fetchone()[0]
+        self.con, self.n = con, max(floor, used or 0, con.execute("SELECT max(n) FROM id_seq").fetchone()[0] or 0)
+        self._save()
+
+    def _save(self):
+        self.con.execute("DELETE FROM id_seq")
+        self.con.execute("INSERT INTO id_seq VALUES (?)", (self.n,))
+
+    def new(self, source: str) -> str:
+        self.n += 1
+        self._save()
+        return f"{ID_PREFIX[source]}{self.n:06d}"
 
 
 LAYERS_FILE = DATA / "layers.json"
@@ -151,6 +180,11 @@ def clean(s: str | None) -> str:
 
 def slug(s: str) -> str:
     return re.sub(r"[^A-Za-z0-9_./-]+", "_", s).strip("_/")[:180]
+
+
+def key_stem(source: str, source_id: str) -> str:
+    """Where an asset's files go in the bucket, less the extension (unique ones get `-2`, `-3`, ...)."""
+    return f"{source}/{slug(source_id)}"
 
 
 def raster_path(source: str, sid: str, root: Path | None = None) -> Path:
@@ -334,33 +368,36 @@ def main():
 
     seen: set = set()
     for r in rows:
-        base = f"{r['source']}/{slug(r['source_id'])}"
-        rid, k = base, 1
-        while rid in seen:
+        base = key_stem(r["source"], r["source_id"])
+        stem, k = base, 1
+        while stem in seen:
             k += 1
-            rid = f"{base}-{k}"
-        seen.add(rid)
-        r["id"] = rid
-        r["svg_key"] = f"{rid}.svg" if r["svg_local"] else None
-        r["png_key"] = f"{rid}.png" if r["png_local"] else None
+            stem = f"{base}-{k}"
+        seen.add(stem)
+        r["svg_key"] = f"{stem}.svg" if r["svg_local"] else None
+        r["png_key"] = f"{stem}.png" if r["png_local"] else None
 
     db = Path(a.db)
     tmp = db.with_suffix(".tmp")
     tmp.unlink(missing_ok=True)
     con = sqlite3.connect(tmp)
     con.executescript(SCHEMA)
-    # keep upload state (and star counts) from a previous build so re-building does not force a re-upload
-    prev, stars = {}, {}
+    # keep ids, upload state and star counts from a previous build, so re-building neither renames
+    # assets nor forces a re-upload
+    prev, floor = {}, 0
     if db.exists():
         con.execute("ATTACH ? AS old", (str(db),))
-        prev = dict(con.execute("SELECT id, uploaded_at FROM old.assets WHERE uploaded_at IS NOT NULL"))
-        if any(c[1] == "stars" for c in con.execute("PRAGMA old.table_info(assets)")):
-            stars = dict(con.execute("SELECT id, stars FROM old.assets WHERE stars > 0"))
+        stars = "stars" if any(c[1] == "stars" for c in con.execute("PRAGMA old.table_info(assets)")) else "0"
+        prev = {(s, sid): (i, up, n, key) for s, sid, i, up, n, key in
+                con.execute(f"SELECT source, source_id, id, uploaded_at, {stars}, png_key FROM old.assets") if ID_RE.fullmatch(i)}
+        if con.execute("SELECT 1 FROM old.sqlite_master WHERE name = 'id_seq'").fetchone():
+            floor = con.execute("SELECT max(n) FROM old.id_seq").fetchone()[0] or 0
         con.execute("DETACH old")
+    ids = Ids(con, max([floor] + [int(p[0][2:]) for p in prev.values()]))
     layers, genai = load_layers(), load_generative_ai()
     for r in rows:
-        r["uploaded_at"] = prev.get(r["id"])
-        r["stars"] = stars.get(r["id"], 0)
+        rid, up, n, key = prev.get((r["source"], r["source_id"])) or (ids.new(r["source"]), None, 0, None)
+        r["id"], r["uploaded_at"], r["stars"] = rid, up if key == r["png_key"] else None, n
         r["layers"] = layers.get(r["id"])
         r["generative_ai_used"] = generative_ai(r, genai)
     con.executemany(f"INSERT INTO assets ({','.join(COLS)}) VALUES ({','.join('?' * len(COLS))})",
