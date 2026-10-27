@@ -93367,7 +93367,7 @@
     {"name": "Eyes", "colors": ["#dbdbca"]},
     {"name": "Pupils", "colors": ["#ffffff"]}
   ],
-  "US020061": [
+  "BC020061": [
     {"name": "Palette edge", "colors": ["#745236"]},
     {"name": "Palette", "colors": ["#bb8b59", "#eac994"]},
     {"name": "Highlights", "colors": ["#f6dfb8"]},

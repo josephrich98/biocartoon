@@ -13,7 +13,7 @@ import { MAX_STAR_IDS, MAX_STARS_PER_IP_PER_DAY } from "./limits.ts";
 import { Rejected } from "./text.ts";
 
 /** The two-letter codes of catalog ids (data/build_assets_db.py's ID_PREFIX). */
-const ID_PREFIXES = ["BA", "BI", "HI", "OM", "RE", "SD", "SV", "US"];
+const ID_PREFIXES = ["BA", "BC", "BI", "HI", "OM", "RE", "SD", "SV", "UG"];
 
 /** Catalog ids look like `BA000123`: the source's code, then a number unique across the catalog. */
 export function validId(id: unknown): id is string {

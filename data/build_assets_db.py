@@ -104,7 +104,9 @@ COLS = [c.split()[0] for c in SCHEMA.split("(", 1)[1].split(");")[0].strip().spl
 # whole catalog (BA000123). A number is given once and never again, even after its asset is gone,
 # so an id always means one asset; the master's `id_seq` keeps the highest one given.
 ID_PREFIX = {"bioart": "BA", "bioicons": "BI", "healthicons": "HI", "openmoji": "OM",
-             "reactome": "RE", "scidraw": "SD", "servier": "SV", "user": "US"}
+             "reactome": "RE", "scidraw": "SD", "servier": "SV", "user": "UG"}
+# An upload in the official BioCartoon library (BioCartoon's own, or one a reviewer accepted to it).
+OFFICIAL_PREFIX = "BC"
 ID_RE = re.compile(r"[A-Z]{2}[0-9]{6,}")
 ID_SQL = "CREATE TABLE IF NOT EXISTS id_seq (n INTEGER NOT NULL);"
 
@@ -126,6 +128,14 @@ class Ids:
         self.n += 1
         self._save()
         return f"{ID_PREFIX[source]}{self.n:06d}"
+
+
+def upload_id(row: dict, old_id: str | None, ids: Ids) -> str:
+    """An app upload's id: the number it was first published with (or the next one), after BC
+    when it is in the official library and UG when it is not, so the prefix follows a promotion."""
+    official = "BioCartoon" in (row.get("source_name"), row.get("author"))
+    number = old_id[2:] if old_id and ID_RE.fullmatch(old_id) else ids.new("user")[2:]
+    return f"{OFFICIAL_PREFIX if official else ID_PREFIX['user']}{number}"
 
 
 LAYERS_FILE = DATA / "layers.json"

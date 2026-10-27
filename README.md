@@ -267,7 +267,7 @@ One row per icon in the `assets` table. Only rows that are uploaded to the bucke
 
 | column | type | description |
 |---|---|---|
-| `id` | TEXT, primary key | two letters for the source (`BA` bioart, `BI` bioicons, `HI` healthicons, `OM` openmoji, `RE` reactome, `SD` scidraw, `SV` servier, `US` user), then a number unique across the catalog (e.g. `BA001505`); never reused |
+| `id` | TEXT, primary key | two letters for the source (`BA` bioart, `BI` bioicons, `HI` healthicons, `OM` openmoji, `RE` reactome, `SD` scidraw, `SV` servier, `UG` user upload, `BC` an upload in the official BioCartoon library), then a number unique across the catalog (e.g. `BA001505`); never reused |
 | `source` | TEXT | short source name: `bioart`, `bioicons`, `healthicons`, `openmoji`, `reactome`, `scidraw`, `servier`, `user` |
 | `source_name` | TEXT | display name of the source (e.g. `Servier Medical Art`) |
 | `source_id` | TEXT | the asset's id in the upstream collection; unique together with `source` |

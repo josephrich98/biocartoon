@@ -47,7 +47,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 import readme_stats
-from build_assets_db import Ids, generative_ai, load_generative_ai, load_layers
+from build_assets_db import Ids, generative_ai, load_generative_ai, load_layers, upload_id
 from config import PUBLISH_UA, R2_BUCKET, SUBMIT_URL
 
 DATA = Path(__file__).resolve().parent
@@ -139,10 +139,10 @@ def update_master(con: sqlite3.Connection, user_rows: list[dict] | None, tmpl_ro
         con.execute("ALTER TABLE templates ADD COLUMN credit TEXT")
     with con:
         if user_rows is not None:
-            # an upload keeps the id it was first published with; a new one gets the next
+            # an upload keeps the number it was first published with; a new one gets the next
             ids, have = Ids(con), dict(con.execute("SELECT source_id, id FROM assets WHERE source = 'user'"))
             for r in user_rows:
-                r["id"] = have.get(r["source_id"]) or ids.new("user")
+                r["id"] = upload_id(r, have.get(r["source_id"]), ids)
             keep = [r["id"] for r in user_rows]
             con.execute(f"DELETE FROM assets WHERE source = 'user' AND id NOT IN ({','.join('?' * len(keep))})", keep)
             if user_rows:

@@ -4,10 +4,10 @@ import { parseIds, validClient, validId } from "../src/stars.ts";
 import { MAX_STAR_IDS } from "../src/limits.ts";
 
 test("catalog ids are accepted, junk is not", () => {
-  for (const id of ["BA000001", "BI004816", "OM013699", "US020061", "SV1234567"]) {
+  for (const id of ["BA000001", "BI004816", "OM013699", "UG020071", "BC020061", "SV1234567"]) {
     assert.ok(validId(id), id);
   }
-  for (const id of ["", "BA", "BA12345", "ba000001", "XX000001", "BA000001 ", "BA0000001234", "bioart/2_626557", "user/t-cell-0a1b2c3d4e", 5, null]) {
+  for (const id of ["", "BA", "BA12345", "ba000001", "XX000001", "US020061", "BA000001 ", "BA0000001234", "bioart/2_626557", "user/t-cell-0a1b2c3d4e", 5, null]) {
     assert.equal(validId(id), false, String(id));
   }
 });

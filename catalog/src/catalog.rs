@@ -1341,7 +1341,7 @@ impl Worker {
             _ => (None, 0),
         };
         // The user's own icons are `user/<slug>`; published, the same upload has `source_id` <slug>
-        // and an id of its own (US000123). The own copy, whose files are on disk, takes its place.
+        // and an id of its own (UG000123, or BC000123 in the official library). The own copy, whose files are on disk, takes its place.
         let slug = row.id.strip_prefix("user/").unwrap_or(&row.id);
         let published: Vec<i64> = self
             .conn
@@ -1532,14 +1532,21 @@ fn copy_user_rows(old: &Path, new: &Path) -> rusqlite::Result<()> {
         conn.prepare("SELECT name FROM pragma_table_info('assets', ?1)")?.query_map(params![db], |r| r.get(0))?.collect()
     };
     let new_cols = names("main")?;
+    let has_source_id = new_cols.iter().any(|c| c == "source_id");
     let cols: Vec<String> = names("old")?.into_iter().filter(|c| new_cols.contains(c)).collect();
     let cols = cols.join(", ");
-    conn.execute_batch(&format!(
-        "INSERT OR IGNORE INTO assets ({cols}) SELECT {cols} FROM old.assets WHERE source='user'; \
-         INSERT INTO assets_fts(rowid, title, description, tags, category, variant) \
-         SELECT rowid, title, description, tags, category, variant FROM assets WHERE source='user'; \
-         DETACH DATABASE old;"
-    ))
+    // Only the user's own (with a local copy): published uploads come with the new catalog, and
+    // carrying the old one's over would list them twice once their ids change.
+    let own = "source='user' AND png_local IS NOT NULL";
+    conn.execute_batch(&format!("INSERT OR IGNORE INTO assets ({cols}) SELECT {cols} FROM old.assets WHERE {own};"))?;
+    if has_source_id {
+        // As in `Worker::insert_user`: the own copy (`user/<slug>`) takes the published one's place.
+        conn.execute_batch(&format!(
+            "DELETE FROM assets WHERE source='user' AND png_local IS NULL \
+             AND 'user/' || source_id IN (SELECT id FROM old.assets WHERE {own});"
+        ))?;
+    }
+    conn.execute_batch("INSERT INTO assets_fts(assets_fts) VALUES('rebuild'); DETACH DATABASE old;")
 }
 
 #[cfg(not(target_arch = "wasm32"))]
@@ -1873,7 +1880,13 @@ mod tests {
         let w = worker(&dir);
         let c = &w.conn;
         c.execute(
-            &format!("INSERT INTO assets ({TEST_COLS}) VALUES ('user/mine', 'user', 'User-generated', 'mine', '', '', '', '[]', 'CC0-1.0', '', '', 'user/mine.png', NULL, 1, 1)"),
+            &format!("INSERT INTO assets ({TEST_COLS}) VALUES ('user/mine', 'user', 'User-generated', 'mine', '', '', '', '[]', 'CC0-1.0', '', '', 'user/mine.png', '/data/user_generated/mine.png', 1, 1)"),
+            [],
+        )
+        .unwrap();
+        // Published under the id it had then; the new catalog has it under a new one.
+        c.execute(
+            &format!("INSERT INTO assets ({TEST_COLS}) VALUES ('user/theirs', 'user', 'User-generated', 'theirs', '', '', '', '[]', 'CC0-1.0', '', '', 'user/theirs.png', NULL, 1, 1)"),
             [],
         )
         .unwrap();
@@ -1881,24 +1894,38 @@ mod tests {
         drop(w);
         // The old catalog (the test one) has no `stars`; the new one does, plus a column of its own.
         let new = dir.join("new.sqlite");
-        Connection::open(&new)
-            .unwrap()
-            .execute_batch(
-                "CREATE TABLE assets (id TEXT PRIMARY KEY, source TEXT, source_name TEXT, title TEXT, variant TEXT, \
-                 description TEXT, category TEXT, tags TEXT, license TEXT, credit TEXT, author TEXT, png_key TEXT, \
-                 png_local TEXT, png_width INTEGER, png_height INTEGER, stars INTEGER NOT NULL DEFAULT 0, newer TEXT); \
-                 CREATE VIRTUAL TABLE assets_fts USING fts5(title, description, tags, category, variant, \
-                 content='assets', content_rowid='rowid', tokenize='porter unicode61');",
+        let n = Connection::open(&new).unwrap();
+        n.execute_batch(
+            "CREATE TABLE assets (id TEXT PRIMARY KEY, source TEXT, source_name TEXT, source_id TEXT, title TEXT, variant TEXT, \
+             description TEXT, category TEXT, tags TEXT, license TEXT, credit TEXT, author TEXT, png_key TEXT, \
+             png_local TEXT, png_width INTEGER, png_height INTEGER, stars INTEGER NOT NULL DEFAULT 0, newer TEXT); \
+             CREATE VIRTUAL TABLE assets_fts USING fts5(title, description, tags, category, variant, \
+             content='assets', content_rowid='rowid', tokenize='porter unicode61');",
+        )
+        .unwrap();
+        // Both uploads published: "mine" gives way to the user's own copy.
+        for (id, slug) in [("UG000001", "theirs"), ("UG000002", "mine")] {
+            n.execute(
+                "INSERT INTO assets (id, source, source_name, source_id, title, variant, description, category, tags, license, \
+                 credit, author, png_key, png_local, png_width, png_height) \
+                 VALUES (?1, 'user', 'User-generated', ?2, ?2, '', '', '', '[]', 'CC0-1.0', '', '', ?3, NULL, 1, 1)",
+                params![id, slug, format!("user/{slug}.png")],
             )
             .unwrap();
+        }
+        n.execute_batch("INSERT INTO assets_fts(assets_fts) VALUES('rebuild');").unwrap();
+        drop(n);
         // `worker()` opened the old catalog read-write, so it has `stars` by now; drop it to make
         // the column sets differ in both directions.
         Connection::open(dir.join("assets.sqlite")).unwrap().execute_batch("ALTER TABLE assets DROP COLUMN stars;").unwrap();
         copy_user_rows(&dir.join("assets.sqlite"), &new).unwrap();
         let w = Worker::open(&new, &dir.join("usage.sqlite")).unwrap();
         let rows = w.browse("user", None, 0, 10, IconSort::Alphabetical).unwrap();
-        assert_eq!(titles(rows), vec!["mine"]);
+        // Once each: the own copy of "mine", and "theirs" only as the new catalog has it.
+        let ids: Vec<String> = rows.iter().map(|r| r.id.clone()).collect();
+        assert_eq!(ids, ["user/mine", "UG000001"]);
         assert_eq!(titles(w.search("mine", &[], 10, IconSort::Alphabetical).unwrap()), vec!["mine"]);
+        assert_eq!(titles(w.search("theirs", &[], 10, IconSort::Alphabetical).unwrap()), vec!["theirs"]);
         let _ = std::fs::remove_dir_all(&dir);
     }
 
@@ -1948,7 +1975,7 @@ mod tests {
         w.conn
             .execute(
                 "INSERT INTO assets (id, source, source_name, source_id, title, tags, license, png_key, png_width, png_height) \
-                 VALUES ('US000001', 'user', 'User-generated', 'painted', 'painted', '[]', 'CC0-1.0', 'user/painted.png', 4, 2)",
+                 VALUES ('UG000001', 'user', 'User-generated', 'painted', 'painted', '[]', 'CC0-1.0', 'user/painted.png', 4, 2)",
                 [],
             )
             .unwrap();
