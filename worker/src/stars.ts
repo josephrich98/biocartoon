@@ -1,7 +1,7 @@
-// Stars on catalog assets (biocartoon-app: app/src/stars.rs is the client). Counts live in D1 (migration
+// Stars on catalog assets and templates (biocartoon-app: app/src/stars.rs is the client). Counts live in D1 (migration
 // 0002_stars.sql); publish_catalog.py copies them into the catalog's `stars` column.
 //
-//   POST /star       JSON {"id": <asset id>, "client": <hex>, "on": true|false}
+//   POST /star       JSON {"id": <asset or template id>, "client": <hex>, "on": true|false}
 //                    -> {"id", "stars": <count>, "starred": <bool>}
 //   GET  /stars?ids=<id>,<id>&client=<hex>
 //                    -> {"stars": {"<id>": <count>}, "mine": ["<id>"]}   (only starred ids)
@@ -15,9 +15,11 @@ import { Rejected } from "./text.ts";
 /** The two-letter codes of catalog ids (data/build_assets_db.py's ID_PREFIX). */
 const ID_PREFIXES = ["BA", "BC", "BI", "HI", "OM", "RE", "SD", "SV", "UG"];
 
-/** Catalog ids look like `BA000123`: the source's code, then a number unique across the catalog. */
+/** Catalog ids look like `BA000123`: the source's code, then a number unique across the catalog.
+ *  Template ids are `newId`'s, `eukaryotic-cell-5a1e09d5a6`: a slug, then 10 hex digits. */
 export function validId(id: unknown): id is string {
-  return typeof id === "string" && /^[A-Z]{2}[0-9]{6,9}$/.test(id) && ID_PREFIXES.includes(id.slice(0, 2));
+  if (typeof id !== "string") return false;
+  return (/^[A-Z]{2}[0-9]{6,9}$/.test(id) && ID_PREFIXES.includes(id.slice(0, 2))) || /^[a-z0-9][a-z0-9-]{0,60}-[0-9a-f]{10}$/.test(id);
 }
 
 export function validClient(c: unknown): c is string {

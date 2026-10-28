@@ -12,6 +12,15 @@ test("catalog ids are accepted, junk is not", () => {
   }
 });
 
+test("template ids are accepted", () => {
+  for (const id of ["eukaryotic-cell-5a1e09d5a6", "scrna-seq-workflow-965cc5021c", "item-0a1b2c3d4e"]) {
+    assert.ok(validId(id), id);
+  }
+  for (const id of ["eukaryotic-cell", "Eukaryotic-cell-5a1e09d5a6", "-cell-5a1e09d5a6", "cell-5A1E09D5A6", "cell-5a1e09d5a", "templates/cell-5a1e09d5a6"]) {
+    assert.equal(validId(id), false, id);
+  }
+});
+
 test("client ids are lowercase hex", () => {
   assert.ok(validClient("0123456789abcdef0123456789abcdef"));
   assert.equal(validClient("0123456789ABCDEF0123456789ABCDEF"), false);

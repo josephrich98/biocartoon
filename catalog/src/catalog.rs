@@ -112,7 +112,8 @@ pub enum IconSort {
     #[default]
     Alphabetical,
     ReverseAlphabetical,
-    /// Most placed on a canvas first (counted locally, see `Req::RecordUse`).
+    /// Most starred first; ties go to the most placed on a canvas (counted locally, see
+    /// `Req::RecordUse`).
     Popular,
     /// Best match first (search only; browsing and empty queries fall back to A to Z).
     Relevance,
@@ -122,7 +123,7 @@ impl IconSort {
     /// Orders offered when browsing a database.
     pub const ALL: [IconSort; 3] = [IconSort::Alphabetical, IconSort::ReverseAlphabetical, IconSort::Popular];
     /// Orders offered for search results.
-    pub const SEARCH: [IconSort; 4] = [IconSort::Relevance, IconSort::Alphabetical, IconSort::ReverseAlphabetical, IconSort::Popular];
+    pub const SEARCH: [IconSort; 4] = [IconSort::Relevance, IconSort::Popular, IconSort::Alphabetical, IconSort::ReverseAlphabetical];
 
     pub fn label(self) -> &'static str {
         match self {
@@ -133,13 +134,13 @@ impl IconSort {
         }
     }
 
-    /// ORDER BY terms over `assets a` joined with `usage.uses us` (and, for search, the picked
-    /// set `m` with its `score`). Ends in `a.id` so ties are stable.
-    fn sql(self) -> String {
+    /// ORDER BY terms over `assets a` joined with `usage.uses us` and `w`'s stars join (and, for
+    /// search, the picked set `m` with its `score`). Ends in `a.id` so ties are stable.
+    fn sql(self, w: &Worker) -> String {
         match self {
             IconSort::Alphabetical => "lower(coalesce(a.title,'')), a.title, a.id".into(),
             IconSort::ReverseAlphabetical => "lower(coalesce(a.title,'')) DESC, a.title DESC, a.id DESC".into(),
-            IconSort::Popular => "coalesce(us.n,0) DESC, lower(coalesce(a.title,'')), a.title, a.id".into(),
+            IconSort::Popular => format!("{} DESC, coalesce(us.n,0) DESC, lower(coalesce(a.title,'')), a.title, a.id", w.star_count()),
             IconSort::Relevance => "m.score, a.id".into(),
         }
     }
@@ -528,12 +529,14 @@ impl Worker {
     /// The star columns of a `SELECT ... FROM assets a {stars_join}`: the count (the local
     /// table's latest word over the catalog's snapshot) and whether it is starred here.
     pub fn stars_cols(&self) -> String {
+        let mine = if self.local_stars { "coalesce(ls.mine, 0)" } else { "0" };
+        format!("{}, {mine}", self.star_count())
+    }
+
+    /// The star count column of [`Self::stars_cols`] on its own.
+    pub fn star_count(&self) -> String {
         let snapshot = if self.stars_col { "coalesce(a.stars,0)" } else { "0" };
-        if self.local_stars {
-            format!("coalesce(ls.n, {snapshot}), coalesce(ls.mine, 0)")
-        } else {
-            format!("{snapshot}, 0")
-        }
+        if self.local_stars { format!("coalesce(ls.n, {snapshot})") } else { snapshot.into() }
     }
 
     pub fn stars_join(&self) -> &'static str {
@@ -752,7 +755,7 @@ impl Worker {
         };
         let q = query.trim();
         if q.is_empty() {
-            let order = sort.without_score().sql();
+            let order = sort.without_score().sql(self);
             // Bare `a.rowid` next to MIN() takes the row with the minimum (the plain variant).
             let sql = wrap(
                 format!("SELECT a.rowid AS rid, {pf} AS score FROM assets a WHERE a.png_key IS NOT NULL {src_filter} GROUP BY {gk}"),
@@ -776,10 +779,10 @@ impl Worker {
                              WHERE a.png_key IS NOT NULL {cond} GROUP BY {gk}",
                             rank.replace('\'', "''")
                         ),
-                        sort.sql(),
+                        sort.sql(self),
                     )
                 }
-                None => (format!("SELECT a.rowid AS rid, {pf} AS score FROM assets a WHERE a.png_key IS NOT NULL {cond} GROUP BY {gk}"), sort.without_score().sql()),
+                None => (format!("SELECT a.rowid AS rid, {pf} AS score FROM assets a WHERE a.png_key IS NOT NULL {cond} GROUP BY {gk}"), sort.without_score().sql(self)),
             };
             let mut st = self.conn.prepare(&wrap(inner, &order, "LIMIT ?1 OFFSET ?2"))?;
             let rows = st.query_map(params![limit as i64, offset as i64], row_from)?.collect();
@@ -792,7 +795,7 @@ impl Worker {
                      FROM assets a WHERE (a.title LIKE ?1 OR a.tags LIKE ?1) AND a.png_key IS NOT NULL {src_filter} \
                      GROUP BY {gk}"
                 ),
-                &if sort == IconSort::Relevance { "length(a.title), a.id".into() } else { sort.sql() },
+                &if sort == IconSort::Relevance { "length(a.title), a.id".into() } else { sort.sql(self) },
                 "LIMIT ?2 OFFSET ?3",
             );
             let mut st = self.conn.prepare(&sql)?;
@@ -825,7 +828,7 @@ impl Worker {
                 typed.replace('\'', "''")
             )
         };
-        let order = sort.sql();
+        let order = sort.sql(self);
         // Bare `a.rowid` next to MIN() takes the row with the minimum: the best match, and among
         // equal ones the plain variant (unless only a coloured one matches, as for "red flask"),
         // and an original over a copy.
@@ -1010,7 +1013,7 @@ impl Worker {
             cols = self.cols(),
             stars_join = self.stars_join(),
             uses_join = self.uses_join(),
-            order = sort.without_score().sql()
+            order = sort.without_score().sql(self)
         );
         let mut st = self.conn.prepare(&sql)?;
         let rows = st.query_map(params![source, cat_arg, limit as i64, offset as i64], row_from)?.collect();
@@ -1119,7 +1122,7 @@ impl Worker {
             cols = self.cols(),
             stars_join = self.stars_join(),
             uses_join = self.uses_join(),
-            order = sort.without_score().sql()
+            order = sort.without_score().sql(self)
         );
         let rows = self.conn.prepare(&sql)?.query_map(params![cat, sub, limit as i64, offset as i64], row_from)?.collect::<rusqlite::Result<_>>()?;
         let total = self.conn.query_row(
@@ -1670,6 +1673,12 @@ mod tests {
         let pop = vec!["gamma cell", "delta cell", "Alpha cell", "beta cell"];
         assert_eq!(titles(w.browse("bioart", None, 0, 10, IconSort::Popular).unwrap()), pop);
         assert_eq!(titles(w.search("", &[], 10, IconSort::Popular).unwrap()), pop);
+        // Stars come before uses: most starred first, then most placed.
+        w.set_stars(&[StarUpdate { id: "k1".into(), n: 3, mine: false }, StarUpdate { id: "k3".into(), n: 1, mine: false }]).unwrap();
+        let starred = vec!["Alpha cell", "delta cell", "gamma cell", "beta cell"];
+        assert_eq!(titles(w.browse("bioart", None, 0, 10, IconSort::Popular).unwrap()), starred);
+        assert_eq!(titles(w.search("cell", &[], 10, IconSort::Popular).unwrap()), starred);
+        w.set_stars(&[StarUpdate { id: "k1".into(), n: 0, mine: false }, StarUpdate { id: "k3".into(), n: 0, mine: false }]).unwrap();
         // Counts live in their own file, so they survive reopening (and catalog updates).
         drop(w);
         let w = Worker::open(&dir.join("assets.sqlite"), &dir.join("usage.sqlite")).unwrap();
