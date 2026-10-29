@@ -18,6 +18,8 @@ import fcntl
 import json
 import subprocess
 import sys
+import time
+import urllib.error
 import urllib.request
 from pathlib import Path
 
@@ -28,6 +30,8 @@ DATA = Path(__file__).resolve().parent
 # What the review page shows of a run: these lines in full, plus the end of the output.
 NOTABLE = ("skip ", "published ", "unchanged", "Traceback", "Error")
 TAIL_LINES = 15
+# launchd runs the poll on wake, often before DNS is back: retry the claim this often, this far apart.
+CLAIM_TRIES, CLAIM_WAIT = 4, 15
 
 
 def call(path: str, token: str, body: dict | None = None) -> dict:
@@ -51,7 +55,16 @@ def main() -> int:
     except BlockingIOError:
         return 0  # the weekly sync is running (and publishes too); try again next poll
     token = credential("PUBLISH_TOKEN")
-    ids = call("/publish/claim", token)["ids"]
+    for attempt in range(CLAIM_TRIES):
+        try:
+            ids = call("/publish/claim", token)["ids"]
+            break
+        except urllib.error.HTTPError:
+            raise  # the Worker answered (bad token, server error): worth a FAILED notification
+        except urllib.error.URLError:  # offline / no DNS yet; nothing claimed, so the request stays queued
+            if attempt == CLAIM_TRIES - 1:
+                return 0
+            time.sleep(CLAIM_WAIT)
     if not ids:
         return 0
     print(f"publishing for request(s) {ids}", flush=True)
