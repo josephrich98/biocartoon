@@ -93,6 +93,10 @@ pub struct Asset {
     /// Where the SVG can be fetched, when there is one (Servier publishes PNGs only).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub svg_url: Option<String>,
+    /// A small PNG preview (at most 256 px a side) for result tiles, when the catalog has one;
+    /// `url` is the full PNG.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub thumb_url: Option<String>,
     pub width: u32,
     pub height: u32,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -154,6 +158,8 @@ pub struct Catalog {
     ro: Connection,
     pub path: PathBuf,
     pub base_url: String,
+    /// `a.thumb_key`, or NULL in catalogs published before thumbnails.
+    thumb_key: &'static str,
 }
 
 const DETAIL_COLS: &str = "a.id, a.source, a.source_name, coalesce(a.title,''), coalesce(a.variant,''), coalesce(a.category,''), \
@@ -171,7 +177,11 @@ impl Catalog {
         let ro = Connection::open_with_flags(path, OpenFlags::SQLITE_OPEN_READ_ONLY | OpenFlags::SQLITE_OPEN_NO_MUTEX)
             .map_err(|e| format!("open {}: {e}", path.display()))?;
         ro.pragma_update(None, "query_only", true).map_err(|e| e.to_string())?;
-        Ok(Self { worker, ro, path: path.to_path_buf(), base_url: asset_base_url() })
+        let has_thumbs = ro
+            .query_row("SELECT count(*) FROM pragma_table_info('assets') WHERE name = 'thumb_key'", [], |r| r.get::<_, i64>(0))
+            .is_ok_and(|n| n > 0);
+        let thumb_key = if has_thumbs { "a.thumb_key" } else { "NULL" };
+        Ok(Self { worker, ro, path: path.to_path_buf(), base_url: asset_base_url(), thumb_key })
     }
 
     /// Open the configured catalog, downloading it first if there is none.
@@ -192,6 +202,7 @@ impl Catalog {
         let png_key: String = r.get(12)?;
         let png_local: Option<String> = r.get(13)?;
         let (svg_key, svg_local): (Option<String>, Option<String>) = (r.get(18)?, r.get(19)?);
+        let thumb_key: Option<String> = r.get(20)?;
         Ok(Asset {
             id: r.get(0)?,
             source: r.get(1)?,
@@ -208,6 +219,7 @@ impl Catalog {
             url: self.url_for(&png_key, png_local.as_deref()),
             svg_url: svg_key.as_deref().map(|k| self.url_for(k, svg_local.as_deref())),
             svg_key,
+            thumb_url: thumb_key.map(|k| self.url_for(&k, None)),
             png_key,
             width: r.get::<_, i64>(14)? as u32,
             height: r.get::<_, i64>(15)? as u32,
@@ -222,8 +234,9 @@ impl Catalog {
     /// Full rows for `ids`, in the same order.
     fn details<'a>(&self, ids: impl IntoIterator<Item = &'a str>) -> Result<Vec<Asset>, String> {
         let sql = format!(
-            "SELECT {DETAIL_COLS}, {}, a.svg_key, a.svg_local FROM assets a {} WHERE a.id = ?1",
+            "SELECT {DETAIL_COLS}, {}, a.svg_key, a.svg_local, {} FROM assets a {} WHERE a.id = ?1",
             self.worker.stars_cols(),
+            self.thumb_key,
             self.worker.stars_join()
         );
         let mut st = self.worker.conn.prepare(&sql).map_err(|e| e.to_string())?;
@@ -491,6 +504,7 @@ mod tests {
             url: String::new(),
             svg_key: None,
             svg_url: None,
+            thumb_url: None,
             width: 10,
             height: 10,
             png_local: None,
@@ -546,6 +560,15 @@ mod tests {
         assert_eq!(hits[0].matched_fields, vec!["title"]);
         assert_eq!(cat.variants("a/1").unwrap().len(), 1);
         assert!(cat.schema().unwrap().contains("CREATE TABLE assets"));
+        assert_eq!(hits[0].thumb_url, None); // a catalog published before thumbnails
+        drop(cat);
+        let c = Connection::open(&db).unwrap();
+        c.execute_batch("ALTER TABLE assets ADD COLUMN thumb_key TEXT; UPDATE assets SET thumb_key = 'thumbs/a/1.png' WHERE id = 'a/1';").unwrap();
+        drop(c);
+        let cat = Catalog::open(&db).unwrap();
+        let hits = cat.search("neuron", &[], 10, IconSort::Alphabetical).unwrap();
+        assert_eq!(hits[0].thumb_url.as_deref(), Some(format!("{}/thumbs/a/1.png", cat.base_url.trim_end_matches('/')).as_str()));
+        assert!(hits[0].url.ends_with("/a/1.png"));
         let _ = std::fs::remove_dir_all(&dir);
     }
 }

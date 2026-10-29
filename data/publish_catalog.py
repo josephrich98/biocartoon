@@ -25,6 +25,9 @@ Star counts (the app's star button, kept live by the submit Worker in D1) are fe
 downloaded catalog shows them before the app has asked the Worker. --stars-url / SUBMIT_URL
 (config.py) point at the Worker; --no-stars skips the fetch (counts stay as in --db).
 
+Each icon's search-result thumbnail (`thumbs/<png_key>`, see thumbs.py) is made and uploaded
+when the bucket lacks it, and the master's `thumb_key` column is set from what the bucket has.
+
 --dry-run makes these changes to a copy of the master and leaves the master and R2 alone.
 A real publish ends with a backup of the master to the private bucket (backup_db.py);
 --no-backup skips it (sync.py backs up itself, after the publish).
@@ -47,6 +50,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 import readme_stats
+import thumbs
 from build_assets_db import Ids, generative_ai, load_generative_ai, load_layers, upload_id
 from config import PUBLISH_UA, R2_BUCKET, SUBMIT_URL
 
@@ -318,6 +322,13 @@ def main():
             master = tmp / "master.sqlite"
         con = sqlite3.connect(master)
         update_master(con, user_rows, tmpl_rows, stars)
+        if a.bucket and (s3 is not None or not a.dry_run):
+            if s3 is None:
+                from upload_r2 import client
+
+                s3 = client()
+            thumbs.ensure(con, s3, a.bucket, dry_run=a.dry_run)
+            con.commit()
         con.close()
         gz, version, n = build(master, tmp, not a.no_uploads)
         tgz, tversion, tn = build_templates(master, tmp, not a.no_uploads)

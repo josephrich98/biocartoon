@@ -289,6 +289,7 @@ One row per icon in the `assets` table. Only rows that are uploaded to the bucke
 | `png_key` | TEXT | bucket key of the PNG |
 | `png_is_raster` | INTEGER | 1 if the PNG was rendered by us from the SVG |
 | `png_width`, `png_height` | INTEGER | PNG size in pixels |
+| `thumb_key` | TEXT | bucket key of a small PNG preview (at most 256 px a side, `thumbs/<png_key>`) for search results; NULL when there is none yet |
 | `svg_bytes`, `png_bytes` | INTEGER | file sizes |
 | `svg_sha256`, `png_sha256` | TEXT | file checksums |
 | `svg_local`, `png_local` | TEXT | build-time paths under `data/`; empty in the published catalog |
