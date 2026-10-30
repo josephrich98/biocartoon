@@ -1,6 +1,6 @@
 [package]
 name = "biocartoon-catalog"
-version = "0.4.2"
+version = "0.4.3"
 edition = "2021"
 description = "Search and download the BioCartoon catalog of open-licensed scientific illustrations, from Rust, a shell or an MCP client"
 license = "BSD-2-Clause"
