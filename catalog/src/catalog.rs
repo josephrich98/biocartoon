@@ -195,15 +195,30 @@ fn source_is() -> String {
     format!("a.source = CASE ?1 WHEN '{BIOCARTOON_SOURCE}' THEN 'user' ELSE ?1 END AND ({SHOWN_SOURCE}) = ?1")
 }
 
-/// ` AND (...)` keeping the assets listed under these databases (see [`SHOWN_SOURCE`]), or nothing
-/// for every database.
+/// Pseudo-database of a [`Filter`]: the user's own uploads ([`OWN`]), whichever database they
+/// are listed under besides.
+pub const LIBRARY_SOURCE: &str = "library";
+
+/// The user's own uploads: those with a local copy.
+const OWN: &str = "a.source = 'user' AND a.png_local IS NOT NULL";
+
+/// ` AND (...)` keeping the assets listed under these databases (see [`SHOWN_SOURCE`]) or, with
+/// [`LIBRARY_SOURCE`], the user's own; or nothing for every database.
 fn src_filter(sources: &[String]) -> String {
     if sources.is_empty() {
         return String::new();
     }
     let list = |v: Vec<&str>| v.iter().map(|s| format!("'{}'", s.replace('\'', "''"))).collect::<Vec<_>>().join(",");
-    let stored = list(sources.iter().map(|s| stored_source(s)).collect());
-    format!(" AND (a.source IN ({stored}) AND ({SHOWN_SOURCE}) IN ({}))", list(sources.iter().map(String::as_str).collect()))
+    let dbs: Vec<&str> = sources.iter().map(String::as_str).filter(|s| *s != LIBRARY_SOURCE).collect();
+    let mut any = Vec::new();
+    if !dbs.is_empty() {
+        let stored = list(dbs.iter().map(|s| stored_source(s)).collect());
+        any.push(format!("(a.source IN ({stored}) AND ({SHOWN_SOURCE}) IN ({}))", list(dbs)));
+    }
+    if sources.iter().any(|s| s == LIBRARY_SOURCE) {
+        any.push(format!("({OWN})"));
+    }
+    format!(" AND ({})", any.join(" OR "))
 }
 
 /// What a search keeps besides its words. Each list keeps the assets matching any of its entries
@@ -225,6 +240,13 @@ pub struct Filter {
     pub formats: Vec<String>,
     /// Tags, any case: an asset with any of them as one of its tags.
     pub tags: Vec<String>,
+    /// Only these asset ids (the app's favorites), when set.
+    pub ids: Option<Vec<String>>,
+    /// Only the assets this install starred (`usage.stars`).
+    pub favorites: bool,
+    /// Only the assets downloaded for offline use: their PNG is in the app's offline folder
+    /// (`usage.downloads`, see [`Worker::set_downloads`]).
+    pub downloads: bool,
 }
 
 /// Most tags one upload may have, and characters in one tag (the Worker's MAX_TAGS / MAX_TAG_CHARS).
@@ -376,6 +398,8 @@ pub struct Worker {
     file_bytes: &'static str,
     /// `usage.stars` exists (it can't be created on a read-only connection to an old usage file).
     local_stars: bool,
+    /// `usage.downloads` exists (as `local_stars`).
+    local_downloads: bool,
     /// `usage.uses` exists (it can't be created on a read-only connection with no usage file,
     /// since the in-memory stand-in is then read-only too).
     local_uses: bool,
@@ -461,6 +485,13 @@ impl Worker {
                 false
             }
         };
+        let local_downloads = match conn.execute_batch("CREATE TABLE IF NOT EXISTS usage.downloads (id TEXT PRIMARY KEY);") {
+            Ok(()) => true,
+            Err(e) => {
+                log::info!("no local download table ({e})");
+                false
+            }
+        };
         let has_col = |name: &str| -> bool {
             conn.query_row("SELECT count(*) FROM pragma_table_info('assets') WHERE name = ?1", params![name], |r| r.get::<_, i64>(0))
                 .map(|n| n > 0)
@@ -523,7 +554,7 @@ impl Worker {
             (false, true) => "a.png_bytes",
             _ => "NULL",
         };
-        Ok(Self { conn, fts, vocab: Default::default(), stars_col, group_key, dup, style_key, svg_key, layers, ai, file_bytes, local_stars, local_uses, taxa: Default::default() })
+        Ok(Self { conn, fts, vocab: Default::default(), stars_col, group_key, dup, style_key, svg_key, layers, ai, file_bytes, local_stars, local_downloads, local_uses, taxa: Default::default() })
     }
 
     /// The star columns of a `SELECT ... FROM assets a {stars_join}`: the count (the local
@@ -733,6 +764,16 @@ impl Worker {
                 " AND EXISTS (SELECT 1 FROM json_each(CASE WHEN json_valid(a.tags) THEN a.tags ELSE '[]' END) WHERE lower(trim(value)) IN ({}))",
                 tags.iter().map(|t| q(t)).collect::<Vec<_>>().join(",")
             );
+        }
+        if let Some(ids) = &f.ids {
+            sql += &format!(" AND a.id IN ({})", ids.iter().map(|i| q(i)).chain(std::iter::once("NULL".to_string())).collect::<Vec<_>>().join(","));
+        }
+        // With no usage table there is nothing starred or downloaded.
+        if f.favorites {
+            sql += if self.local_stars { " AND a.id IN (SELECT id FROM usage.stars WHERE mine = 1)" } else { " AND 0" };
+        }
+        if f.downloads {
+            sql += if self.local_downloads { " AND a.id IN (SELECT id FROM usage.downloads)" } else { " AND 0" };
         }
         let svg = f.formats.iter().any(|x| x == FORMAT_SVG);
         let png = f.formats.iter().any(|x| x == FORMAT_PNG);
@@ -1173,8 +1214,18 @@ impl Worker {
             let rows = self.conn.prepare(&sql)?.query_map([], |r| Ok((r.get(0)?, r.get(1)?)))?.collect();
             rows
         };
+        let mut sources = counts(&format!("({SHOWN_SOURCE})"), Filter { sources: Vec::new(), ..filter.clone() })?;
+        // Your library's uploads are also in the database they are listed under.
+        let own: i64 = self.conn.query_row(
+            &format!("SELECT count(DISTINCT {gk}) FROM assets a WHERE a.png_key IS NOT NULL AND {OWN} {}", src(Filter { sources: Vec::new(), ..filter.clone() })?),
+            [],
+            |r| r.get(0),
+        )?;
+        if own > 0 {
+            sources.push((LIBRARY_SOURCE.to_string(), own));
+        }
         Ok(Facets {
-            sources: counts(&format!("({SHOWN_SOURCE})"), Filter { sources: Vec::new(), ..filter.clone() })?,
+            sources,
             licenses: counts("a.license", Filter { licenses: Vec::new(), ..filter.clone() })?,
             taxa: self.taxonomy_where(&src(Filter { taxa: Vec::new(), ..filter.clone() })?)?,
             db_cats: self.db_categories(&src(Filter { db_cats: Vec::new(), ..filter.clone() })?)?,
@@ -1351,6 +1402,13 @@ impl Worker {
             .prepare("SELECT rowid FROM assets WHERE source='user' AND source_id=?1 AND id!=?2 AND png_local IS NULL")?
             .query_map(params![slug, row.id], |r| r.get(0))?
             .collect::<rusqlite::Result<_>>()?;
+        // Accepted to the official library (the published copy, or the own copy once it took that
+        // one's place, says so), it stays listed under BioCartoon as well as in Your library.
+        let official: bool = self.conn.query_row(
+            "SELECT EXISTS (SELECT 1 FROM assets WHERE source='user' AND (source_name='BioCartoon' AND id=?2 OR 'BioCartoon' IN (source_name, author) AND source_id=?1 AND png_local IS NULL))",
+            params![slug, row.id],
+            |r| r.get(0),
+        )?;
         for rid in published {
             self.delete_row(rid)?;
         }
@@ -1358,7 +1416,7 @@ impl Worker {
             "INSERT OR REPLACE INTO assets (id, source, source_name, source_id, title, variant, description, category, \
              tags, license, license_raw, license_url, attribution_required, share_alike, author, source_url, doi, credit, \
              svg_key, png_key, png_is_raster, png_width, png_height, svg_bytes, png_bytes, \
-             svg_local, png_local, extra, uploaded_at) VALUES (?1, 'user', 'User-generated', ?2, ?3, '', ?4, ?5, ?17, \
+             svg_local, png_local, extra, uploaded_at) VALUES (?1, 'user', ?18, ?2, ?3, '', ?4, ?5, ?17, \
              ?6, ?6, ?14, ?15, 0, ?7, NULL, NULL, ?8, ?16, ?9, 0, ?10, ?11, NULL, NULL, NULL, ?12, ?13, NULL)",
             params![
                 row.id,
@@ -1379,6 +1437,7 @@ impl Worker {
                 // An SVG the app keeps beside the PNG (a drawing an AI model made): drawn and exported instead.
                 row.svg_key,
                 serde_json::to_string(&row.tags).unwrap_or_else(|_| "[]".into()),
+                if official { BIOCARTOON_AUTHOR } else { "User-generated" },
             ],
         )?;
         if self.ai != "NULL" {
@@ -1431,6 +1490,27 @@ impl Worker {
         }
         self.conn.execute("DELETE FROM assets WHERE rowid=?1", params![rid])?;
         Ok(())
+    }
+
+    /// The downloaded assets are exactly those whose PNG (`png_key`) is among `keys`: the icons
+    /// whose files are all in the app's offline folder, as a scan of it found (the Downloads
+    /// filter, [`Filter::downloads`]).
+    pub fn set_downloads(&self, keys: &[String]) -> rusqlite::Result<()> {
+        if !self.local_downloads {
+            return Ok(());
+        }
+        let tx = self.conn.unchecked_transaction()?;
+        tx.execute_batch("CREATE TEMP TABLE IF NOT EXISTS offline_keys (key TEXT PRIMARY KEY); DELETE FROM temp.offline_keys;")?;
+        {
+            let mut st = tx.prepare("INSERT OR IGNORE INTO temp.offline_keys (key) VALUES (?1)")?;
+            for k in keys {
+                st.execute(params![k])?;
+            }
+        }
+        tx.execute("DELETE FROM usage.downloads", [])?;
+        tx.execute("INSERT OR IGNORE INTO usage.downloads (id) SELECT id FROM assets WHERE png_key IN (SELECT key FROM temp.offline_keys)", [])?;
+        tx.execute("DELETE FROM temp.offline_keys", [])?;
+        tx.commit()
     }
 
     pub fn record_use(&self, source: &str, title: &str) -> rusqlite::Result<()> {
@@ -1543,7 +1623,12 @@ fn copy_user_rows(old: &Path, new: &Path) -> rusqlite::Result<()> {
     let own = "source='user' AND png_local IS NOT NULL";
     conn.execute_batch(&format!("INSERT OR IGNORE INTO assets ({cols}) SELECT {cols} FROM old.assets WHERE {own};"))?;
     if has_source_id {
-        // As in `Worker::insert_user`: the own copy (`user/<slug>`) takes the published one's place.
+        // As in `Worker::insert_user`: the own copy (`user/<slug>`) takes the published one's place,
+        // listed under BioCartoon when that one was accepted to the official library.
+        conn.execute_batch(
+            "UPDATE assets SET source_name='BioCartoon' WHERE source='user' AND png_local IS NOT NULL AND source_id IN \
+             (SELECT source_id FROM assets WHERE source='user' AND png_local IS NULL AND 'BioCartoon' IN (source_name, author));",
+        )?;
         conn.execute_batch(&format!(
             "DELETE FROM assets WHERE source='user' AND png_local IS NULL \
              AND 'user/' || source_id IN (SELECT id FROM old.assets WHERE {own});"
@@ -1782,6 +1867,41 @@ mod tests {
     }
 
     #[test]
+    fn favorites_and_downloads_come_from_the_usage_file() {
+        let dir = std::env::temp_dir().join(format!("cc-catalog-mine-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let w = worker(&dir);
+        let ids = |w: &Worker, f: &Filter| {
+            let mut v: Vec<String> = w.search_filtered("", f, 0, 100, IconSort::Alphabetical).unwrap().into_iter().map(|r| r.id).collect();
+            v.sort();
+            v
+        };
+        let fav = Filter { favorites: true, ..Filter::default() };
+        let dl = Filter { downloads: true, ..Filter::default() };
+        let both = Filter { favorites: true, downloads: true, ..Filter::default() };
+        assert!(ids(&w, &fav).is_empty() && ids(&w, &dl).is_empty());
+        w.set_stars(&[StarUpdate { id: "k1".into(), n: 4, mine: true }, StarUpdate { id: "k2".into(), n: 9, mine: false }]).unwrap();
+        // (each test asset's PNG key is its id)
+        let keys = |v: &[&str]| v.iter().map(|k| k.to_string()).collect::<Vec<_>>();
+        w.set_downloads(&keys(&["k1", "missing", "k3", "k3"])).unwrap();
+        assert_eq!(ids(&w, &fav), ["k1"]);
+        assert_eq!(ids(&w, &dl), ["k1", "k3"]);
+        assert_eq!(ids(&w, &both), ["k1"]);
+        // The counts are of the favorites (or downloads) alone.
+        let total = |fc: &Facets| fc.sources.iter().map(|(_, n)| n).sum::<i64>();
+        assert_eq!(total(&w.facets("", &dl).unwrap()), 2);
+        // In the usage file, so they survive a catalog update.
+        drop(w);
+        let w = Worker::open(&dir.join("assets.sqlite"), &dir.join("usage.sqlite")).unwrap();
+        assert_eq!(ids(&w, &dl), ["k1", "k3"]);
+        // A scan of the offline folder replaces the list.
+        w.set_downloads(&keys(&["k2"])).unwrap();
+        assert_eq!(ids(&w, &dl), ["k2"]);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
     fn stars_come_from_the_catalog_until_the_worker_says_otherwise() {
         let dir = std::env::temp_dir().join(format!("cc-catalog-stars-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
@@ -1855,6 +1975,80 @@ mod tests {
         assert_eq!((titles(rows), total), (vec!["Influenza".to_string(), "SARS-CoV-2".to_string()], 2));
         let (_, total) = w.browse_taxon(None, None, &["user".into()], 0, 10, IconSort::Alphabetical).unwrap();
         assert_eq!(total, 0);
+    }
+
+    #[test]
+    fn your_library_is_a_database_of_its_own() {
+        let dir = std::env::temp_dir().join(format!("cc-catalog-library-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let db = dir.join("assets.sqlite");
+        let c = Connection::open(&db).unwrap();
+        c.execute_batch(
+            "CREATE TABLE assets (id TEXT PRIMARY KEY, source TEXT, source_name TEXT, source_id TEXT, title TEXT, variant TEXT, \
+             description TEXT, category TEXT, tags TEXT, license TEXT, license_raw TEXT, license_url TEXT, \
+             attribution_required INTEGER, share_alike INTEGER, author TEXT, source_url TEXT, doi TEXT, credit TEXT, \
+             svg_key TEXT, png_key TEXT, png_is_raster INTEGER, png_width INTEGER, png_height INTEGER, svg_bytes INTEGER, \
+             png_bytes INTEGER, svg_local TEXT, png_local TEXT, extra TEXT, uploaded_at TEXT);",
+        )
+        .unwrap();
+        // Another database's icon, a community upload, and one accepted to BioCartoon.
+        for (id, source, name) in [("bioart/a", "bioart", "BioArt"), ("UG1", "user", "User-generated"), ("BC1", "user", "BioCartoon")] {
+            c.execute(
+                "INSERT INTO assets (id, source, source_name, source_id, title, tags, license, credit, png_key, png_width, png_height) \
+                 VALUES (?1, ?2, ?3, lower(?1), ?1, '[]', 'CC0-1.0', '', ?1, 1, 1)",
+                params![id, source, name],
+            )
+            .unwrap();
+        }
+        drop(c);
+        let w = Worker::open(&db, &dir.join("usage.sqlite")).unwrap();
+        let own = |slug: &str, title: &str| AssetRow {
+            id: format!("user/{slug}"),
+            source: "user".into(),
+            source_name: "User-generated".into(),
+            title: title.into(),
+            variant: String::new(),
+            category: String::new(),
+            description: String::new(),
+            tags: Vec::new(),
+            license: "CC0-1.0".into(),
+            credit: String::new(),
+            author: String::new(),
+            png_key: format!("user/{slug}.png"),
+            png_local: Some(format!("/x/{slug}.png")),
+            png_width: 1,
+            png_height: 1,
+            svg_key: None,
+            stars: 0,
+            starred: false,
+            taxa: Vec::new(),
+            layers: Vec::new(),
+            generative_ai_used: None,
+            file_bytes: 0,
+        };
+        // The user's own copies of both uploads take their places, and a private one.
+        for slug in ["ug1", "bc1", "mine"] {
+            w.insert_user(&own(slug, slug)).unwrap();
+        }
+        let s = |v: &[&str]| v.iter().map(|x| x.to_string()).collect::<Vec<_>>();
+        let ids = |f: &Filter| {
+            let mut v: Vec<String> = w.search_filtered("", f, 0, 10, IconSort::Alphabetical).unwrap().into_iter().map(|r| r.id).collect();
+            v.sort();
+            v
+        };
+        assert_eq!(ids(&Filter::default()), ["bioart/a", "user/bc1", "user/mine", "user/ug1"]);
+        assert_eq!(ids(&Filter::sources(&s(&[LIBRARY_SOURCE]))), ["user/bc1", "user/mine", "user/ug1"]);
+        assert_eq!(ids(&Filter::sources(&s(&[BIOCARTOON_SOURCE]))), ["user/bc1"]);
+        assert_eq!(ids(&Filter::sources(&s(&["bioart", LIBRARY_SOURCE]))), ["bioart/a", "user/bc1", "user/mine", "user/ug1"]);
+        assert_eq!(ids(&Filter { ids: Some(s(&["bioart/a", "user/mine"])), ..Filter::default() }), ["bioart/a", "user/mine"]);
+        assert_eq!(ids(&Filter { ids: Some(Vec::new()), ..Filter::default() }), Vec::<String>::new());
+        // Saved again (edited), it is still BioCartoon's.
+        w.insert_user(&own("bc1", "bc1 edited")).unwrap();
+        assert_eq!(ids(&Filter::sources(&s(&[BIOCARTOON_SOURCE]))), ["user/bc1"]);
+        let fc = w.facets("", &Filter::sources(&s(&[LIBRARY_SOURCE]))).unwrap();
+        assert_eq!(fc.sources, [("bioart".to_string(), 1), ("biocartoon".to_string(), 1), ("user".to_string(), 2), (LIBRARY_SOURCE.to_string(), 3)]);
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]

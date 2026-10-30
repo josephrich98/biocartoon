@@ -29,6 +29,8 @@ COMMANDS
                             it to collection S (C alone: that category in any collection)
       --license L           under a license (CC-BY-4.0, CC0-1.0, ...; any case)
       --file-type svg|png   svg: published as SVG; png: published as a PNG only
+      --favorites           only the icons you starred (in the editor or an app sharing its stars)
+      --downloads           only the icons downloaded for offline use (the editor's Settings > Offline)
       --limit N             how many of each (default 12)  [--offset N]
       --sort relevance|az|za|popular
       --columns C,C,...     which columns of the icon table to show, in this order (default all):
@@ -375,7 +377,7 @@ pub(crate) fn values<'a>(a: &'a Args, k: &str) -> impl Iterator<Item = &'a str> 
 }
 
 /// The icon filter options of `search`.
-const ICON_FILTERS: [&str; 7] = ["source", "author", "category", "subcategory", "source-category", "license", "file-type"];
+const ICON_FILTERS: [&str; 9] = ["source", "author", "category", "subcategory", "source-category", "license", "file-type", "favorites", "downloads"];
 
 /// `search`'s icon filter. Each option keeps the icons matching any of its values, and an icon
 /// has to pass every option given. `None` when they can't match anything (subcategories outside
@@ -384,6 +386,8 @@ fn icon_filter(a: &Args, cat: &Catalog) -> Result<Option<Filter>, String> {
     let mut f = Filter { sources: source_args(a)?, ..Filter::default() };
     f.authors = values(a, "author").map(str::to_string).collect();
     f.tags = tag_args(a);
+    f.favorites = a.flag("favorites");
+    f.downloads = a.flag("downloads");
 
     let mut cats = Vec::new();
     for c in values(a, "category") {

@@ -58,6 +58,8 @@ server also lists the shared slide templates. The BioCartoon desktop editor ship
     - `--source-category [S:]C`: icons in a collection's own category (from `biocartoon --source-categories`)
     - `--license L`: icons under a license (`CC-BY-4.0`, `CC0-1.0`, ...)
     - `--file-type svg|png`: icons published as SVG, or as a PNG only
+    - `--favorites`: only the icons you starred (in the editor, or an app sharing its stars)
+    - `--downloads`: only the icons downloaded for offline use (the editor's Settings > Offline)
 
     Repeat a filter for several values: an icon matching any of them passes. An icon has to pass
     every filter given.
