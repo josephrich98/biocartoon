@@ -22,8 +22,8 @@ jobs:
           - { os: ubuntu-latest, target: x86_64 }
           # ring (TLS) can't be cross-compiled by manylinux2014's old GCC for aarch64; 2_28 is glibc 2.28+.
           - { os: ubuntu-latest, target: aarch64, manylinux: "2_28" }
-          - { os: macos-14, target: x86_64-apple-darwin }
-          - { os: macos-14, target: aarch64-apple-darwin }
+          - { os: macos-15, target: x86_64-apple-darwin }
+          - { os: macos-15, target: aarch64-apple-darwin }
           - { os: windows-latest, target: x86_64-pc-windows-msvc }
     runs-on: ${{ matrix.os }}
     steps:
