@@ -12,6 +12,7 @@
 //   /auth/*, /me, /cloud/projects/*, /cloud/library/*: optional accounts that keep projects and
 //     Your library online (src/accounts.ts)
 //   POST /publish/claim, /publish/finish: the Mac running queued catalog publishes (src/publish_requests.ts)
+//   /shares, /shares/<id>, /shares/<id>/<version>: encrypted share links, for guests too (src/shares.ts)
 //   /keys, /keys/<id>: make, list and revoke shareable upload keys, with the master key (src/upload_keys.ts)
 //
 // An asset's meta may carry `replaces: "<id>"` (`biocartoon upload --update ID`): a new version of
@@ -25,6 +26,7 @@ import {
   MAX_SUGGESTIONS_PER_IP_PER_DAY, MAX_TEMPLATE_JSON_BYTES,
 } from "./limits.ts";
 import * as publishRequests from "./publish_requests.ts";
+import * as shares from "./shares.ts";
 import * as stars from "./stars.ts";
 import * as uploadKeys from "./upload_keys.ts";
 import { Rejected, newId } from "./text.ts";
@@ -54,6 +56,22 @@ export default {
       const p = auth[1];
       return guarded(() => (auth[2] === "start" ? accounts.start(url, p, env) : accounts.callback(req, url, p, env)));
     }
+    const share = /^\/shares(?:\/([^/]+)(?:\/([^/]+))?)?$/.exec(url.pathname);
+    if (share) {
+      if (req.method === "OPTIONS") return accounts.cors(req, new Response(null, { status: 204 }), env);
+      const [, id, version] = share;
+      if (id !== undefined && !shares.validShareId(id)) return accounts.cors(req, json({ error: "This share link isn't valid" }, 400), env);
+      const route = `${req.method} ${version !== undefined ? "/shares/:id/:version" : id !== undefined ? "/shares/:id" : "/shares"}`;
+      const handler: Record<string, () => Promise<Response>> = {
+        "POST /shares": () => shares.create(req, env),
+        "GET /shares/:id": () => shares.info(id!, env),
+        "GET /shares/:id/:version": () => shares.download(id!, version!, env),
+        "PUT /shares/:id": () => shares.update(req, id!, env),
+        "DELETE /shares/:id": () => shares.stop(req, id!, env),
+      };
+      const f = handler[route];
+      return accounts.cors(req, f ? await guarded(f) : json({ error: "Not found" }, 404), env);
+    }
     const project = /^\/cloud\/projects\/([^/]+)$/.exec(url.pathname);
     const item = /^\/cloud\/library\/([^/]+)$/.exec(url.pathname);
     if (["/me", "/auth/logout", "/cloud/projects", "/cloud/library"].includes(url.pathname) || project || item) {
@@ -80,6 +98,11 @@ export default {
     }
     if (url.pathname === "/") return new Response("BioCartoon submissions\n");
     return json({ error: "Not found" }, 404);
+  },
+  /** Daily: delete share links nobody has used for SHARE_IDLE_DAYS (src/shares.ts). */
+  async scheduled(_event: ScheduledController, env: Env): Promise<void> {
+    const n = await shares.sweep(env);
+    if (n) console.log(`deleted ${n} expired share links`);
   },
 } satisfies ExportedHandler<Env>;
 

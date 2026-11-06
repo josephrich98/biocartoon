@@ -4,7 +4,8 @@ export interface Env {
   PENDING: R2Bucket;
   /** The public asset bucket (what the app reads and publish_catalog.py publishes from). */
   PUBLIC: R2Bucket;
-  /** Private: signed-in users' online projects, under `users/<user id>/` (src/accounts.ts). */
+  /** Private: signed-in users' online projects, under `users/<user id>/` (src/accounts.ts), and
+   *  encrypted share links, under `shares/<id>/` (src/shares.ts). */
   USERS: R2Bucket;
   /** OAuth apps for signing in (secrets: `wrangler secret put GOOGLE_CLIENT_SECRET` etc.). */
   GOOGLE_CLIENT_ID?: string;

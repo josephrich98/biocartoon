@@ -48,3 +48,18 @@ export const MAX_CLOUD_LIBRARY_ITEMS = 5000;
 export const MAX_SIGNUPS_PER_IP_PER_DAY = 10;
 /** A session unused for this long ends; the online projects stay. */
 export const SESSION_IDLE_DAYS = 180;
+// Share links (src/shares.ts). Keep in sync with biocartoon-app: app/src/share.rs.
+/** One version of a shared project, encrypted (its images included). */
+export const MAX_SHARE_BYTES = 32 * 1024 * 1024;
+/** Versions of a shared project kept online, the latest included. */
+export const MAX_SHARE_VERSIONS = 5;
+/** A share link nobody has opened, checked or saved to for this long expires and is deleted. */
+export const SHARE_IDLE_DAYS = 90;
+/** New share links per IP address per rolling day. */
+export const MAX_NEW_SHARES_PER_IP_PER_DAY = 30;
+/** Share links alive at once, and their latest versions' total size: for a guest (by IP address)... */
+export const MAX_ACTIVE_SHARES_GUEST = 50;
+export const MAX_ACTIVE_SHARE_BYTES_GUEST = 500 * 1024 * 1024;
+/** ...and for a signed-in account. */
+export const MAX_ACTIVE_SHARES_USER = 200;
+export const MAX_ACTIVE_SHARE_BYTES_USER = 2 * 1024 * 1024 * 1024;

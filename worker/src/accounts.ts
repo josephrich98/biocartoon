@@ -25,6 +25,7 @@
 //   Library ids are "asset.<slug>", "template.<slug>" or "favorites".
 
 import type { Env } from "./env.ts";
+import * as shares from "./shares.ts";
 import { json, sha256Hex } from "./http.ts";
 import { MAX_CLOUD_LIBRARY_ITEM_BYTES, MAX_CLOUD_LIBRARY_ITEMS, MAX_CLOUD_PROJECT_BYTES, MAX_CLOUD_PROJECTS, MAX_CLOUD_USER_BYTES, MAX_SIGNUPS_PER_IP_PER_DAY, SESSION_IDLE_DAYS } from "./limits.ts";
 import { Rejected } from "./text.ts";
@@ -223,6 +224,17 @@ async function session(req: Request, env: Env): Promise<Session> {
   return { tokenHash, userId: row.user_id };
 }
 
+/** The signed-in user behind the request, or null for a guest (or a sign-in no longer valid). */
+export async function optionalUser(req: Request, env: Env): Promise<string | null> {
+  if (!req.headers.get("authorization")) return null;
+  try {
+    return (await session(req, env)).userId;
+  } catch (e) {
+    if (e instanceof Rejected) return null;
+    throw e;
+  }
+}
+
 const projectKey = (userId: string, id: string) => `users/${userId}/projects/${id}.biocartoon`;
 const libraryKey = (userId: string, id: string) => `users/${userId}/library/${id}.json`;
 
@@ -263,6 +275,7 @@ export async function deleteAccount(req: Request, env: Env): Promise<Response> {
     if (page.objects.length) await env.USERS.delete(page.objects.map((o) => o.key));
     cursor = page.truncated ? page.cursor : undefined;
   } while (cursor);
+  await shares.deleteOwned(env, s.userId);
   await env.DB.batch([
     env.DB.prepare("DELETE FROM cloud_projects WHERE user_id = ?1").bind(s.userId),
     env.DB.prepare("DELETE FROM cloud_library WHERE user_id = ?1").bind(s.userId),
@@ -379,7 +392,8 @@ export function cors(req: Request, res: Response, env: Env): Response {
   if (origin && appOrigins(env).includes(origin)) {
     r.headers.set("access-control-allow-origin", origin);
     r.headers.set("access-control-allow-methods", "GET, PUT, POST, DELETE, OPTIONS");
-    r.headers.set("access-control-allow-headers", "authorization, content-type, x-project-name, x-project-modified, x-item-modified");
+    r.headers.set("access-control-allow-headers", "authorization, content-type, x-project-name, x-project-modified, x-item-modified, x-share-edit, x-share-owner, x-share-base");
+    r.headers.set("access-control-expose-headers", "x-share-version");
     r.headers.set("access-control-max-age", "86400");
     r.headers.set("vary", "origin");
   }

@@ -5,10 +5,13 @@
   "main": "src/submit.ts",
   "compatibility_date": "2026-10-01",
   "routes": [{ "pattern": "api.biocartoon.com", "custom_domain": true }],
+  // Daily: delete share links nobody has used for SHARE_IDLE_DAYS (src/shares.ts).
+  "triggers": { "crons": ["41 4 * * *"] },
   "r2_buckets": [
     { "binding": "PENDING", "bucket_name": "biocartoon-pending" },
     { "binding": "PUBLIC", "bucket_name": "biocartoon" },
-    // Private: signed-in users' online projects (src/accounts.ts). Never make it public.
+    // Private: signed-in users' online projects (src/accounts.ts), and everyone's encrypted share
+    // links under shares/ (src/shares.ts). Never make it public.
     { "binding": "USERS", "bucket_name": "biocartoon-users" }
   ],
   "vars": {
