@@ -52,7 +52,7 @@ function setup(row: Row, pending: string[]) {
 const asset = (id: string, files: string[]): Row => ({
   id, kind: "asset", title: "Cell", description: "", category: "", tags: '["cell", "membrane"]', author: "Me", license: "CC0-1.0", files: JSON.stringify(files),
   texts: "[]", width: 10, height: 10, bytes: 3, png_sha256: null, created_at: "2026-10-01T00:00:00Z", status: "pending",
-  reviewed_at: null, reviewed_by: null, official_requested: 0, official: 0, generative_ai_used: 0,
+  reviewed_at: null, reviewed_by: null, official_requested: 0, official: 0, generative_ai_used: 0, generative_ai_details: "", replaces: null, replaced_by: null, key_id: null,
 });
 const sidecar = (PUBLIC: ReturnType<typeof bucket>, k: string) => {
   const b: unknown = PUBLIC.m.get(k)!.body; // the sidecar is put as a string
@@ -105,7 +105,13 @@ test("an official approval keeps the author, and undoing it clears the flag", as
   assert.equal(sidecar(PUBLIC, "user/cell.json").official, undefined);
   assert.equal(sidecar(PUBLIC, "user/cell.json").generative_ai_used, false);
   assert.equal(sidecar(PUBLIC, "user/cell.json").layers, undefined);
+  assert.equal(sidecar(PUBLIC, "user/cell.json").generative_ai_details, undefined);
   await undo(env, row);
+  Object.assign(row, { generative_ai_used: 1, generative_ai_details: "Drawn by an LLM as SVG code" });
+  await approve(env, row, "me");
+  assert.equal(sidecar(PUBLIC, "user/cell.json").generative_ai_details, "Drawn by an LLM as SVG code");
+  await undo(env, row);
+  Object.assign(row, { generative_ai_used: 0, generative_ai_details: "" });
   await approve(env, row, "me", true);
   const s = sidecar(PUBLIC, "user/cell.json");
   assert.deepEqual([s.author, s.credit, s.official, row.official], ["Me", '"Cell" by Me, BioCartoon community contribution, CC0', true, 1]);

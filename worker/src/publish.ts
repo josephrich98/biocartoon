@@ -5,6 +5,11 @@
 // Both decisions can be undone. Rejecting keeps the pending files (purgeRejected deletes them
 // once REJECTED_KEEP_DAYS have passed); undoing an approval moves the files back to the pending
 // bucket, and the next publish_catalog.py run drops the item from the catalog.
+//
+// An update (`replaces`, from `biocartoon upload --update ID`) is published under its own id, so its
+// files get new keys (they are cached as immutable). Its sidecar's `replaces` lists every id it is a
+// newer version of, newest first; data/uploads.py leaves those out and the catalog gives the update
+// their catalog id. The old files stay in the bucket, so projects that use them still open.
 
 import type { Env } from "./env.ts";
 import { sha256Hex } from "./http.ts";
@@ -28,6 +33,8 @@ export interface Row {
   license: string;
   /** 1 / 0 / null (not said, or submitted before the question). */
   generative_ai_used: number | null;
+  /** How generative AI was used, in the contributor's words ('' when not said). */
+  generative_ai_details: string;
   /** Optional contact address for reviewers; never published. */
   email: string;
   files: string;
@@ -44,6 +51,12 @@ export interface Row {
   official: number;
   reviewed_at: string | null;
   reviewed_by: string | null;
+  /** The approved asset this is a new version of (src/submit.ts), or null. */
+  replaces: string | null;
+  /** The approved update of this asset, once there is one. */
+  replaced_by: string | null;
+  /** The upload key it was submitted with ('master', a shared key's id, or null). */
+  key_id: string | null;
 }
 
 const IMMUTABLE = "public, max-age=31536000, immutable";
@@ -65,6 +78,9 @@ async function copy(env: Env, from: string, to: string, contentType: string, edi
  *  template.json); it stays credited to its contributor. */
 export async function approve(env: Env, row: Row, reviewer: string, official = false): Promise<void> {
   const files: string[] = JSON.parse(row.files);
+  // Read before anything is written, so a missing target leaves the update pending.
+  const target = row.replaces ? await latestVersion(env, row.replaces) : null;
+  const lineage = target ? [target, ...(await sidecarReplaces(env, target))] : [];
   if (row.kind === "asset") {
     const key = `user/${row.id}.png`;
     let image;
@@ -82,7 +98,9 @@ export async function approve(env: Env, row: Row, reviewer: string, official = f
       id: `user/${row.id}`, title: row.title, description: row.description, category: row.category, tags: rowTags(row), license: row.license,
       credit, author: row.author, png_key: key, ...image, created_at: row.created_at, ...(official && { official: true }),
       generative_ai_used: row.generative_ai_used == null ? null : row.generative_ai_used === 1,
+      ...(row.generative_ai_used === 1 && row.generative_ai_details && { generative_ai_details: row.generative_ai_details }),
       ...(image.svg_key && rowLayers(row).length && { layers: rowLayers(row) }),
+      ...(lineage.length && { replaces: lineage.map((id) => `user/${id}`) }),
     };
     await env.PUBLIC.put(`user/${row.id}.json`, JSON.stringify(sidecar), { httpMetadata: { contentType: "application/json" } });
   } else {
@@ -101,6 +119,27 @@ export async function approve(env: Env, row: Row, reviewer: string, official = f
   }
   await env.PENDING.delete(files);
   await setStatus(env, row.id, "approved", reviewer, official);
+  if (target) await env.DB.prepare("UPDATE submissions SET replaced_by = ?2 WHERE id = ?1").bind(target, row.id).run();
+}
+
+/** The newest approved version of upload `id`: itself, or the update that replaced it, and so on. */
+export async function latestVersion(env: Env, id: string): Promise<string> {
+  let at = id;
+  for (let i = 0; i < 100; i++) {
+    const r = await env.DB.prepare("SELECT status, replaced_by FROM submissions WHERE id = ?1").bind(at).first<{ status: string; replaced_by: string | null }>();
+    if (!r || r.status !== "approved") throw new Rejected(`Can't publish this update: ${at}, the asset it updates, is no longer approved.`, 409);
+    if (!r.replaced_by) return at;
+    at = r.replaced_by;
+  }
+  throw new Rejected(`Can't publish this update: ${id} has too many versions.`, 409);
+}
+
+/** The ids (without `user/`) the published sidecar of upload `id` says it replaces. */
+async function sidecarReplaces(env: Env, id: string): Promise<string[]> {
+  const obj = await env.PUBLIC.get(`user/${id}.json`);
+  if (!obj) throw new Rejected(`Can't publish this update: user/${id}.json, the asset it updates, is not in the public bucket.`, 409);
+  const r: unknown = JSON.parse(new TextDecoder().decode(await obj.arrayBuffer())).replaces;
+  return Array.isArray(r) ? r.filter((x): x is string => typeof x === "string" && x.startsWith("user/")).map((x) => x.slice(5)) : [];
 }
 
 /** A row's tags (rows from before tags were kept have none). */
@@ -142,6 +181,7 @@ export async function undo(env: Env, row: Row): Promise<void> {
     const present = await Promise.all(files.map((f) => env.PENDING.head(f)));
     if (!files.length || present.some((o) => !o)) throw new Rejected("This rejection is too old to undo: its files were deleted.", 409);
   } else if (row.status === "approved") {
+    if (row.replaced_by) throw new Rejected(`Can't undo: it was updated since (by ${row.replaced_by}); undo that update first.`, 409);
     // Copy back first, so a failure part way leaves the item published rather than lost.
     for (const f of files) {
       const obj = await env.PUBLIC.get(publicKey(row, f));
@@ -157,6 +197,8 @@ export async function undo(env: Env, row: Row): Promise<void> {
   } else {
     return;
   }
+  // The version it replaced is the newest again (its sidecar never left the bucket).
+  if (row.status === "approved" && row.replaces) await env.DB.prepare("UPDATE submissions SET replaced_by = NULL WHERE replaced_by = ?1").bind(row.id).run();
   await env.DB.prepare("UPDATE submissions SET status = 'pending', reviewed_at = NULL, reviewed_by = NULL, official = 0 WHERE id = ?1").bind(row.id).run();
 }
 

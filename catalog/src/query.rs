@@ -139,7 +139,9 @@ impl Asset {
             taxa: crate::taxonomy::classify(&self.source, &self.category, &self.title, &self.tags.join(" ")),
             layers: Vec::new(),
             generative_ai_used: None,
+            generative_ai_details: String::new(),
             file_bytes: 0,
+            thumb_key: None,
         }
     }
 }

@@ -15,7 +15,7 @@ export interface Env {
   APP_ORIGINS?: string;
   /** Optional secret salting the IP hashes. */
   IP_SALT?: string;
-  /** Optional secret: a submission sending it as `X-Upload-Key` gets MAX_PER_IP_PER_DAY_WITH_KEY. */
+  /** Optional secret: the master upload key (src/upload_keys.ts). Sent as `X-Upload-Key` it gets MAX_PER_IP_PER_DAY_WITH_KEY, updates any upload and manages the shared keys. */
   UPLOAD_KEY?: string;
   /** Secret the Mac that publishes the catalog sends to /publish/* (src/publish_requests.ts). */
   PUBLISH_TOKEN?: string;

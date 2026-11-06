@@ -15,9 +15,11 @@ export interface Meta {
   layers: Layer[];
   author: string;
   license: string;
-  /** false: "No generative AI was used to create this asset"; true: the app knows AI made it;
-   *  null: not said (apps from before the question never send it). */
+  /** The answer to "Was generative AI used to make this artwork?": true / false, or null when not
+   *  specified (apps from before the question never send it). */
   generative_ai_used: boolean | null;
+  /** Optional free text on how generative AI was used; empty unless `generative_ai_used` is true. */
+  generative_ai_details: string;
 }
 
 /** A part of an SVG the app restyles on its own: every shape painted in one of `colors`. */
@@ -195,7 +197,9 @@ export function parseMeta(raw: unknown): Meta {
     author: clean(r.author, 60, "Credit name") || "anonymous",
     license: String(r.license ?? ""),
     generative_ai_used: typeof r.generative_ai_used === "boolean" ? r.generative_ai_used : null,
+    generative_ai_details: "",
   };
+  if (meta.generative_ai_used === true) meta.generative_ai_details = clean(r.generative_ai_details, 500, "AI details");
   if (!(LICENSES as readonly string[]).includes(meta.license)) throw new Rejected("License must be CC0-1.0 or CC-BY-4.0");
   // CC BY exists so the artist is credited: it needs a name to credit.
   if (meta.license === "CC-BY-4.0" && meta.author === "anonymous") throw new Rejected("CC BY 4.0 needs a credit name");
@@ -204,7 +208,7 @@ export function parseMeta(raw: unknown): Meta {
   if (meta.license === "CC-BY-4.0" && "generative_ai_used" in r && meta.generative_ai_used !== false) {
     throw new Rejected("CC BY 4.0 is only for artwork made without generative AI: choose CC0");
   }
-  checkLanguage([meta.title, meta.description, meta.category, meta.author, ...meta.tags, ...meta.layers.map((l) => l.name)]);
+  checkLanguage([meta.title, meta.description, meta.generative_ai_details, meta.category, meta.author, ...meta.tags, ...meta.layers.map((l) => l.name)]);
   // Only BioCartoon's own assets go under its name, and a reviewer gives it (src/publish.ts).
   if (impersonatesBioCartoon(meta.author)) throw new Rejected("Credit name can't include BioCartoon: that name is kept for BioCartoon's own assets.");
   return meta;
@@ -366,6 +370,7 @@ export function checkTemplate(raw: unknown, id: string, meta: Meta, uploaded: Se
       author: meta.author,
       license: meta.license,
       generative_ai_used: meta.generative_ai_used,
+      ...(meta.generative_ai_details && { generative_ai_details: meta.generative_ai_details }),
       created_at: createdAt,
       thumb_key: `templates/${id}/thumb.png`,
     },

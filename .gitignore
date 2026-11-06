@@ -24,3 +24,7 @@ data/sync-reports/
 data/.sync-work/
 data/.sync.lock
 data/.layers-work/
+
+# personal icon library (generators and ~450 SVGs), moved here from dragons_teeth; kept local
+/icons/
+/icons.zip

@@ -19,13 +19,13 @@ Install Desktop application: [www.biocartoon.com/download](https://www.biocartoo
 
 ## Resources
 
-15,335 icons and 6 templates across 8 resources.
+15,913 icons and 6 templates across 8 resources.
 
 | source | icons | license |
 |---|---|---|
-| [BioCartoon](https://www.biocartoon.com) | 1 | CC0 |
+| [BioCartoon](https://www.biocartoon.com) | 520 | CC0 |
 | [Bioicons](https://bioicons.com) | 2,793 | CC BY / CC0 / CC BY-SA / MIT / BSD |
-| [Health Icons](https://healthicons.org) | 749 | CC0 |
+| [Health Icons](https://healthicons.org) | 808 | CC0 |
 | [NIAID NIH BioArt Source](https://bioart.niaid.nih.gov) | 936 | Public Domain |
 | [OpenMoji](https://openmoji.org) | 4,495 | CC BY-SA 4.0 |
 | [Reactome icon library](https://reactome.org/icon-lib) | 2,569 | CC BY 4.0 |

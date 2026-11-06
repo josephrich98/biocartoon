@@ -12,6 +12,10 @@
 //   /auth/*, /me, /cloud/projects/*, /cloud/library/*: optional accounts that keep projects and
 //     Your library online (src/accounts.ts)
 //   POST /publish/claim, /publish/finish: the Mac running queued catalog publishes (src/publish_requests.ts)
+//   /keys, /keys/<id>: make, list and revoke shareable upload keys, with the master key (src/upload_keys.ts)
+//
+// An asset's meta may carry `replaces: "<id>"` (`biocartoon upload --update ID`): a new version of
+// that approved asset. It needs an upload key allowed to update it (src/upload_keys.ts).
 
 import * as accounts from "./accounts.ts";
 import type { Env } from "./env.ts";
@@ -22,6 +26,7 @@ import {
 } from "./limits.ts";
 import * as publishRequests from "./publish_requests.ts";
 import * as stars from "./stars.ts";
+import * as uploadKeys from "./upload_keys.ts";
 import { Rejected, newId } from "./text.ts";
 import { type Layer, checkSvg, checkTemplate, parseEmail, parseMeta, parseRemoval, parseSuggestion, pngSize } from "./validate.ts";
 
@@ -34,6 +39,9 @@ export default {
     if (url.pathname === "/suggest" && req.method === "POST") return guarded(() => suggest(req, env));
     if (url.pathname === "/removal" && req.method === "POST") return guarded(() => removal(req, env));
     if (url.pathname === "/status" && req.method === "GET") return guarded(() => status(url, env));
+    if (url.pathname === "/keys" || url.pathname.startsWith("/keys/")) {
+      return guarded(async () => (await uploadKeys.route(req, url, env)) ?? json({ error: "Not found" }, 404));
+    }
     if (url.pathname.startsWith("/publish/")) return guarded(async () => (await publishRequests.route(req, url, env)) ?? json({ error: "Not found" }, 404));
     if (url.pathname === "/star" || url.pathname === "/stars" || url.pathname === "/stars/all") {
       if (req.method === "OPTIONS") return stars.preflight();
@@ -81,13 +89,20 @@ async function fileBytes(form: FormData, name: string): Promise<Uint8Array | nul
   return typeof v === "string" ? new TextEncoder().encode(v) : new Uint8Array(await v.arrayBuffer());
 }
 
-/** Whether the request carries the `UPLOAD_KEY` secret; a wrong key is refused rather than ignored. */
-async function uploadKey(req: Request, env: Env): Promise<boolean> {
-  const sent = req.headers.get("x-upload-key");
-  if (sent === null) return false;
-  // Comparing digests keeps the time taken independent of how much of the key matches.
-  if (!env.UPLOAD_KEY || (await sha256Hex(sent)) !== (await sha256Hex(env.UPLOAD_KEY))) throw new Rejected("Invalid upload key", 403);
-  return true;
+/** The approved asset an update names, after the checks: it exists, is an approved asset, and
+ *  `key` may update it. */
+async function updateTarget(env: Env, replaces: unknown, kind: unknown, key: uploadKeys.UploadKey | null): Promise<string | null> {
+  if (replaces === undefined || replaces === null) return null;
+  if (typeof replaces !== "string" || !ID.test(replaces)) throw new Rejected("replaces must be the id of an approved upload", 400);
+  if (kind !== "asset") throw new Rejected("Only assets can be updated", 400);
+  if (!key) throw new Rejected("Updating an asset needs an upload key", 403);
+  const t = await env.DB.prepare("SELECT kind, status, key_id FROM submissions WHERE id = ?1")
+    .bind(replaces)
+    .first<{ kind: string; status: string; key_id: string | null }>();
+  if (!t || t.kind !== "asset") throw new Rejected(`No uploaded asset ${replaces}`, 404);
+  if (t.status !== "approved") throw new Rejected(`${replaces} is ${t.status}, not approved: only approved assets can be updated`, 409);
+  if (!uploadKeys.mayUpdate(key, t.key_id)) throw new Rejected(`This upload key may update only the assets uploaded with it, and ${replaces} was not`, 403);
+  return replaces;
 }
 
 async function submit(req: Request, env: Env): Promise<Response> {
@@ -95,7 +110,8 @@ async function submit(req: Request, env: Env): Promise<Response> {
   if (!length) throw new Rejected("Content-Length is required", 411);
   if (length > MAX_REQUEST_BYTES) throw new Rejected("Submission is too large", 413);
 
-  const keyed = await uploadKey(req, env);
+  const key = await uploadKeys.fromRequest(req, env);
+  const keyed = key !== null;
   const perDay = keyed ? MAX_PER_IP_PER_DAY_WITH_KEY : MAX_PER_IP_PER_DAY;
   const ipHash = (await sha256Hex(`${env.IP_SALT ?? "biocartoon"}:${req.headers.get("cf-connecting-ip") ?? "?"}`)).slice(0, 32);
   const now = new Date();
@@ -122,6 +138,7 @@ async function submit(req: Request, env: Env): Promise<Response> {
   const email = parseEmail((metaRaw as Record<string, unknown> | null)?.email);
   // Kept apart from meta too: only a reviewer can make it official (src/publish.ts).
   const officialRequested = (metaRaw as Record<string, unknown> | null)?.official === true;
+  const replaces = await updateTarget(env, (metaRaw as Record<string, unknown> | null)?.replaces, kind, key);
   const id = newId(meta.title);
   const createdAt = now.toISOString().replace(/\.\d+Z$/, "Z");
   const puts: [string, Uint8Array, string][] = [];
@@ -182,18 +199,19 @@ async function submit(req: Request, env: Env): Promise<Response> {
   for (const [key, body, contentType] of puts) await env.PENDING.put(key, body, { httpMetadata: { contentType } });
   try {
     await env.DB.prepare(
-      "INSERT INTO submissions (id, kind, title, description, category, author, license, files, texts, width, height, bytes, png_sha256, ip_hash, created_at, email, tags, generative_ai_used, official_requested, layers) \
-       VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20)",
+      "INSERT INTO submissions (id, kind, title, description, category, author, license, files, texts, width, height, bytes, png_sha256, ip_hash, created_at, email, tags, generative_ai_used, official_requested, layers, generative_ai_details, replaces, key_id) \
+       VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20, ?21, ?22, ?23)",
     )
       .bind(id, kind, meta.title, meta.description, meta.category, meta.author, meta.license, JSON.stringify(puts.map((p) => p[0])),
         JSON.stringify(texts.slice(0, 200)), width, height, puts.reduce((n, p) => n + p[1].length, 0), pngSha, ipHash, createdAt, email, JSON.stringify(meta.tags),
-        meta.generative_ai_used === null ? null : Number(meta.generative_ai_used), Number(officialRequested), JSON.stringify(layers))
+        meta.generative_ai_used === null ? null : Number(meta.generative_ai_used), Number(officialRequested), JSON.stringify(layers), meta.generative_ai_details,
+        replaces, key?.id ?? null)
       .run();
   } catch (e) {
     await env.PENDING.delete(puts.map((p) => p[0]));
     throw e;
   }
-  return json({ id, kind, status: "pending" }, 201);
+  return json({ id, kind, status: "pending", ...(replaces && { replaces }) }, 201);
 }
 
 async function suggest(req: Request, env: Env): Promise<Response> {

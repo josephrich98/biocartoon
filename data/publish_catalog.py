@@ -74,14 +74,17 @@ CREATE TABLE IF NOT EXISTS templates (
     tags TEXT NOT NULL DEFAULT '[]',  -- JSON array of strings
     generative_ai_used INTEGER,       -- 1 / 0 / NULL (not known), as the uploader said
     official INTEGER NOT NULL DEFAULT 0,  -- 1: listed under BioCartoon (accepted to its official library)
-    credit TEXT);                     -- the ready-to-print attribution line, when the template.json carries one
+    credit TEXT,                      -- the ready-to-print attribution line, when the template.json carries one
+    generative_ai_details TEXT);      -- how generative AI was used, as the uploader said (only when it was)
 """
 TEMPLATE_COLS = ["id", "title", "description", "category", "author", "license", "created_at", "json_key",
-                 "thumb_key", "json_local", "thumb_local", "tags", "generative_ai_used", "official", "credit"]
+                 "thumb_key", "json_local", "thumb_local", "tags", "generative_ai_used", "official", "credit",
+                 "generative_ai_details"]
 NOT_PUBLISHED = ("sync_state", "sync_held", "sync_meta", "templates", "id_seq")
 # assets columns kept in the master but left out of the catalog. The hashes are ~40% of the gzipped
 # catalog and nothing in the app reads them; delete a name here to publish that column again.
-UNPUBLISHED_COLS = ("svg_sha256", "png_sha256")
+# `replaces` (an updated upload's earlier versions, see uploads.py) is only for giving ids.
+UNPUBLISHED_COLS = ("svg_sha256", "png_sha256", "replaces")
 
 
 def write_local(files):
@@ -132,6 +135,10 @@ def update_master(con: sqlite3.Connection, user_rows: list[dict] | None, tmpl_ro
         con.execute("ALTER TABLE assets ADD COLUMN layers TEXT")
     if not any(c[1] == "generative_ai_used" for c in con.execute("PRAGMA table_info(assets)")):
         con.execute("ALTER TABLE assets ADD COLUMN generative_ai_used INTEGER")
+    if not any(c[1] == "generative_ai_details" for c in con.execute("PRAGMA table_info(assets)")):
+        con.execute("ALTER TABLE assets ADD COLUMN generative_ai_details TEXT")
+    if not any(c[1] == "replaces" for c in con.execute("PRAGMA table_info(assets)")):
+        con.execute("ALTER TABLE assets ADD COLUMN replaces TEXT")
     con.executescript(TEMPLATES_SQL)
     if not any(c[1] == "tags" for c in con.execute("PRAGMA table_info(templates)")):
         con.execute("ALTER TABLE templates ADD COLUMN tags TEXT NOT NULL DEFAULT '[]'")
@@ -141,12 +148,26 @@ def update_master(con: sqlite3.Connection, user_rows: list[dict] | None, tmpl_ro
         con.execute("ALTER TABLE templates ADD COLUMN official INTEGER NOT NULL DEFAULT 0")
     if not any(c[1] == "credit" for c in con.execute("PRAGMA table_info(templates)")):
         con.execute("ALTER TABLE templates ADD COLUMN credit TEXT")
+    if not any(c[1] == "generative_ai_details" for c in con.execute("PRAGMA table_info(templates)")):
+        con.execute("ALTER TABLE templates ADD COLUMN generative_ai_details TEXT")
     with con:
         if user_rows is not None:
-            # an upload keeps the number it was first published with; a new one gets the next
-            ids, have = Ids(con), dict(con.execute("SELECT source_id, id FROM assets WHERE source = 'user'"))
+            # an upload keeps the number it was first published with, and an update (uploads.py) the
+            # number of the version it replaces; a new one gets the next
+            # number of any version it replaces (`replaces`, kept in the master so that undoing an
+            # update gives the version it replaced its number back); a new one gets the next
+            ids, have = Ids(con), {}
+            for sid, i, old in con.execute("SELECT source_id, id, replaces FROM assets WHERE source = 'user'").fetchall():
+                for s in json.loads(old or "[]"):
+                    have.setdefault(s.removeprefix("user/"), i)
+                have[sid] = i
+            given: set[str] = set()
             for r in user_rows:
-                r["id"] = upload_id(r, have.get(r["source_id"]), ids)
+                olds = [have.get(s.removeprefix("user/")) for s in [r["source_id"], *r["replaces"]]]
+                old = next((o for o in olds if o and o[2:] not in given), None)
+                r["id"] = upload_id(r, old, ids)
+                given.add(r["id"][2:])
+                r["replaces"] = json.dumps(r["replaces"]) if r["replaces"] else None
             keep = [r["id"] for r in user_rows]
             con.execute(f"DELETE FROM assets WHERE source = 'user' AND id NOT IN ({','.join('?' * len(keep))})", keep)
             if user_rows:
@@ -274,8 +295,8 @@ def main():
     ap.add_argument("--bucket", default=R2_BUCKET)
     ap.add_argument("--dry-run", action="store_true")
     ap.add_argument("--no-uploads", action="store_true", help="leave out app uploads (assets and templates)")
-    ap.add_argument("--max-uploads", type=int, default=500, help="most user assets/templates per publish (each)")
-    ap.add_argument("--max-per-author", type=int, default=50, help="most per self-reported author (each kind)")
+    ap.add_argument("--max-uploads", type=int, default=5000, help="most user assets/templates per publish (each)")
+    ap.add_argument("--max-per-author", type=int, default=2000, help="most per self-reported author (each kind)")
     ap.add_argument("--stars-url", default=SUBMIT_URL,
                     help="the submit Worker, whose /stars/all gives the star counts")
     ap.add_argument("--no-stars", action="store_true", help="leave star counts as they are in --db")

@@ -52,8 +52,14 @@ pub struct AssetRow {
     /// Whether generative AI made it (the catalog's `generative_ai_used`): `None` when nobody
     /// knows, as for most uploads and for catalogs published before the column.
     pub generative_ai_used: Option<bool>,
+    /// How generative AI was used, as its uploader said (the catalog's `generative_ai_details`);
+    /// empty when they didn't, and always when `generative_ai_used` isn't `Some(true)`.
+    pub generative_ai_details: String,
     /// Bytes of the file the editor places (the SVG when there is one, else the PNG); 0 if unknown.
     pub file_bytes: u64,
+    /// A small PNG preview (at most 256 px a side) for result tiles: the catalog's `thumb_key`,
+    /// `None` for the user's own uploads and in catalogs published before thumbnails.
+    pub thumb_key: Option<String>,
 }
 
 /// A part of a drawing that can be restyled on its own (a flask's liquid, its glass, the
@@ -369,6 +375,8 @@ fn row_from(r: &rusqlite::Row) -> rusqlite::Result<AssetRow> {
         layers: layers_from_json(&r.get::<_, String>(18)?),
         generative_ai_used: r.get::<_, Option<i64>>(19)?.map(|v| v != 0),
         file_bytes: r.get::<_, Option<i64>>(20)?.unwrap_or(0).max(0) as u64,
+        thumb_key: r.get(21)?,
+        generative_ai_details: r.get(22)?,
     })
 }
 
@@ -394,8 +402,12 @@ pub struct Worker {
     layers: &'static str,
     /// `a.generative_ai_used`, or NULL in catalogs without the column.
     ai: &'static str,
+    /// `a.generative_ai_details`, or NULL in catalogs without the column.
+    ai_details: &'static str,
     /// The placed file's size: `a.svg_bytes` or `a.png_bytes`, or NULL in catalogs without them.
     file_bytes: &'static str,
+    /// `a.thumb_key`, or NULL in catalogs published before thumbnails.
+    thumb_key: &'static str,
     /// `usage.stars` exists (it can't be created on a read-only connection to an old usage file).
     local_stars: bool,
     /// `usage.downloads` exists (as `local_stars`).
@@ -549,12 +561,18 @@ impl Worker {
         } else {
             "NULL"
         };
+        let ai_details = if has_col("generative_ai_details") || conn.execute_batch("ALTER TABLE assets ADD COLUMN generative_ai_details TEXT;").is_ok() {
+            "a.generative_ai_details"
+        } else {
+            "NULL"
+        };
         let file_bytes = match (has_col("svg_key") && has_col("svg_bytes"), has_col("png_bytes")) {
             (true, true) => "CASE WHEN a.svg_key IS NOT NULL THEN a.svg_bytes ELSE a.png_bytes END",
             (false, true) => "a.png_bytes",
             _ => "NULL",
         };
-        Ok(Self { conn, fts, vocab: Default::default(), stars_col, group_key, dup, style_key, svg_key, layers, ai, file_bytes, local_stars, local_downloads, local_uses, taxa: Default::default() })
+        let thumb_key = if has_col("thumb_key") { "a.thumb_key" } else { "NULL" };
+        Ok(Self { conn, fts, vocab: Default::default(), stars_col, group_key, dup, style_key, svg_key, layers, ai, ai_details, file_bytes, thumb_key, local_stars, local_downloads, local_uses, taxa: Default::default() })
     }
 
     /// The star columns of a `SELECT ... FROM assets a {stars_join}`: the count (the local
@@ -587,12 +605,14 @@ impl Worker {
     /// Every column of an [`AssetRow`] (see `row_from`).
     fn cols(&self) -> String {
         format!(
-            "{COLS}, {}, {}, coalesce(a.tags,''), coalesce(a.description,''), coalesce({},''), {}, {}",
+            "{COLS}, {}, {}, coalesce(a.tags,''), coalesce(a.description,''), coalesce({},''), {}, {}, {}, coalesce({},'')",
             self.stars_cols(),
             self.svg_key,
             self.layers,
             self.ai,
-            self.file_bytes
+            self.file_bytes,
+            self.thumb_key,
+            self.ai_details
         )
     }
 
@@ -1361,8 +1381,8 @@ impl Worker {
         let mut groups: std::collections::HashMap<String, Vec<AssetRow>> = Default::default();
         let mut rows = st.query(args.as_slice())?;
         while let Some(r) = rows.next()? {
-            // `{gk}` comes after the 21 columns of `row_from`.
-            groups.entry(r.get(21)?).or_default().push(row_from(r)?);
+            // `{gk}` comes after the 23 columns of `row_from`.
+            groups.entry(r.get(23)?).or_default().push(row_from(r)?);
         }
         for (key, group) in groups {
             if group.len() > 1 {
@@ -1442,6 +1462,10 @@ impl Worker {
         )?;
         if self.ai != "NULL" {
             self.conn.execute("UPDATE assets SET generative_ai_used = ?1 WHERE id = ?2", params![row.generative_ai_used, row.id])?;
+        }
+        if self.ai_details != "NULL" {
+            let details = (row.generative_ai_used == Some(true) && !row.generative_ai_details.is_empty()).then_some(&row.generative_ai_details);
+            self.conn.execute("UPDATE assets SET generative_ai_details = ?1 WHERE id = ?2", params![details, row.id])?;
         }
         if self.layers != "NULL" && !row.layers.is_empty() {
             self.conn.execute("UPDATE assets SET layers = ?1 WHERE id = ?2", params![serde_json::to_string(&row.layers).unwrap_or_default(), row.id])?;
@@ -1780,13 +1804,34 @@ mod tests {
         // A catalog from before the column gets it (empty) when it can be written.
         let r = &w.variants("k0").unwrap()[0];
         assert_eq!((r.generative_ai_used, r.file_bytes), (None, 0));
-        w.conn.execute_batch("ALTER TABLE assets ADD COLUMN png_bytes INTEGER; UPDATE assets SET generative_ai_used = 0, png_bytes = 1234 WHERE id = 'k0'; UPDATE assets SET generative_ai_used = 1 WHERE id = 'k1';").unwrap();
+        w.conn.execute_batch("ALTER TABLE assets ADD COLUMN png_bytes INTEGER; UPDATE assets SET generative_ai_used = 0, png_bytes = 1234 WHERE id = 'k0'; UPDATE assets SET generative_ai_used = 1, generative_ai_details = 'An LLM wrote the SVG' WHERE id = 'k1';").unwrap();
         drop(w);
         let w = Worker::open(&dir.join("assets.sqlite"), &dir.join("usage.sqlite")).unwrap();
         let r = &w.variants("k0").unwrap()[0];
         assert_eq!((r.generative_ai_used, r.file_bytes), (Some(false), 1234));
         assert_eq!(w.variants("k1").unwrap()[0].generative_ai_used, Some(true));
+        assert_eq!(w.variants("k1").unwrap()[0].generative_ai_details, "An LLM wrote the SVG");
+        assert_eq!(w.variants("k0").unwrap()[0].generative_ai_details, "");
         assert_eq!(w.variants("k2").unwrap()[0].generative_ai_used, None);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn thumbnails_are_read_when_the_catalog_has_them() {
+        let dir = std::env::temp_dir().join(format!("cc-catalog-thumbs-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let w = worker(&dir);
+        // A catalog from before thumbnails has none.
+        assert_eq!(w.variants("k0").unwrap()[0].thumb_key, None);
+        w.conn.execute_batch("ALTER TABLE assets ADD COLUMN thumb_key TEXT; UPDATE assets SET thumb_key = 'thumbs/' || png_key WHERE id = 'k0';").unwrap();
+        drop(w);
+        let w = Worker::open(&dir.join("assets.sqlite"), &dir.join("usage.sqlite")).unwrap();
+        let r = &w.variants("k0").unwrap()[0];
+        assert_eq!(r.thumb_key, Some(format!("thumbs/{}", r.png_key)));
+        assert_eq!(w.variants("k1").unwrap()[0].thumb_key, None);
+        // Searches carry it too (the editor's result tiles).
+        assert!(w.search("", &[], 10, IconSort::Popular).unwrap().iter().any(|r| r.thumb_key.is_some()));
         let _ = std::fs::remove_dir_all(&dir);
     }
 
@@ -2025,7 +2070,9 @@ mod tests {
             taxa: Vec::new(),
             layers: Vec::new(),
             generative_ai_used: None,
+            generative_ai_details: String::new(),
             file_bytes: 0,
+            thumb_key: None,
         };
         // The user's own copies of both uploads take their places, and a private one.
         for slug in ["ug1", "bc1", "mine"] {
@@ -2172,7 +2219,9 @@ mod tests {
             taxa: Vec::new(),
             layers: vec![AssetLayer { name: "Glass".into(), colors: vec!["#303030".into()] }],
             generative_ai_used: None,
+            generative_ai_details: String::new(),
             file_bytes: 0,
+            thumb_key: None,
         };
         // Published, "painted" has an id of its own; the user's own copy takes its place.
         w.conn

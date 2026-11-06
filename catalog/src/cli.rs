@@ -12,6 +12,9 @@ use std::collections::HashMap;
 use std::path::PathBuf;
 
 /// The catalog commands, for the usage text of any program that runs them.
+/// A required flag goes on its command's line (`upload <file|folder>... --license L`) and its
+/// description starts with "required:". [`command_help`] finds an entry by the first word of
+/// that line, so it must be the command's name.
 pub const CATALOG_COMMANDS: &str = "\
 COMMANDS
   search [TERM]             icons and templates matching TERM, best first (one per icon;
@@ -59,18 +62,48 @@ COMMANDS
       --templates-ext E     png (the thumbnail; default) or biocartoon (a file the editor opens)
       --output-dir DIR      where to put it (default ./biocartoon-catalog)
       --jobs N              downloads at a time (default 8)  [--limit N: the first N of each]
-  upload <file|folder>...   submit images (SVG, PNG, JPEG, WebP, GIF, BMP, TIFF; folders searched
+  upload <file|folder>... --license L
+                            submit images (SVG, PNG, JPEG, WebP, GIF, BMP, TIFF; folders searched
                             recursively) to the shared library. They wait in the review queue
                             and join the catalog once approved; an SVG is published as SVG,
                             with a PNG rendered from it (no scripts, links or web fonts in it).
                             Up to 20 a day.
-      --license L           CC0-1.0 or CC-BY-4.0 (required): you confirm you may share them under it
+      --license L           required: CC0-1.0 or CC-BY-4.0. You confirm you may share them under
+                            it. Can be left out with --ai, which makes it CC0-1.0.
       --credit NAME         who to credit (default anonymous)
       --title T             the name (default: from the file name; one file only)
       --description D       what it shows (up to 500 characters)
       --category C          a slug from --categories, or free text
       --tags T,...          words to find it by, separated by commas (up to 20, 40 characters each)
+      --ai                  generative AI was used to make them
+      --no-ai               you confirm no generative AI was used to make them (needed for CC-BY-4.0;
+                            with neither, AI use is not specified)
+      --ai-description D    how generative AI was used, e.g. which model and what you edited by
+                            hand (up to 500 characters; implies --ai)
+      --layer-color-map OLD:NEW,...
+                            change layer colours, as the editor's Layers panel does: the SVG
+                            layer of colour OLD becomes NEW (#rgb or #rrggbb; repeatable; swaps
+                            happen at once). A colour that isn't a layer is reported, with the
+                            file's layers. SVGs only
+      --official-biocartoon ask for them to go in the official BioCartoon library rather than the
+                            User-Generated one (a reviewer decides; your credit is unchanged)
+      --update ID           submit FILE (one) as a new version of upload ID (UG000123, BC000123 or
+                            user/<id>) instead of a new asset. Once approved, it takes the old one's
+                            place and catalog id at the next publish; projects that used the old
+                            image keep it. Name, description, category, tags, credit, license and AI
+                            answer are the old one's unless given. With no FILE, the image is kept
+                            and only the details given change (`upload --update ID --title T`).
+                            Needs an upload key allowed to update it (--key)
+      --key KEY             an upload key (env BIOCARTOON_UPLOAD_KEY): needed for --update, and lifts
+                            the daily limit
       --dry-run             check and list what would be submitted, without submitting
+  upload-key create|list|revoke
+                            manage the upload keys you can share, with the master key (--key or
+                            BIOCARTOON_UPLOAD_KEY)
+      create --label NAME   a new key for NAME; it is shown once. It can --update the uploads made
+                            with it  [--any: any upload]
+      list                  every key: id, label, scope, when made, last used, revoked
+      revoke ID             stop key ID working
   --version                 this program's version, and when the catalog was published and downloaded
   --sources                 the collections: code, name, icons, licenses, what they hold
   --categories              BioCartoon's categories and subcategories, with slugs and counts
@@ -80,18 +113,32 @@ COMMANDS
 
 /// The options every catalog command takes.
 pub const CATALOG_OPTIONS: &str = "\
-OPTIONS
+GLOBAL OPTIONS
   --json                    machine-readable output
   --db PATH                 catalog file (default: the copy shared with the editor; env BIOCARTOON_DB)
   --url URL                 asset base URL (env BIOCARTOON_ASSET_URL)
-  --submit-url URL          submissions server for upload (env BIOCARTOON_SUBMIT_URL)
+  --submit-url URL          submissions server for upload and upload-key (env BIOCARTOON_SUBMIT_URL)
 ";
+
+/// The short list under USAGE: the [`CATALOG_COMMANDS`] by name (with `extra`, a program's own
+/// commands, after them), then the info flags, then how to get one command's help.
+pub fn command_summary(extra: &[&str]) -> String {
+    let entries = CATALOG_COMMANDS.lines().filter_map(|l| l.strip_prefix("  ").filter(|r| !r.starts_with(' ')).and_then(|r| r.split_whitespace().next()));
+    let (flags, cmds): (Vec<&str>, Vec<&str>) = entries.partition(|w| w.starts_with("--"));
+    let cmds: Vec<&str> = cmds.into_iter().chain(extra.iter().copied()).collect();
+    format!(
+        "  commands: {}\n  info:     {}\n\n  Run `biocartoon <command> --help` for one command's options.\n",
+        cmds.join(", "),
+        flags.join(", ")
+    )
+}
 
 fn usage() -> String {
     format!(
-        "biocartoon — search the BioCartoon icon catalog\n\nUSAGE\n  biocartoon <command> [arguments] [options]\n\n{CATALOG_COMMANDS}\n\
+        "biocartoon — search the BioCartoon icon catalog\n\nUSAGE\n  biocartoon <command> [arguments] [options]\n\n{}\n{CATALOG_COMMANDS}\n\
          ASSISTANTS\n  mcp                       serve the catalog tools over MCP on stdin/stdout:\n                              claude mcp add biocartoon -- biocartoon mcp\n\n\
-         Templates and the `app` command come with the BioCartoon editor's own `biocartoon`.\n\n{CATALOG_OPTIONS}"
+         Templates and the `app` command come with the BioCartoon editor's own `biocartoon`.\n\n{CATALOG_OPTIONS}",
+        command_summary(&["mcp"])
     )
 }
 
@@ -112,10 +159,11 @@ pub struct Args {
 impl Args {
     /// `valued` names the options that take a value (the catalog's are always included).
     pub fn parse(argv: Vec<String>, valued: &[&str]) -> Self {
-        const VALUED: [&str; 30] = [
+        const VALUED: [&str; 34] = [
             "source", "limit", "sort", "category", "offset", "out", "max-side", "max-rows", "db", "url", "license", "credit", "title",
             "description", "submit-url", "author", "subcategory", "source-category", "db-category", "file-type", "columns", "files",
-            "metadata-ext", "artwork-ext", "icons-ext", "templates-ext", "output-dir", "jobs", "key", "tags",
+            "metadata-ext", "artwork-ext", "icons-ext", "templates-ext", "output-dir", "jobs", "key", "tags", "layer-color-map",
+            "ai-description", "update", "label",
         ];
         let mut a = Self { pos: Vec::new(), opts: HashMap::new() };
         let mut it = argv.into_iter();
@@ -357,7 +405,7 @@ pub fn run_command(a: &Args, templates: Option<Templates>) -> Option<Result<(), 
         return Some(source_categories(a));
     }
     let cmd = a.command();
-    const NAMES: [&str; 7] = ["sync", "search", "get", "fetch", "upload", "bulk-download", "help"];
+    const NAMES: [&str; 8] = ["sync", "search", "get", "fetch", "upload", "upload-key", "bulk-download", "help"];
     NAMES.contains(&cmd).then(|| run_inner(a, cmd, templates))
 }
 
@@ -574,6 +622,7 @@ fn run_inner(a: &Args, cmd: &str, templates: Option<Templates>) -> Result<(), St
             }
         }
         "upload" => upload(a)?,
+        "upload-key" => upload_key(a)?,
         "bulk-download" => crate::bulk::run(a)?,
         _ => print!("{}", usage()),
     }
@@ -582,12 +631,79 @@ fn run_inner(a: &Args, cmd: &str, templates: Option<Templates>) -> Result<(), St
 
 /// `upload`: submit image files, and the images in folders, to the review queue.
 fn upload(a: &Args) -> Result<(), String> {
-    let files = upload::collect_images(&a.pos[1..]).map_err(|e| if a.pos.len() < 2 { "upload <file|folder>... --license CC0-1.0|CC-BY-4.0".into() } else { e })?;
-    if files.is_empty() {
+    // `--update ID` alone (no file) keeps the published image and changes only the metadata.
+    let metadata_only = a.pos.len() < 2 && a.opts.contains_key("update");
+    let files = if metadata_only {
+        Vec::new()
+    } else {
+        upload::collect_images(&a.pos[1..]).map_err(|e| if a.pos.len() < 2 { "upload <file|folder>... --license CC0-1.0|CC-BY-4.0  (or upload --update ID [options])".into() } else { e })?
+    };
+    const DETAILS: [&str; 11] = ["title", "description", "category", "tags", "credit", "license", "ai", "no-ai", "ai-description", "layer-color-map", "official-biocartoon"];
+    if metadata_only && !DETAILS.iter().any(|k| a.opts.contains_key(*k)) {
+        return Err("--update ID with no file changes only its details, and none were given: pass e.g. --title, --description, --category, --tags, --credit or --license (or a file for a new image)".into());
+    }
+    if files.is_empty() && !metadata_only {
         return Err("no images found (SVG, PNG, JPEG, WebP, GIF, BMP, TIFF or ICO)".into());
     }
-    let license = a.opt("license").ok_or("--license is required: CC0-1.0 or CC-BY-4.0 (you confirm you may share the images under it)")?;
+    let key = upload::upload_key(a.opt("key"));
+    // `--update ID`: the upload it replaces (as named, its submission id, its published sidecar).
+    let old = match a.opts.get("update") {
+        None => None,
+        Some(v) => {
+            let id = v.last().map(|s| s.trim()).filter(|s| !s.is_empty()).ok_or("--update needs the id of the upload to update (e.g. UG000123)")?;
+            if files.len() > 1 {
+                return Err(format!("--update replaces one upload, so give one file, or none to change only its details (there are {})", files.len()));
+            }
+            if key.is_none() {
+                return Err("--update needs an upload key: --key KEY or BIOCARTOON_UPLOAD_KEY".into());
+            }
+            let slug = match upload::upload_slug(id) {
+                Some(s) => s.to_string(),
+                None => {
+                    let asset = Catalog::open_default()?
+                        .get(id)?
+                        .ok_or_else(|| format!("no asset {id} in the catalog (run `biocartoon sync` if it was published recently)"))?;
+                    if asset.source != "user" {
+                        return Err(format!("{id} is from {}, not an upload: only uploads (UG and BC ids) can be updated", asset.source_name));
+                    }
+                    asset.png_key.strip_prefix("user/").and_then(|k| k.strip_suffix(".png")).ok_or_else(|| format!("{id}: unexpected file {}", asset.png_key))?.to_string()
+                }
+            };
+            let sidecar = upload::fetch_sidecar(&query::asset_base_url(), &slug)?;
+            Some((id.to_string(), slug, sidecar))
+        }
+    };
+    // With no file, the published image is resubmitted as it is (its key stands in for the path).
+    let mut fetched = None;
+    let files = match &old {
+        Some((_, _, m)) if metadata_only => {
+            let (key, bytes) = upload::fetch_published(&query::asset_base_url(), m)?;
+            fetched = Some(bytes);
+            vec![std::path::PathBuf::from(key)]
+        }
+        _ => files,
+    };
+    let was = |k: &str| old.as_ref().and_then(|(_, _, m)| m[k].as_str()).unwrap_or_default().to_string();
+    let ai_details: String = a.opt("ai-description").unwrap_or_default().trim().chars().take(500).collect();
+    let generative_ai_used = match (a.flag("ai") || !ai_details.is_empty(), a.flag("no-ai")) {
+        (true, true) => return Err(format!("--no-ai can't go with {}", if a.flag("ai") { "--ai" } else { "--ai-description" })),
+        (true, false) => Some(true),
+        (false, true) => Some(false),
+        (false, false) => old.as_ref().and_then(|(_, _, m)| m["generative_ai_used"].as_bool()),
+    };
+    let ai_details = if ai_details.is_empty() && generative_ai_used == Some(true) { was("generative_ai_details") } else { ai_details };
+    // AI-made artwork can only be CC0, so with --ai that is the license unless another is named.
+    let old_license = was("license");
+    let license = match (a.opt("license"), generative_ai_used) {
+        (Some(l), _) => l,
+        (None, Some(true)) => "CC0-1.0",
+        (None, _) if !old_license.is_empty() => old_license.as_str(),
+        (None, _) => return Err("--license is required (unless --ai is given): CC0-1.0 or CC-BY-4.0 (you confirm you may share the images under it)".into()),
+    };
     let license = upload::LICENSES.iter().find(|l| l.eq_ignore_ascii_case(license)).ok_or("--license must be CC0-1.0 or CC-BY-4.0")?;
+    if *license == "CC-BY-4.0" && generative_ai_used != Some(false) {
+        return Err("CC-BY-4.0 is only for artwork made without generative AI: pass --no-ai (if true), or use CC0-1.0".into());
+    }
     if a.opt("title").is_some() && files.len() > 1 {
         return Err(format!("--title names one image, and there are {}; titles come from the file names", files.len()));
     }
@@ -597,14 +713,20 @@ fn upload(a: &Args) -> Result<(), String> {
             Some((_, sub)) => sub.to_string(),
             None => c.trim().to_string(),
         },
-        None => String::new(),
+        None => was("category"),
     };
-    let tags = tag_args(a);
+    let tags = match (a.flag("tags"), &old) {
+        (false, Some((_, _, m))) => m["tags"].as_array().into_iter().flatten().filter_map(|t| t.as_str().map(str::to_string)).collect(),
+        _ => tag_args(a),
+    };
     check_tags(&tags).map_err(|e| format!("--tags: {e}"))?;
-    let author = a.opt("credit").map(str::trim).filter(|c| !c.is_empty()).unwrap_or("anonymous");
+    let old_author = was("author");
+    let author = a.opt("credit").map(str::trim).filter(|c| !c.is_empty()).unwrap_or(if old_author.is_empty() { "anonymous" } else { &old_author });
+    let description = a.opt("description").map_or_else(|| was("description"), str::to_string);
+    let old_layers: Vec<upload::Layer> = old.as_ref().and_then(|(_, _, m)| serde_json::from_value(m["layers"].clone()).ok()).unwrap_or_default();
+    let colors = upload::parse_color_map(&values(a, "layer-color-map").collect::<Vec<_>>()).map_err(|e| format!("--layer-color-map: {e}"))?;
+    let official = a.flag("official-biocartoon");
     let clip = |s: &str, n: usize| s.trim().chars().take(n).collect::<String>();
-    // Undocumented: `--key K` sends the Worker's UPLOAD_KEY secret for the higher daily limit.
-    let key = a.opt("key").map(str::trim).filter(|k| !k.is_empty());
     let per_day = if key.is_some() { upload::MAX_PER_DAY_WITH_KEY } else { upload::MAX_PER_DAY };
     if files.len() > per_day {
         eprintln!("warning: {} images; the server takes {per_day} a day from one address, so the rest will be refused", files.len());
@@ -614,45 +736,73 @@ fn upload(a: &Args) -> Result<(), String> {
     let mut rows = Vec::new();
     let mut failed = 0;
     for path in &files {
-        let title = a.opt("title").map_or_else(|| upload::title_from_path(path), |t| clip(t, 80));
-        let meta = upload::Meta {
+        let title = match (a.opt("title"), &old) {
+            (Some(t), _) => clip(t, 80),
+            (None, Some(_)) => clip(&was("title"), 80),
+            (None, None) => upload::title_from_path(path),
+        };
+        let mut meta = upload::Meta {
             title: title.clone(),
-            description: clip(a.opt("description").unwrap_or_default(), 500),
+            description: clip(&description, 500),
             category: clip(&category, 60),
             tags: tags.clone(),
             author: clip(author, 60),
             license: license.to_string(),
+            generative_ai_used,
+            generative_ai_details: ai_details.clone(),
+            official,
+            replaces: old.as_ref().map(|(_, slug, _)| slug.clone()),
+            layers: Vec::new(),
         };
-        let result = upload::prepare(path).and_then(|up| {
+        let prepared = match &fetched {
+            Some(b) => upload::prepare_bytes(path, b.clone(), &colors),
+            None => upload::prepare(path, &colors),
+        };
+        let result = prepared.and_then(|(up, missing)| {
+            if !missing.is_empty() && !json {
+                let original = fetched.clone().or_else(|| std::fs::read(path).ok());
+                let layers = original.and_then(|b| upload::parse_svg(&b).ok()).map(|t| upload::svg_colors(&t)).unwrap_or_default();
+                eprintln!("warning: {}: no layer is {}; its layers are {}", path.display(), missing.join(", "), layers.join(", "));
+            }
+            if up.svg && !old_layers.is_empty() {
+                let now = upload::parse_svg(&up.bytes).map(|t| upload::svg_colors(&t)).unwrap_or_default();
+                meta.layers = upload::kept_layers(&old_layers, &now);
+                if meta.layers.len() < old_layers.len() && !json {
+                    let lost: Vec<&str> = old_layers.iter().filter(|l| !meta.layers.contains(l)).map(|l| l.name.as_str()).collect();
+                    eprintln!("warning: {}: the new SVG lacks the colours of layer(s) {}, so they are not kept", path.display(), lost.join(", "));
+                }
+            }
             if title.is_empty() {
                 return Err("no title; pass --title".into());
             }
             if dry {
                 return Ok((None, up.size));
             }
-            match upload::submit_asset(&url, &meta, &up, key) {
+            match upload::submit_asset(&url, &meta, &up, key.as_deref()) {
                 Ok(id) => Ok((Some(id), up.size)),
                 Err(r) if r.status == 429 || r.status == 503 || r.status == 403 => Err(format!("stopped: {}", r.message)),
                 Err(r) => Err(r.message),
             }
         });
         let stop = matches!(&result, Err(e) if e.starts_with("stopped: "));
+        let updates = old.as_ref().map(|(id, _, _)| id.as_str());
         match result {
             Ok((id, size)) => {
                 if !json {
                     let id = id.as_deref().map_or_else(|| "(dry run)".to_string(), |id| format!("{id} pending"));
                     let kind = size.map_or_else(|| "SVG".to_string(), |(w, h)| format!("{w}x{h}"));
-                    println!("{:<40} {} ({kind}) — {}", id, path.display(), title);
+                    let of = updates.map_or_else(String::new, |u| format!(" (update of {u})"));
+                    println!("{:<40} {} ({kind}) — {}{of}", id, path.display(), title);
                 }
                 let (w, h) = size.unzip();
-                rows.push(json!({"path": path, "title": title, "id": id, "status": if dry { "dry-run" } else { "pending" }, "width": w, "height": h}));
+                rows.push(json!({"path": path, "title": title, "id": id, "status": if dry { "dry-run" } else { "pending" }, "width": w, "height": h, "updates": updates}));
             }
             Err(e) => {
                 failed += 1;
                 if !json {
                     eprintln!("{}: {e}", path.display());
                 }
-                rows.push(json!({"path": path, "title": title, "status": "error", "error": e}));
+                rows.push(json!({"path": path, "title": title, "status": "error", "error": e, "updates": updates}));
             }
         }
         if stop {
@@ -669,6 +819,64 @@ fn upload(a: &Args) -> Result<(), String> {
         return Err(format!("{failed} of {} could not be {}", files.len(), if dry { "read" } else { "submitted" }));
     }
     Ok(())
+}
+
+/// `upload-key create|list|revoke`: the upload keys to share, managed with the master key.
+fn upload_key(a: &Args) -> Result<(), String> {
+    const USAGE: &str = "upload-key create --label NAME [--any] | upload-key list | upload-key revoke ID";
+    let key = upload::upload_key(a.opt("key")).ok_or("upload-key needs the master upload key: --key KEY or BIOCARTOON_UPLOAD_KEY")?;
+    let (url, json) = (upload::submit_url(), a.flag("json"));
+    match a.pos.get(1).map(String::as_str) {
+        Some("create") => {
+            let label = a.opt("label").map(str::trim).filter(|l| !l.is_empty()).ok_or("upload-key create needs --label NAME: who the key is for")?;
+            let scope = if a.flag("any") { "all" } else { "own" };
+            let v = upload::keys_request(&url, "POST", "/keys", Some(json!({"label": label, "scope": scope})), &key)?;
+            if json {
+                print_json(&v);
+            } else {
+                println!("{}", v["key"].as_str().unwrap_or_default());
+                eprintln!(
+                    "\nupload key {} for {label} (shown only now; revoke it with `biocartoon upload-key revoke {}`).\n\
+                     It lifts the daily limit and can --update {}. To use it:\n  biocartoon upload FILE --update ID --key KEY   (or export BIOCARTOON_UPLOAD_KEY=KEY)",
+                    v["id"].as_str().unwrap_or_default(),
+                    v["id"].as_str().unwrap_or_default(),
+                    if scope == "all" { "any upload" } else { "the uploads made with it" }
+                );
+            }
+        }
+        Some("list") => {
+            let v = upload::keys_request(&url, "GET", "/keys", None, &key)?;
+            if json {
+                print_json(&v);
+            } else {
+                let rows = v.as_array().cloned().unwrap_or_default();
+                if rows.is_empty() {
+                    println!("no upload keys yet (biocartoon upload-key create --label NAME)");
+                }
+                let s = |r: &Value, k: &str| r[k].as_str().unwrap_or("–").to_string();
+                for r in &rows {
+                    let state = r["revoked_at"].as_str().map_or_else(|| "active".to_string(), |t| format!("revoked {t}"));
+                    let scope = if s(r, "scope") == "all" { "any upload" } else { "own uploads" };
+                    println!("{}  {:<24} {:<12} made {}  last used {}  {state}", s(r, "id"), s(r, "label"), scope, s(r, "created_at"), s(r, "last_used_at"));
+                }
+            }
+        }
+        Some("revoke") => {
+            let id = a.pos.get(2).ok_or("upload-key revoke ID (the id from upload-key list)")?;
+            let v = upload::keys_request(&url, "DELETE", &format!("/keys/{id}"), None, &key)?;
+            if json {
+                print_json(&v);
+            } else {
+                println!("revoked {} ({})", s_or(&v, "id"), s_or(&v, "label"));
+            }
+        }
+        _ => return Err(USAGE.into()),
+    }
+    Ok(())
+}
+
+fn s_or(v: &Value, k: &str) -> String {
+    v[k].as_str().unwrap_or_default().to_string()
 }
 
 /// `--source-categories`: each collection's own categories (of the `--source` ones), for

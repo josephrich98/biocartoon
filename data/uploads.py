@@ -8,6 +8,11 @@ signature and real dimensions, SVGs by the Worker's safety rules (svg_problem), 
 the number per publish (total and per author) is capped. Ids or authors listed in
 data/upload_blocklist.txt are skipped (to pull something that was approved by mistake).
 
+An update (`biocartoon upload --update ID`) is approved under its own slug, and its sidecar's
+`replaces` lists the slugs of every earlier version (`user/<slug>`, newest first). The versions it
+replaces are left out here (their files stay in the bucket, for projects that use them), and
+publish_catalog.py gives the update their catalog id.
+
 An SVG upload's PNG (`user/<slug>.png`, what the app shows) is rendered here, the way
 rasterize.py renders the catalog's SVGs, and put in the bucket the first time it is published.
 
@@ -46,6 +51,7 @@ LICENSES = {
 }
 SLUG = r"[a-z0-9][a-z0-9-]{0,100}"
 ASSET_SIDECAR = re.compile(rf"^user/({SLUG})\.json$")
+ASSET_ID = re.compile(rf"^user/{SLUG}$")
 TEMPLATE_JSON = re.compile(rf"^templates/({SLUG})/template\.json$")
 TEMPLATE_IMAGE = re.compile(rf"^templates/({SLUG})/(img-\d{{1,3}}|thumb)\.png$")
 
@@ -311,10 +317,22 @@ class Caps:
 
 
 def genai_flag(meta: dict) -> int | None:
-    """`generative_ai_used` from an upload's metadata: 0 when the uploader checked "No generative AI
-    was used", 1 when the app knew AI made it, NULL when they didn't say (and for older uploads)."""
+    """`generative_ai_used` from an upload's metadata: 1 / 0 as the uploader answered "Was generative
+    AI used to make this artwork?", NULL when not specified (and for older uploads)."""
     v = meta.get("generative_ai_used")
     return int(v) if isinstance(v, bool) else None
+
+
+def genai_details(meta: dict) -> str | None:
+    """How generative AI was used, in the uploader's words: only with `generative_ai_used` true."""
+    return (text(meta.get("generative_ai_details"), 500) or None) if meta.get("generative_ai_used") is True else None
+
+
+def replaces(v) -> list[str]:
+    """An update sidecar's `replaces`: the ids (`user/<slug>`) of the versions it replaces, newest first."""
+    if not isinstance(v, list):
+        return []
+    return [x for x in v if isinstance(x, str) and ASSET_ID.match(x)][:100]
 
 
 def asset_rows(s3, bucket: str, caps: Caps, blocked: set[str], log=print, upload_renders=False) -> list[dict]:
@@ -322,6 +340,19 @@ def asset_rows(s3, bucket: str, caps: Caps, blocked: set[str], log=print, upload
     uploads are rendered to PNG, and the PNGs put in the bucket with `upload_renders`."""
     objs = list_objects(s3, bucket, "user/")
     sidecars = sorted((o for k, o in objs.items() if k.endswith(".json")), key=lambda o: o["LastModified"])
+    # Every sidecar first, to know which uploads a newer version replaces (before rendering or capping them).
+    metas: dict[str, dict | Exception] = {}
+    for o in sidecars:
+        try:
+            metas[o["Key"]] = get_json(s3, bucket, o["Key"], o["Size"], MAX_SIDECAR_BYTES)
+        except Exception as e:  # noqa: BLE001
+            metas[o["Key"]] = e
+    replaced_by = {}
+    for key, meta in metas.items():
+        m = ASSET_SIDECAR.match(key)
+        if m and isinstance(meta, dict) and not is_blocked(blocked, f"user/{m.group(1)}", text(meta.get("author"), 10**6) or "anonymous"):
+            for old in replaces(meta.get("replaces")):
+                replaced_by.setdefault(old, f"user/{m.group(1)}")
     rows = []
     for o in sidecars:
         key = o["Key"]
@@ -330,7 +361,12 @@ def asset_rows(s3, bucket: str, caps: Caps, blocked: set[str], log=print, upload
             if not m:
                 raise ValueError("bad key")
             rid = f"user/{m.group(1)}"
-            meta = get_json(s3, bucket, key, o["Size"], MAX_SIDECAR_BYTES)
+            meta = metas[key]
+            if isinstance(meta, Exception):
+                raise meta
+            if rid in replaced_by:
+                log(f"  {key}: replaced by its update {replaced_by[rid]}")
+                continue
             if meta.get("id") != rid or meta.get("png_key") != f"{rid}.png":
                 raise ValueError("id / png_key do not match the key")
             author = text(meta.get("author"), 80) or "anonymous"
@@ -369,7 +405,10 @@ def asset_rows(s3, bucket: str, caps: Caps, blocked: set[str], log=print, upload
                 svg_sha256=text(meta.get("svg_sha256"), 64) or None, png_sha256=png_sha,
                 svg_local=None, png_local=None, extra=json.dumps({"uploaded": True}),
                 uploaded_at=o["LastModified"].isoformat(timespec="seconds"), generative_ai_used=genai_flag(meta),
+                generative_ai_details=genai_details(meta),
                 layers=layers(meta.get("layers")) if svg_key else None,
+                # publish_catalog.update_master gives the row the catalog id of the first of these it has.
+                replaces=replaces(meta.get("replaces")),
             )
             why = caps.take(author)
             if why:
@@ -434,7 +473,7 @@ def template_rows(s3, bucket: str, catalog_keys: set[str], caps: Caps, blocked: 
                 id=slug, title=text(meta.get("title"), 80, required=True), description=text(meta.get("description"), 500),
                 category=text(meta.get("category"), 60), tags=tags(meta.get("tags")), author=author, license=meta["license"],
                 created_at=o["LastModified"].isoformat(timespec="seconds"), json_key=key, thumb_key=meta["thumb_key"],
-                json_local=None, thumb_local=None, generative_ai_used=genai_flag(meta),
+                json_local=None, thumb_local=None, generative_ai_used=genai_flag(meta), generative_ai_details=genai_details(meta),
                 # A reviewer accepted it to the official library (worker/src/publish.ts); BioCartoon's
                 # own (authored by it) are listed there too.
                 official=int(meta.get("official") is True or author == "BioCartoon"),

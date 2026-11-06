@@ -99,6 +99,11 @@ test("generative AI", () => {
   }
   // Apps from before the question.
   assert.equal(parseMeta({ title: "ok", author: "Ann", license: "CC-BY-4.0" }).generative_ai_used, null);
+  // Details are kept only with a yes.
+  assert.equal(parseMeta({ title: "ok", license: "CC0-1.0", generative_ai_used: true, generative_ai_details: " Claude wrote the SVG " }).generative_ai_details, "Claude wrote the SVG");
+  assert.equal(parseMeta({ title: "ok", license: "CC0-1.0", generative_ai_used: false, generative_ai_details: "x" }).generative_ai_details, "");
+  assert.equal(parseMeta({ title: "ok", license: "CC0-1.0", generative_ai_details: "x" }).generative_ai_details, "");
+  assert.throws(() => parseMeta({ title: "ok", license: "CC0-1.0", generative_ai_used: true, generative_ai_details: "x".repeat(501) }), /AI details/);
 });
 
 test("tags", () => {
