@@ -55,11 +55,11 @@ FAMILIES = {"PD": "Public Domain", "CC0": "CC0", "CC-BY": "CC BY", "CC-BY-SA": "
 # under the table from its row's `credit`.
 ASSETS_URL = "https://assets.biocartoon.com/"
 EXAMPLES = {
-    "user": [("user/plasmid-3a840ac2ad.png", "Plasmid"),
-             ("user/t-cell-f603035c23.png", "T cell"),
+    "user": [("user/plasmid-3a840ac2ad.png", "DNA"),
+             ("user/stem-cell-6e2b779265.png", "Cell"),
              ("user/human-heart-05aab1b2bd.png", "Heart"),
-             ("user/neuron-4f6c886f31.png", "Neuron"),
-             ("user/woman-6ae68b5d9e.png", "Woman")],
+             ("user/c57bl-6j-founder-mouse-15cef9f2a0.png", "Mouse"),
+             ("user/man-07d4d4bfe2.png", "Human male")],
     "bioicons": [("bioicons/cc-by-4.0/Nucleic_acids/DNA_colored.png", "DNA"),
                  ("bioicons/cc-by-4.0/Cell_types/Lymphocyte.png", "Lymphocyte"),
                  ("bioicons/cc-by-3.0/Human_physiology/heart.png", "Heart"),
