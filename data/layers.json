@@ -13975,22 +13975,33 @@
   ],
   "BA002417": [
     {"name": "Outline", "colors": ["#000000"]},
-    {"name": "Vent grille", "colors": ["#6b6765", "#212121"]},
-    {"name": "Storage cabinet", "colors": ["#aeaaa8"]},
-    {"name": "Control arm", "colors": ["#a4a2a1"]},
-    {"name": "Base", "colors": ["#97908b"]},
-    {"name": "Side panel", "colors": ["#bcbabb"]},
-    {"name": "Magnet housing", "colors": ["#b0b0af"]}
+    {"name": "Base front", "colors": ["#939196"]},
+    {"name": "Housing front", "colors": ["#f4f4f6"]},
+    {"name": "Housing side", "colors": ["#6c6965"]},
+    {"name": "Base plate front", "colors": ["#cac9cd"]},
+    {"name": "Base plate side", "colors": ["#75787a"]},
+    {"name": "Collar front", "colors": ["#dedde2"]},
+    {"name": "Collar side", "colors": ["#89878c"]}
   ],
   "BA002418": [
     {"name": "Outline", "colors": ["#000000"]},
-    {"name": "Vent slats", "colors": ["#686868"]},
-    {"name": "Vent openings", "colors": ["#212121"]},
-    {"name": "Body panels", "colors": ["#ababab"]},
-    {"name": "Side frame", "colors": ["#a2a2a2"]},
-    {"name": "Base panel", "colors": ["#929292"]},
-    {"name": "Highlights", "colors": ["#bbbbbb"]},
-    {"name": "Trim bands", "colors": ["#9d9d9d"]}
+    {"name": "Base front", "colors": ["#929292"]},
+    {"name": "Magnet housing front", "colors": ["#f4f4f4"]},
+    {"name": "Magnet housing side", "colors": ["#696969"]},
+    {"name": "Base trim front", "colors": ["#cacaca"]},
+    {"name": "Base trim side", "colors": ["#777777"]},
+    {"name": "Connector panel", "colors": ["#dedede"]},
+    {"name": "Side band", "colors": ["#888888"]}
+  ],
+  "BA002419": [
+    {"name": "Outline", "colors": ["#636363"]},
+    {"name": "Base front panel", "colors": ["#bdbdbd"]},
+    {"name": "Housing front", "colors": ["#f8f8f8"]},
+    {"name": "Housing side", "colors": ["#a4a4a4"]},
+    {"name": "Base front rim", "colors": ["#dfdfdf"]},
+    {"name": "Base side rim", "colors": ["#acacac"]},
+    {"name": "Control panel", "colors": ["#ebebeb"]},
+    {"name": "Side trim band", "colors": ["#b7b7b7"]}
   ],
   "BA002420": [
     {"name": "Outline", "colors": ["#000000"]},
@@ -28832,6 +28843,14 @@
     {"name": "Fur detail", "colors": ["#9b9b9b"]},
     {"name": "Hind foot", "colors": ["#ebebeb"]},
     {"name": "Foot shading", "colors": ["#b8b8b8"]}
+  ],
+  "BC020061": [
+    {"name": "Palette edge", "colors": ["#745236"]},
+    {"name": "Palette", "colors": ["#bb8b59", "#eac994"]},
+    {"name": "Highlights", "colors": ["#f6dfb8"]},
+    {"name": "Shadow", "colors": ["#d9ae76"]},
+    {"name": "Cell outlines", "colors": ["#8d664f"]},
+    {"name": "Outline", "colors": ["#a97b4d", "#ac8053"]}
   ],
   "BI004816": [
     {"name": "Wordmark", "colors": ["#000000"]},
@@ -93366,13 +93385,5 @@
     {"name": "Outline", "colors": ["#231f20"]},
     {"name": "Eyes", "colors": ["#dbdbca"]},
     {"name": "Pupils", "colors": ["#ffffff"]}
-  ],
-  "BC020061": [
-    {"name": "Palette edge", "colors": ["#745236"]},
-    {"name": "Palette", "colors": ["#bb8b59", "#eac994"]},
-    {"name": "Highlights", "colors": ["#f6dfb8"]},
-    {"name": "Shadow", "colors": ["#d9ae76"]},
-    {"name": "Cell outlines", "colors": ["#8d664f"]},
-    {"name": "Outline", "colors": ["#a97b4d", "#ac8053"]}
   ]
 }

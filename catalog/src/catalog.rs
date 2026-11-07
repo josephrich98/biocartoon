@@ -396,7 +396,7 @@ pub struct Worker {
     dup: &'static str,
     /// [`STYLE_KEY`], or its stand-in when the catalog lacks the column it reads.
     style_key: &'static str,
-    /// `a.svg_key`, or NULL in catalogs without the column.
+    /// `a.svg_key` (NULL when listed as 0 bytes), or NULL in catalogs without the column.
     svg_key: &'static str,
     /// `a.layers`, or NULL in catalogs without the column.
     layers: &'static str,
@@ -552,7 +552,12 @@ impl Worker {
             (GROUP_KEY_NO_EXTRA, "0")
         };
         let style_key = if has_col("source_id") { STYLE_KEY } else { STYLE_KEY_NO_SOURCE_ID };
-        let svg_key = if has_col("svg_key") { "a.svg_key" } else { "NULL" };
+        // An SVG the catalog lists as 0 bytes is no SVG (a few in the bucket are empty files).
+        let svg_key = match (has_col("svg_key"), has_col("svg_bytes")) {
+            (true, true) => "(CASE WHEN a.svg_bytes = 0 THEN NULL ELSE a.svg_key END)",
+            (true, false) => "a.svg_key",
+            _ => "NULL",
+        };
         // Added like generative_ai_used, so the layers the user names on their own uploads are kept.
         let layers = if has_col("layers") || conn.execute_batch("ALTER TABLE assets ADD COLUMN layers TEXT;").is_ok() { "a.layers" } else { "NULL" };
         // Catalogs published before the column: added like stars, so the user's own uploads keep theirs.
@@ -567,7 +572,7 @@ impl Worker {
             "NULL"
         };
         let file_bytes = match (has_col("svg_key") && has_col("svg_bytes"), has_col("png_bytes")) {
-            (true, true) => "CASE WHEN a.svg_key IS NOT NULL THEN a.svg_bytes ELSE a.png_bytes END",
+            (true, true) => "CASE WHEN a.svg_key IS NOT NULL AND a.svg_bytes != 0 THEN a.svg_bytes ELSE a.png_bytes END",
             (false, true) => "a.png_bytes",
             _ => "NULL",
         };
@@ -1813,6 +1818,31 @@ mod tests {
         assert_eq!(w.variants("k1").unwrap()[0].generative_ai_details, "An LLM wrote the SVG");
         assert_eq!(w.variants("k0").unwrap()[0].generative_ai_details, "");
         assert_eq!(w.variants("k2").unwrap()[0].generative_ai_used, None);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// An SVG listed as 0 bytes (an empty file in the bucket) is no SVG: the PNG is placed.
+    #[test]
+    fn empty_svgs_are_ignored() {
+        let dir = std::env::temp_dir().join(format!("cc-catalog-empty-svg-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let w = worker(&dir);
+        w.conn
+            .execute_batch(
+                "ALTER TABLE assets ADD COLUMN svg_key TEXT; ALTER TABLE assets ADD COLUMN svg_bytes INTEGER; ALTER TABLE assets ADD COLUMN png_bytes INTEGER; \
+                 UPDATE assets SET svg_key = 'a.svg', svg_bytes = 50, png_bytes = 10 WHERE id = 'k0'; \
+                 UPDATE assets SET svg_key = 'b.svg', svg_bytes = 0, png_bytes = 10 WHERE id = 'k1'; \
+                 UPDATE assets SET svg_key = 'c.svg' WHERE id = 'k2';",
+            )
+            .unwrap();
+        drop(w);
+        let w = Worker::open(&dir.join("assets.sqlite"), &dir.join("usage.sqlite")).unwrap();
+        let r = |id: &str| w.variants(id).unwrap().remove(0);
+        assert_eq!((r("k0").svg_key, r("k0").file_bytes), (Some("a.svg".into()), 50));
+        assert_eq!((r("k1").svg_key, r("k1").file_bytes), (None, 10));
+        // Size not known (the user's own uploads): kept.
+        assert_eq!(r("k2").svg_key, Some("c.svg".into()));
         let _ = std::fs::remove_dir_all(&dir);
     }
 

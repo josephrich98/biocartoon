@@ -312,13 +312,22 @@ def finish(it: dict, want_hash: bool, raster_root: Path | None = None):
     from PIL import Image
 
     s = it["source"]
-    svg = it["svg"] if it["svg"] and (DATA / it["svg"]).exists() else None
+    # An empty file is not an SVG (a few BioArt downloads are 0 bytes).
+    svg = it["svg"] if it["svg"] and (DATA / it["svg"]).is_file() and (DATA / it["svg"]).stat().st_size > 0 else None
     png, is_raster, wh = None, None, (None, None)
     shipped = it["png"] if it["png"] and (DATA / it["png"]).exists() else None
     if shipped:
         try:
             with Image.open(DATA / shipped) as im:
+                im.load()
                 wh = im.size
+                if im.format != "PNG":
+                    # JPEG/BMP/GIF/WebP (some SciDraw drawings) go up under `.png` keys, so they
+                    # must be real PNGs (as sync.py's stage_file makes them).
+                    out = raster_path(s, it["source_id"], raster_root).with_suffix(".converted.png")
+                    out.parent.mkdir(parents=True, exist_ok=True)
+                    im.convert("RGBA").save(out)
+                    shipped = str(out.relative_to(DATA) if out.is_relative_to(DATA) else out)
         except Exception:  # noqa: BLE001
             shipped = None
     if shipped and (not svg or max(wh) >= MIN_PNG_SIDE):

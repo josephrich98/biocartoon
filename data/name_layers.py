@@ -111,6 +111,12 @@ def download(rows: list[dict], threads: int) -> None:
         list(ex.map(one, rows))
 
 
+def sheets_dir(r: dict) -> Path:
+    """Where layer_sheets put asset `r`'s renders: its SVG's path under svg/, less `.svg` (keys,
+    not ids: ids stopped being file paths when they became BA000123 and the like)."""
+    return WORK / "sheets" / r["svg_key"].removesuffix(".svg")
+
+
 def render() -> None:
     """Run biocartoon-app's layer_sheets over the downloaded SVGs (it skips what is done)."""
     cmd = ["cargo", "run", "--release", "--quiet", "--manifest-path", str(APP / "Cargo.toml"),
@@ -125,7 +131,7 @@ def image(path: Path) -> dict:
 
 def content(r: dict, colors: list[str]) -> list[dict]:
     """The message Claude gets for asset `r`: what it is, the drawing, then each layer."""
-    sheets = WORK / "sheets" / r["id"]
+    sheets = sheets_dir(r)
     about = [f"Title: {r['title']}"]
     if r["variant"]:
         about.append(f"Variant: {r['variant']}")
@@ -215,7 +221,7 @@ def name_all(rows: list[dict], model: str | None, effort: str, workers: int) -> 
 
     def one(r):
         nonlocal done
-        colors = load_json(WORK / "sheets" / r["id"] / "meta.json", {}).get("colors", [])
+        colors = load_json(sheets_dir(r) / "meta.json", {}).get("colors", [])
         reply = ask(r, colors, model, effort)
         layers = layers_from(reply, colors) if reply else None
         with lock:
@@ -263,7 +269,7 @@ def main():
     download(rows, a.threads)
     render()
 
-    rows = [r for r in rows if len(load_json(WORK / "sheets" / r["id"] / "meta.json", {}).get("colors", [])) >= 2]
+    rows = [r for r in rows if len(load_json(sheets_dir(r) / "meta.json", {}).get("colors", [])) >= 2]
     print(f"{len(rows)} have two or more colour layers", flush=True)
     if a.dry_run:
         return
