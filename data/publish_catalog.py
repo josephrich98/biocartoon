@@ -139,6 +139,8 @@ def update_master(con: sqlite3.Connection, user_rows: list[dict] | None, tmpl_ro
         con.execute("ALTER TABLE assets ADD COLUMN generative_ai_details TEXT")
     if not any(c[1] == "replaces" for c in con.execute("PRAGMA table_info(assets)")):
         con.execute("ALTER TABLE assets ADD COLUMN replaces TEXT")
+    if not any(c[1] == "first_seen_at" for c in con.execute("PRAGMA table_info(assets)")):
+        con.execute("ALTER TABLE assets ADD COLUMN first_seen_at TEXT")
     con.executescript(TEMPLATES_SQL)
     if not any(c[1] == "tags" for c in con.execute("PRAGMA table_info(templates)")):
         con.execute("ALTER TABLE templates ADD COLUMN tags TEXT NOT NULL DEFAULT '[]'")
@@ -176,6 +178,9 @@ def update_master(con: sqlite3.Connection, user_rows: list[dict] | None, tmpl_ro
                     f"INSERT INTO assets ({','.join(cols)}) VALUES ({','.join('?' * len(cols))}) ON CONFLICT(id) DO UPDATE "
                     f"SET {', '.join(f'{c} = excluded.{c}' for c in cols if c != 'id')}",
                     [tuple(r[c] for c in cols) for r in user_rows])
+        # first_seen_at is set once: a row without one (made before the column, or just uploaded)
+        # gets the date it reached the bucket, and keeps it.
+        con.execute("UPDATE assets SET first_seen_at = uploaded_at WHERE first_seen_at IS NULL")
         if tmpl_rows is not None:
             con.execute("DELETE FROM templates")
             con.executemany(f"INSERT INTO templates ({','.join(TEMPLATE_COLS)}) VALUES ({','.join('?' * len(TEMPLATE_COLS))})",

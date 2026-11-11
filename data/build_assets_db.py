@@ -21,6 +21,7 @@ import re
 import sqlite3
 import sys
 from concurrent.futures import ThreadPoolExecutor
+from datetime import datetime, timezone
 from pathlib import Path
 
 DATA = Path(__file__).resolve().parent
@@ -89,7 +90,8 @@ CREATE TABLE assets (
     uploaded_at          TEXT,               -- set by upload_r2.py
     layers               TEXT,               -- JSON: named colour layers, from layers.json
     stars                INTEGER NOT NULL DEFAULT 0, -- app users' stars, filled in by publish_catalog.py
-    generative_ai_used   INTEGER             -- 1 / 0 / NULL (not known), from generative_ai.json
+    generative_ai_used   INTEGER,            -- 1 / 0 / NULL (not known), from generative_ai.json
+    first_seen_at        TEXT                -- when this catalog first had the asset; set once, never changed
 );
 CREATE INDEX assets_source ON assets(source);
 CREATE UNIQUE INDEX assets_source_id ON assets(source, source_id);
@@ -407,16 +409,18 @@ def main():
     if db.exists():
         con.execute("ATTACH ? AS old", (str(db),))
         stars = "stars" if any(c[1] == "stars" for c in con.execute("PRAGMA old.table_info(assets)")) else "0"
-        prev = {(s, sid): (i, up, n, key) for s, sid, i, up, n, key in
-                con.execute(f"SELECT source, source_id, id, uploaded_at, {stars}, png_key FROM old.assets") if ID_RE.fullmatch(i)}
+        seen = "first_seen_at" if any(c[1] == "first_seen_at" for c in con.execute("PRAGMA old.table_info(assets)")) else "NULL"
+        prev = {(s, sid): (i, up, n, key, fs or up) for s, sid, i, up, n, key, fs in
+                con.execute(f"SELECT source, source_id, id, uploaded_at, {stars}, png_key, {seen} FROM old.assets") if ID_RE.fullmatch(i)}
         if con.execute("SELECT 1 FROM old.sqlite_master WHERE name = 'id_seq'").fetchone():
             floor = con.execute("SELECT max(n) FROM old.id_seq").fetchone()[0] or 0
         con.execute("DETACH old")
     ids = Ids(con, max([floor] + [int(p[0][2:]) for p in prev.values()]))
     layers, genai = load_layers(), load_generative_ai()
     for r in rows:
-        rid, up, n, key = prev.get((r["source"], r["source_id"])) or (ids.new(r["source"]), None, 0, None)
+        rid, up, n, key, fs = prev.get((r["source"], r["source_id"])) or (ids.new(r["source"]), None, 0, None, None)
         r["id"], r["uploaded_at"], r["stars"] = rid, up if key == r["png_key"] else None, n
+        r["first_seen_at"] = fs or datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S+00:00")  # kept across rebuilds
         r["layers"] = layers.get(r["id"])
         r["generative_ai_used"] = generative_ai(r, genai)
     con.executemany(f"INSERT INTO assets ({','.join(COLS)}) VALUES ({','.join('?' * len(COLS))})",

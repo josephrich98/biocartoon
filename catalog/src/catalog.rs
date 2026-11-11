@@ -961,6 +961,8 @@ impl Worker {
                     (_, true) => format!("{} IS NULL", self.svg_key),
                     _ => "0".into(),
                 },
+                // Every row here is an icon; templates are the editor's, not in the catalog.
+                Field::ArtworkType => if crate::syntax::artwork_type_matches(v, true) { "1" } else { "0" }.into(),
                 Field::Tags => format!(
                     "EXISTS (SELECT 1 FROM json_each(CASE WHEN json_valid(a.tags) THEN a.tags ELSE '[]' END) WHERE instr(lower(value), {}) > 0)",
                     lit(v)
@@ -1259,6 +1261,20 @@ impl Worker {
                 Filter { formats: Vec::new(), ..filter.clone() },
             )?,
         })
+    }
+
+    /// Authors whose name has `part` in it (any case), with how many icons each has, most first.
+    pub fn authors_like(&self, part: &str, limit: usize) -> rusqlite::Result<Vec<(String, i64)>> {
+        let part = part.trim().to_lowercase();
+        if part.chars().count() < 2 {
+            return Ok(Vec::new());
+        }
+        let sql = format!(
+            "SELECT a.author, count(DISTINCT {}) AS n FROM assets a WHERE a.png_key IS NOT NULL AND coalesce(a.author,'') <> '' AND instr(lower(a.author), ?1) > 0 GROUP BY a.author ORDER BY n DESC, a.author LIMIT {limit}",
+            self.group_key
+        );
+        let rows = self.conn.prepare(&sql)?.query_map([part], |r| Ok((r.get(0)?, r.get(1)?)))?.collect();
+        rows
     }
 
     /// An " AND ..." term keeping the assets `query` finds, "" for no query. Every word, else

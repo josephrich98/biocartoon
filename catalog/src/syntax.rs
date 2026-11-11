@@ -4,7 +4,7 @@
 //!
 //! Precedence is `NOT` over `AND` over `OR`; words next to each other are `AND`-ed. Field values
 //! match a part of the field in any case (`category:cell` finds "Cells"), except `id` (the whole
-//! id) and `file_type` (`svg`, or `png` for a PNG only). Unfinished input (a trailing `AND`, an
+//! id), `file_type` (`svg`, or `png` for a PNG only) and `artwork_type` (`icons` or `templates`). Unfinished input (a trailing `AND`, an
 //! unclosed parenthesis, `author:` with nothing after it) is forgiven, so the results don't vanish
 //! while a query is being typed.
 
@@ -18,12 +18,14 @@ pub enum Field {
     DatabaseCategory,
     License,
     FileType,
+    /// `icons` or `templates` (the search's Artwork type filter).
+    ArtworkType,
     Tags,
     Id,
 }
 
 impl Field {
-    pub const ALL: [(Field, &'static [&'static str]); 9] = [
+    pub const ALL: [(Field, &'static [&'static str]); 10] = [
         (Field::Database, &["database", "db", "source"]),
         (Field::Author, &["author"]),
         (Field::Category, &["category", "cat"]),
@@ -31,6 +33,7 @@ impl Field {
         (Field::DatabaseCategory, &["database_category", "db_category", "dbcat"]),
         (Field::License, &["license", "licence"]),
         (Field::FileType, &["file_type", "filetype", "type", "format"]),
+        (Field::ArtworkType, &["artwork_type", "artwork", "kind"]),
         (Field::Tags, &["tags", "tag"]),
         (Field::Id, &["id"]),
     ];
@@ -91,6 +94,15 @@ pub fn file_type_matches(value: &str, has_svg: bool) -> bool {
     match value.trim_start_matches('.') {
         "svg" => has_svg,
         "png" => !has_svg,
+        _ => false,
+    }
+}
+
+/// Whether an `artwork_type` value fits a record: `icon(s)` an icon, `template(s)` a template.
+pub fn artwork_type_matches(value: &str, is_icon: bool) -> bool {
+    match value.trim_end_matches('s') {
+        "icon" => is_icon,
+        "template" => !is_icon,
         _ => false,
     }
 }
@@ -316,6 +328,10 @@ mod tests {
         assert_eq!(parse("author:\"Jane Doe\" neuron"), Some(Expr::And(vec![f(Field::Author, "jane doe"), w("neuron")])));
         assert_eq!(parse("Database_Category:viruses"), Some(f(Field::DatabaseCategory, "viruses")));
         assert_eq!(parse("file-type:svg"), Some(f(Field::FileType, "svg")));
+        assert_eq!(parse("artwork_type:Templates"), Some(f(Field::ArtworkType, "templates")));
+        assert!(artwork_type_matches("icons", true) && !artwork_type_matches("icons", false));
+        assert!(artwork_type_matches("template", false) && !artwork_type_matches("template", true));
+        assert!(!artwork_type_matches("slides", true));
         assert_eq!(parse("author: mouse"), None);
     }
 

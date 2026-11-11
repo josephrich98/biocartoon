@@ -286,7 +286,7 @@ def sync_source(con, source: str, a, s3, rep: Report, taken: set[str]):
                 complete = False
                 continue
             # layers.json is applied by publish_catalog.py; generative_ai.json is applied there too.
-            row.update(uploaded_at=now(), svg_local=None, png_local=None, stars=0, layers=None,
+            row.update(uploaded_at=now(), first_seen_at=now(), svg_local=None, png_local=None, stars=0, layers=None,
                        generative_ai_used=B.generative_ai(row, genai))
             rows.append(row)
 

@@ -437,22 +437,42 @@ def discover_openmoji(known, prev, work):
     return tag, len(meta), new
 
 
-def discover_reactome(known, prev, work):
-    url = "https://reactome.org/icon/icon-lib-svg.tgz"
-    r = S.head(url, timeout=TIMEOUT, allow_redirects=True)
-    r.raise_for_status()
-    sig = r.headers.get("ETag") or r.headers.get("Last-Modified") or r.headers.get("Content-Length")
-    if sig and sig == prev:
-        return sig, None, []
-    import tarfile
+def reactome_listing() -> dict:
+    """{icon id: search-API entry}, or {icon id: {}} if the search API is down (it answered 500
+    for Icon queries in 2026-10) and the ids had to come from the icon-lib category pages.
+    The icon-lib-{svg,png}.tgz archives are gone (404 as of 2026-11)."""
+    r = get("https://reactome.org/ContentService/search/query?query=*&types=Icon&rows=5000", allow_404=False)
+    if r is not None:
+        body = r.json()
+        entries = {e["stId"]: e for res in body.get("results", []) for e in res.get("entries", [])}
+        if entries and len(entries) >= body.get("numberOfMatches", 0):
+            return entries
 
-    if not download(url, work / "icon-lib-svg.tgz"):
-        raise RuntimeError(f"could not download {url}")
-    with tarfile.open(work / "icon-lib-svg.tgz") as tf:
-        ids = sorted({Path(n).stem for n in tf.getnames() if re.fullmatch(r"R-ICO-\d+", Path(n).stem)})
-    new = [reactome_item(i, reactome_xml_meta(i), f"https://reactome.org/icon/{i}.svg", f"https://reactome.org/icon/{i}.png")
-           for i in ids if i not in known]
-    return sig, len(ids), new
+    def page(url):
+        r = get(url, allow_404=False)
+        if r is None:  # a partial listing would read as icons having disappeared
+            raise RuntimeError(f"could not fetch {url}")
+        return r.text
+
+    ids = set()
+    for cat in set(re.findall(r'href="/icon-lib/([a-z_]+)"', page("https://reactome.org/icon-lib"))):
+        n = 1
+        while found := set(re.findall(r"R-ICO-\d+", page(f"https://reactome.org/icon-lib/{cat}?page={n}"))):
+            ids |= found
+            n += 1
+    return dict.fromkeys(ids, {})
+
+
+def discover_reactome(known, prev, work):
+    import hashlib
+
+    listing = reactome_listing()
+    sig = hashlib.sha256("\n".join(sorted(listing)).encode()).hexdigest()[:16]
+    if sig == prev:
+        return sig, None, []
+    new = [reactome_item(i, e or reactome_xml_meta(i), f"https://reactome.org/icon/{i}.svg", f"https://reactome.org/icon/{i}.png")
+           for i, e in sorted(listing.items()) if i not in known]
+    return sig, len(listing), new
 
 
 def discover_scidraw(known, prev, work):
