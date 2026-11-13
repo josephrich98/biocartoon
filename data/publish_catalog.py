@@ -51,7 +51,7 @@ from pathlib import Path
 
 import readme_stats
 import thumbs
-from build_assets_db import Ids, generative_ai, load_generative_ai, load_layers, upload_id
+from build_assets_db import Ids, generative_ai, load_generative_ai, load_generative_ai_details, load_layers, upload_id
 from config import PUBLISH_UA, R2_BUCKET, SUBMIT_URL
 
 DATA = Path(__file__).resolve().parent
@@ -193,11 +193,18 @@ def update_master(con: sqlite3.Connection, user_rows: list[dict] | None, tmpl_ro
         layers = load_layers()
         con.execute("UPDATE assets SET layers = NULL WHERE layers IS NOT NULL AND source != 'user'")
         con.executemany("UPDATE assets SET layers = ? WHERE id = ?", [(v, i) for i, v in layers.items()])
-        # So is generative_ai.json, for everything but the uploads (whose sidecars say).
-        genai = load_generative_ai()
+        # So is generative_ai.json: for everything but the uploads (whose sidecars say), and for an
+        # upload only where it has an entry of its own (one that didn't say, or said wrongly).
+        # Its `details` say how AI was used, and win over an upload's own words.
+        genai, details = load_generative_ai(), load_generative_ai_details()
+        rows = con.execute("SELECT id, source FROM assets").fetchall()
         con.executemany("UPDATE assets SET generative_ai_used = ? WHERE id = ?",
                         [(generative_ai({"id": i, "source": s}, genai), i)
-                         for i, s in con.execute("SELECT id, source FROM assets WHERE source != 'user'").fetchall()])
+                         for i, s in rows if s != "user" or i in genai[1]])
+        con.executemany("UPDATE assets SET generative_ai_details = ? WHERE id = ?",
+                        [(details.get(i) if used else None, i) for i, s, used in
+                         con.execute("SELECT id, source, generative_ai_used FROM assets").fetchall()
+                         if s != "user" or i in details or not used])
 
 
 def build_templates(src: Path, out_dir: Path, with_uploads: bool) -> tuple[Path, str, int]:

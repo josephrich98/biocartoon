@@ -166,7 +166,8 @@ GENAI_FILE = DATA / "generative_ai.json"
 def load_generative_ai() -> tuple[dict[str, bool | None], dict[str, bool | None]]:
     """`(per source, per asset id)` from generative_ai.json: whether generative AI made an asset
     (true / false / null for not known). An asset's own entry wins over its source's; a source
-    with no entry is not known. App uploads say so themselves (uploads.py)."""
+    with no entry is not known. App uploads say so themselves (uploads.py), unless an asset entry
+    overrides what an upload said (publish_catalog.py)."""
     if not GENAI_FILE.exists():
         return {}, {}
     d = json.loads(GENAI_FILE.read_text())
@@ -177,6 +178,17 @@ def load_generative_ai() -> tuple[dict[str, bool | None], dict[str, bool | None]
             raise ValueError(f"generative_ai.json: {part}: {bad[:3]} must be true, false or null")
         out.append(m)
     return out[0], out[1]
+
+
+def load_generative_ai_details() -> dict[str, str]:
+    """generative_ai.json's `details`: how generative AI was used, per asset id (the
+    `generative_ai_details` column; only for assets it made), applied by publish_catalog.py."""
+    if not GENAI_FILE.exists():
+        return {}
+    m = {k: v for k, v in (json.loads(GENAI_FILE.read_text()).get("details") or {}).items() if not k.startswith("_")}
+    if bad := [k for k, v in m.items() if not isinstance(v, str) or not v.strip()]:
+        raise ValueError(f"generative_ai.json: details: {bad[:3]} must be non-empty text")
+    return m
 
 
 def generative_ai(row: dict, rec: tuple[dict, dict]) -> int | None:
