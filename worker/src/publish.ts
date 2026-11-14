@@ -93,7 +93,8 @@ export async function approve(env: Env, row: Row, reviewer: string, official = f
       const bytes = (await copy(env, `${row.id}/image.png`, key, "image/png")).byteLength;
       image = { png_width: row.width, png_height: row.height, png_bytes: bytes, png_sha256: row.png_sha256 };
     }
-    const credit = creditLine(row.title, row.author, row.license);
+    // The library's own uploads (the master key's) are credited to BioCartoon, not as a community contribution.
+    const credit = row.key_id === "master" ? creditLine(row.title, row.author, row.license, "BioCartoon") : creditLine(row.title, row.author, row.license);
     const sidecar = {
       id: `user/${row.id}`, title: row.title, description: row.description, category: row.category, tags: rowTags(row), license: row.license,
       credit, author: row.author, png_key: key, ...image, created_at: row.created_at, ...(official && { official: true }),

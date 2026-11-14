@@ -117,6 +117,11 @@ test("an official approval keeps the author, and undoing it clears the flag", as
   assert.deepEqual([s.author, s.credit, s.official, row.official], ["Me", '"Cell" by Me, BioCartoon community contribution, CC0', true, 1]);
   await undo(env, row);
   assert.equal(row.official, 0);
+  // Uploaded with the master key: the library's own, so credited to BioCartoon.
+  Object.assign(row, { key_id: "master" });
+  await approve(env, row, "me", true);
+  assert.equal(sidecar(PUBLIC, "user/cell.json").credit, '"Cell" by Me, BioCartoon, CC0');
+  await undo(env, row);
 });
 
 test("an official template is marked so in its template.json, and keeps its author", async () => {
