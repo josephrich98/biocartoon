@@ -54,6 +54,12 @@ pub fn image_png(png: &[u8]) -> Value {
     json!({"type": "image", "data": base64::engine::general_purpose::STANDARD.encode(png), "mimeType": "image/png"})
 }
 
+/// Marks a tool as only reading (ChatGPT and Claude run these without asking each time).
+pub fn read_only(mut t: Value) -> Value {
+    t["annotations"] = json!({"readOnlyHint": true, "destructiveHint": false, "openWorldHint": false});
+    t
+}
+
 pub fn tool(name: &str, description: &str, props: Value, required: &[&str]) -> Value {
     json!({
         "name": name,
@@ -86,6 +92,12 @@ pub fn brief(a: &Asset) -> Value {
         "description": d, "tags": a.tags, "license": a.license, "credit": a.credit, "width": a.width, "height": a.height,
         "url": a.url, "stars": a.stars,
     });
+    if let Some(t) = &a.thumb_url {
+        v["thumb_url"] = json!(t);
+    }
+    if let Some(t) = &a.svg_url {
+        v["svg_url"] = json!(t);
+    }
     if !a.matched_fields.is_empty() {
         v["matched_fields"] = json!(a.matched_fields);
     }
@@ -112,12 +124,32 @@ pub struct CatalogTools {
     catalog: Option<Catalog>,
     /// The published template list, brought up to date on the first template call.
     templates: Option<std::path::PathBuf>,
+    /// For a long-running server (`biocartoon mcp --http`): how often to look for a newer
+    /// catalog file, and when it last looked. `None` keeps the first catalog opened.
+    reload_every: Option<std::time::Duration>,
+    checked: Option<std::time::Instant>,
 }
 
 impl CatalogTools {
+    /// Catalog tools that switch to a newer downloaded catalog (and template list) at most
+    /// `every` after the last look, for a server that outlives one catalog publish.
+    pub fn reloading(every: std::time::Duration) -> Self {
+        Self { reload_every: Some(every), ..Self::default() }
+    }
+
     pub fn catalog(&mut self) -> Result<&Catalog, String> {
+        if let (Some(every), Some(c)) = (self.reload_every, &self.catalog) {
+            if self.checked.is_none_or(|t| t.elapsed() >= every) {
+                self.checked = Some(std::time::Instant::now());
+                if query::catalog_path().is_some_and(|p| p != c.path) {
+                    self.catalog = None;
+                    self.templates = None;
+                }
+            }
+        }
         if self.catalog.is_none() {
             self.catalog = Some(Catalog::open_default()?);
+            self.checked = Some(std::time::Instant::now());
         }
         Ok(self.catalog.as_ref().unwrap())
     }
@@ -144,6 +176,8 @@ impl Tools for CatalogTools {
             tool("get_asset", "Everything the catalog knows about one asset: description, tags, license, credit line, image URL and size.", json!({"id": str_prop("Asset id.")}), &["id"]),
             tool("asset_variants", "The same drawing in its other colour schemes / styles (same source and title).", json!({"id": str_prop("Asset id.")}), &["id"]),
             tool("asset_image", "Look at an asset: returns its PNG (downscaled) so you can check that it depicts what the user asked for.", json!({"id": str_prop("Asset id."), "max_side": int_prop("Longest side in pixels (default 512).")}), &["id"]),
+            tool("asset_svg", "An asset's SVG markup, to adapt it (\"like this icon but ...\"): edit the markup rather than redrawing from scratch. Also says whether an adaptation may be submitted to the library under the asset's license. Servier and some uploads have no SVG; very detailed drawings are too large to edit as code (redraw from asset_image instead).", json!({"id": str_prop("Asset id."), "max_kb": int_prop("Largest markup to return, in kilobytes (default 150, max 500).")}), &["id"]),
+            tool("preview_assets", "Small previews (at most 256 px) of up to 12 assets at once, each labelled with its id, title, collection and license: for showing the user candidates side by side, or judging several search results in one call.", json!({"ids": {"type": "array", "items": {"type": "string"}, "description": "Asset ids, in the order to show them (at most 12)."}}), &["ids"]),
             tool("browse_assets", "Page through a collection, optionally one category (see list_categories).", json!({"source": str_prop("Collection id."), "category": str_prop("Category name."), "offset": int_prop("Skip this many."), "limit": int_prop("Page size (default 40, max 200).")}), &["source"]),
             tool("list_sources", "The collections in the catalog with their sizes and licenses.", json!({}), &[]),
             tool("list_categories", "A collection's categories with counts.", json!({"source": str_prop("Collection id.")}), &["source"]),
@@ -152,11 +186,14 @@ impl Tools for CatalogTools {
             tool("list_templates", "Shared slide templates (whole slide layouts users published from the BioCartoon editor), newest first. Optional word filter.", json!({"query": str_prop("Words that must appear in the title, description or category.")}), &[]),
             tool("template_image", "The thumbnail of a shared template, to see its layout.", json!({"id": str_prop("Template id (from list_templates).")}), &["id"]),
         ]
+        .into_iter()
+        .map(read_only)
+        .collect()
     }
 
     fn call(&mut self, name: &str, args: &Value) -> Option<Result<Vec<Value>, String>> {
-        const NAMES: [&str; 11] = [
-            "search_assets", "get_asset", "asset_variants", "asset_image", "browse_assets", "list_sources", "list_categories", "sql_query", "db_schema",
+        const NAMES: [&str; 13] = [
+            "search_assets", "get_asset", "asset_variants", "asset_image", "asset_svg", "preview_assets", "browse_assets", "list_sources", "list_categories", "sql_query", "db_schema",
             "list_templates", "template_image",
         ];
         NAMES.contains(&name).then(|| self.run(name, args))
@@ -209,6 +246,60 @@ impl CatalogTools {
                 let (png, w, h) = query::shrink_png(&cat.fetch_png(&a)?, max)?;
                 vec![text(format!("{} ({}, {}) — {}x{} px shown; original {}x{}. Credit: {}", a.title, a.source_name, a.license, w, h, a.width, a.height, a.credit)), image_png(&png)]
             }
+            "asset_svg" => {
+                let id = need("id")?;
+                let max = n("max_kb").unwrap_or(150).clamp(1, 500) as usize * 1024;
+                let cat = self.catalog()?;
+                let a = cat.get(&id)?.ok_or_else(|| format!("no asset {id}"))?;
+                let raw = cat.fetch_svg(&a)?;
+                let svg = slim_svg(&String::from_utf8_lossy(&raw));
+                if svg.len() > max {
+                    return Err(format!(
+                        "{id}'s SVG is {} KB, more than {} KB: too detailed to edit as code. Look at it with asset_image and draw a simpler \
+                         version in its style instead, or pass a larger max_kb (up to 500).",
+                        svg.len() / 1024,
+                        max / 1024
+                    ));
+                }
+                vec![
+                    text(format!(
+                        "{} — {} ({}). Credit: {}\n{}\nKeep its style (outline weight, palette, level of detail) and change only what the user asked for.",
+                        a.id,
+                        a.title,
+                        a.source_name,
+                        a.credit,
+                        crate::mcp_submit::adaptation_note(&a.license)
+                    )),
+                    text(svg),
+                ]
+            }
+            "preview_assets" => {
+                let ids: Vec<String> = args.get("ids").and_then(Value::as_array).map(|a| a.iter().filter_map(Value::as_str).map(str::to_string).collect()).unwrap_or_default();
+                if ids.is_empty() {
+                    return Err("ids is required: one or more asset ids".into());
+                }
+                if ids.len() > 12 {
+                    return Err(format!("at most 12 ids at once ({} given)", ids.len()));
+                }
+                let cat = self.catalog()?;
+                let mut out = Vec::new();
+                for (i, id) in ids.iter().enumerate() {
+                    let Some(a) = cat.get(id)? else {
+                        out.push(text(format!("{}. {id}: no such asset", i + 1)));
+                        continue;
+                    };
+                    let png = match &a.thumb_url {
+                        Some(u) => query::fetch_url(u).and_then(|b| query::shrink_png(&b, 256)),
+                        None => cat.fetch_png(&a).and_then(|b| query::shrink_png(&b, 256)),
+                    };
+                    out.push(text(format!("{}. {} — {} ({}, {})", i + 1, a.id, a.title, a.source_name, a.license)));
+                    match png {
+                        Ok((png, _, _)) => out.push(image_png(&png)),
+                        Err(e) => out.push(text(format!("   (no preview: {e})"))),
+                    }
+                }
+                out
+            }
             "browse_assets" => {
                 let source = need("source")?;
                 let limit = n("limit").unwrap_or(40).clamp(1, 200) as usize;
@@ -252,12 +343,38 @@ impl CatalogTools {
     }
 }
 
+/// SVG markup without what only an editor needs: comments, `<metadata>` and Inkscape's
+/// `<sodipodi:namedview>`, so less of it has to be read.
+pub fn slim_svg(svg: &str) -> String {
+    let mut s = svg.to_string();
+    for (open, close) in [("<!--", "-->"), ("<metadata", "</metadata>"), ("<sodipodi:namedview", "</sodipodi:namedview>")] {
+        while let Some(i) = s.find(open) {
+            // An empty element (`<metadata/>`) ends at its own `/>`.
+            let tag_end = s[i..].find('>').map(|j| i + j);
+            let end = match tag_end {
+                Some(t) if open != "<!--" && s[..t].ends_with('/') => t + 1,
+                _ => match s[i..].find(close) {
+                    Some(j) => i + j + close.len(),
+                    None => break,
+                },
+            };
+            s.replace_range(i..end, "");
+        }
+    }
+    // Drop an XML declaration or doctype before the root element.
+    let mut s = s.trim_start();
+    while s.starts_with("<?") || s.starts_with("<!DOCTYPE") || s.starts_with("<!doctype") {
+        s = s[s.find('>').map_or(s.len(), |i| i + 1)..].trim_start();
+    }
+    s.lines().map(str::trim_end).filter(|l| !l.trim().is_empty()).collect::<Vec<_>>().join("\n")
+}
+
 /// Handle one request; `Err((code, message))` becomes a JSON-RPC error.
 pub fn handle(info: &ServerInfo, tools: &mut dyn Tools, method: &str, params: &Value) -> Result<Value, (i64, String)> {
     match method {
         "initialize" => {
             let requested = params.get("protocolVersion").and_then(Value::as_str).unwrap_or(PROTOCOL_VERSION);
-            let version = if ["2024-11-05", "2025-03-26", "2025-06-18"].contains(&requested) { requested } else { PROTOCOL_VERSION };
+            let version = if ["2024-11-05", "2025-03-26", "2025-06-18", "2025-11-25"].contains(&requested) { requested } else { PROTOCOL_VERSION };
             Ok(json!({
                 "protocolVersion": version,
                 "capabilities": {"tools": {"listChanged": false}},
@@ -282,6 +399,31 @@ pub fn handle(info: &ServerInfo, tools: &mut dyn Tools, method: &str, params: &V
     }
 }
 
+/// Several tool sets served as one: `tools/list` lists them all, and a call goes to the first
+/// set that has the tool.
+pub struct Chain(pub Vec<Box<dyn Tools + Send>>);
+
+impl Tools for Chain {
+    fn tools(&self) -> Vec<Value> {
+        self.0.iter().flat_map(|t| t.tools()).collect()
+    }
+    fn call(&mut self, name: &str, args: &Value) -> Option<Result<Vec<Value>, String>> {
+        self.0.iter_mut().find_map(|t| t.call(name, args))
+    }
+}
+
+/// Handle one JSON-RPC message (a request or a notification); `None` for a notification, which
+/// gets no reply.
+pub fn reply(info: &ServerInfo, tools: &mut dyn Tools, msg: &Value) -> Option<Value> {
+    let id = msg.get("id").cloned().filter(|i| !i.is_null())?;
+    let method = msg.get("method").and_then(Value::as_str).unwrap_or_default();
+    let params = msg.get("params").cloned().unwrap_or(Value::Object(Map::new()));
+    Some(match handle(info, tools, method, &params) {
+        Ok(result) => json!({"jsonrpc": "2.0", "id": id, "result": result}),
+        Err((code, message)) => json!({"jsonrpc": "2.0", "id": id, "error": {"code": code, "message": message}}),
+    })
+}
+
 /// Serve MCP on stdin/stdout until the client closes the pipe.
 pub fn serve(info: &ServerInfo, tools: &mut dyn Tools) -> Result<(), String> {
     let stdin = std::io::stdin();
@@ -298,24 +440,28 @@ pub fn serve(info: &ServerInfo, tools: &mut dyn Tools) -> Result<(), String> {
                 continue;
             }
         };
-        let id = msg.get("id").cloned();
-        let method = msg.get("method").and_then(Value::as_str).unwrap_or_default().to_string();
-        let params = msg.get("params").cloned().unwrap_or(Value::Object(Map::new()));
         // Notifications (no id) get no reply.
-        let Some(id) = id.filter(|i| !i.is_null()) else { continue };
-        let reply = match handle(info, tools, &method, &params) {
-            Ok(result) => json!({"jsonrpc": "2.0", "id": id, "result": result}),
-            Err((code, message)) => json!({"jsonrpc": "2.0", "id": id, "error": {"code": code, "message": message}}),
-        };
-        write_msg(&stdout, &reply)?;
+        if let Some(r) = reply(info, tools, &msg) {
+            write_msg(&stdout, &r)?;
+        }
     }
     Ok(())
 }
 
-/// Serve only the catalog tools (`biocartoon mcp` from this crate).
+/// What `biocartoon mcp` says it is: the catalog tools and the submission tools.
+pub fn catalog_server_info() -> ServerInfo {
+    ServerInfo {
+        name: "biocartoon",
+        version: env!("CARGO_PKG_VERSION"),
+        instructions: format!("{CATALOG_INSTRUCTIONS}\n\n{}", crate::mcp_submit::SUBMIT_INSTRUCTIONS),
+    }
+}
+
+/// Serve the catalog and submission tools on stdin/stdout (`biocartoon mcp` from this crate).
+/// Submissions may name local files here, since the server runs on the user's own computer.
 pub fn serve_catalog() -> Result<(), String> {
-    let info = ServerInfo { name: "biocartoon-catalog", version: env!("CARGO_PKG_VERSION"), instructions: CATALOG_INSTRUCTIONS.into() };
-    serve(&info, &mut CatalogTools::default())
+    let mut tools = Chain(vec![Box::new(CatalogTools::default()), Box::new(crate::mcp_submit::SubmitTools { local_files: true })]);
+    serve(&catalog_server_info(), &mut tools)
 }
 
 fn write_msg(stdout: &std::io::Stdout, v: &Value) -> Result<(), String> {
@@ -345,8 +491,15 @@ mod tests {
     #[test]
     fn tool_schemas_are_well_formed() {
         let ts = CatalogTools::default().tools();
-        assert_eq!(ts.len(), 11);
+        assert_eq!(ts.len(), 13);
+        assert!(ts.iter().all(|t| t["annotations"]["readOnlyHint"] == true));
         check_tool_schemas(&ts);
+    }
+
+    #[test]
+    fn slims_svg() {
+        let svg = "<?xml version=\"1.0\"?>\n<!DOCTYPE svg>\n<!-- Created with Inkscape -->\n<svg viewBox=\"0 0 1 1\">\n  <metadata><rdf:RDF>x</rdf:RDF></metadata>\n  <sodipodi:namedview id=\"n\"/>\n\n  <circle r=\"1\"/><!-- c -->\n</svg>\n";
+        assert_eq!(slim_svg(svg), "<svg viewBox=\"0 0 1 1\">\n  <circle r=\"1\"/>\n</svg>");
     }
 
     #[test]

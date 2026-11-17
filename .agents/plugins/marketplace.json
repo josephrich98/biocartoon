@@ -1,0 +1,21 @@
+{
+  "name": "biocartoon",
+  "interface": {
+    "displayName": "BioCartoon"
+  },
+  "plugins": [
+    {
+      "name": "biocartoon",
+      "source": {
+        "source": "url",
+        "url": "https://github.com/josephrich98/biocartoon.git",
+        "ref": "main"
+      },
+      "policy": {
+        "installation": "AVAILABLE",
+        "authentication": "ON_INSTALL"
+      },
+      "category": "Productivity"
+    }
+  ]
+}

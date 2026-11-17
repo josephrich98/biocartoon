@@ -17,6 +17,9 @@ export const MAX_LAYER_COLORS = 16;
 export const MAX_REQUEST_BYTES = 16 * 1024 * 1024;
 /** Submissions per IP address per rolling day. */
 export const MAX_PER_IP_PER_DAY = 20;
+/** Submissions per rolling day through the hosted MCP server (`biocartoon mcp --http`), all its users together: it
+ *  sends everyone's from one address, so they are counted as one sender with this allowance (src/submit.ts). */
+export const MAX_PER_DAY_VIA_MCP = 100;
 /** Submissions per IP address per rolling day with an upload key, master or shared (also past MAX_PENDING). */
 export const MAX_PER_IP_PER_DAY_WITH_KEY = 9999;
 /** Suggestions per IP address per rolling day. */

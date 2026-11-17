@@ -484,11 +484,19 @@ pub fn shrink_png(bytes: &[u8], max_side: u32) -> Result<(Vec<u8>, u32, u32), St
     Ok((out, w, h))
 }
 
+/// A made-up asset, for other modules' tests.
+#[cfg(test)]
+impl Asset {
+    pub(crate) fn example() -> Asset {
+        tests::asset()
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
 
-    fn asset() -> Asset {
+    pub(super) fn asset() -> Asset {
         Asset {
             id: "bioart/1".into(),
             source: "bioart".into(),

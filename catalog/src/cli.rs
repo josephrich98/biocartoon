@@ -133,12 +133,25 @@ pub fn command_summary(extra: &[&str]) -> String {
     )
 }
 
+/// The usage text's ASSISTANTS section.
+const ASSISTANTS: &str = "  mcp                       serve the catalog and submission tools over MCP on stdin/stdout:
+                              claude mcp add biocartoon -- biocartoon mcp
+      --http                over Streamable HTTP instead, at http://ADDR/mcp, for remote clients
+      --listen ADDR         where (default 127.0.0.1:8080; 0.0.0.0:$PORT when PORT is set)
+      --threads N           requests served at once (default 4)
+  install-skills            install the agent skills (biocartoon-find-icons, biocartoon-create-icon,
+                            biocartoon-upload)
+      --agent claude|codex  for Claude Code (~/.claude/skills; default) or Codex (~/.codex/skills)
+      --dest DIR            into DIR instead (any other agent's skills folder)
+      --list  --uninstall  --overwrite
+";
+
 fn usage() -> String {
     format!(
         "biocartoon — search the BioCartoon icon catalog\n\nUSAGE\n  biocartoon <command> [arguments] [options]\n\n{}\n{CATALOG_COMMANDS}\n\
-         ASSISTANTS\n  mcp                       serve the catalog tools over MCP on stdin/stdout:\n                              claude mcp add biocartoon -- biocartoon mcp\n\n\
+         ASSISTANTS\n{ASSISTANTS}\n\
          Templates and the `app` command come with the BioCartoon editor's own `biocartoon`.\n\n{CATALOG_OPTIONS}",
-        command_summary(&["mcp"])
+        command_summary(&["mcp", "install-skills"])
     )
 }
 
@@ -1093,8 +1106,36 @@ pub(crate) fn utc(t: std::time::SystemTime) -> String {
 }
 
 /// `biocartoon <argv...>`.
+/// `install-skills`: put the agent skills in an assistant's skills folder.
+fn install_skills(a: &Args) -> Result<(), String> {
+    let dir = crate::skills::target_dir(a.opt("agent").unwrap_or("claude"), a.opt("dest"))?;
+    if a.flag("list") {
+        for (name, body) in crate::skills::SKILLS {
+            let state = if dir.join(name).join("SKILL.md").exists() { "installed" } else { "not installed" };
+            println!("{name} [{state}]\n    {}", crate::skills::description(body));
+        }
+    } else if a.flag("uninstall") {
+        let removed = crate::skills::uninstall(&dir)?;
+        if removed.is_empty() {
+            println!("No BioCartoon skills to remove in {}.", dir.display());
+        }
+        for n in removed {
+            println!("removed {n}");
+        }
+    } else {
+        for (name, outcome) in crate::skills::install(&dir, a.flag("overwrite"))? {
+            match outcome {
+                "skipped" => println!("skipped {name}: {} exists and was not installed by biocartoon (--overwrite replaces it)", dir.join(&name).display()),
+                o => println!("{o} {name}"),
+            }
+        }
+    }
+    println!("Skills folder: {}", dir.display());
+    Ok(())
+}
+
 pub fn run(argv: Vec<String>) -> Result<(), String> {
-    let a = Args::parse(argv, &[]);
+    let a = Args::parse(argv, &["listen", "threads", "agent", "dest"]);
     a.apply_env();
     if a.wants_help() {
         print!("{}", a.help_topic().and_then(command_help).unwrap_or_else(usage));
@@ -1104,7 +1145,14 @@ pub fn run(argv: Vec<String>) -> Result<(), String> {
         return version(&a, env!("CARGO_PKG_VERSION"));
     }
     if a.command() == "mcp" {
+        if a.flag("http") {
+            let addr = a.opt("listen").map(str::to_string).unwrap_or_else(crate::mcp_http::default_addr);
+            return crate::mcp_http::serve_catalog(&addr, a.num("threads", 4)?);
+        }
         return mcp::serve_catalog();
+    }
+    if a.command() == "install-skills" {
+        return install_skills(&a);
     }
     run_command(&a, None).unwrap_or_else(|| Err(format!("unknown command {:?}\n\n{}", a.command(), usage())))
 }

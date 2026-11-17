@@ -5,6 +5,8 @@
 //   GET  /                 pending queue (oldest first) and the latest decisions
 //   GET  /file/<key>       a pending PNG or SVG
 //   GET  /public/<key>     a published upload's PNG or SVG (the version an update replaces)
+//   GET  /download/<id>.svg|.png|.biocartoon   a pending icon's own file, or a pending template as
+//                          a file the app opens (the PNG of an SVG icon is rendered in the page)
 //   POST /approve/<id>     copy into the public bucket (see src/publish.ts)
 //   POST /approve-page     approve every card on the page, each as its "official" box says
 //   POST /approve-all      approve the whole queue (as submitted) in batches, continuing itself
@@ -18,6 +20,7 @@
 
 import { reviewer } from "./access.ts";
 import type { Env } from "./env.ts";
+import { attachment, templateToBiocartoon } from "./biocartoon_file.ts";
 import { guarded } from "./http.ts";
 import { REJECTED_KEEP_DAYS, type Row, approve, latestVersion, purgeRejected, reject, rowLayers, rowTags, undo } from "./publish.ts";
 import { type PublishRequest, STALE_RUN_MINUTES, latest as latestPublish, request as requestPublish } from "./publish_requests.ts";
@@ -72,6 +75,9 @@ async function route(req: Request, env: Env, who: string): Promise<Response> {
         "cache-control": "private, max-age=600",
       },
     });
+  }
+  if (req.method === "GET" && action === "download" && rest.length === 1) {
+    return download(env, rest[0]);
   }
   if (req.method === "POST" && action === "done" && ID.test(rest[0] ?? "")) {
     if (!sameOrigin(req, url)) return new Response("Bad origin", { status: 403 });
@@ -223,6 +229,34 @@ function sameOrigin(req: Request, url: URL): boolean {
 const esc = (s: unknown) =>
   String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]!);
 
+/** A submission's file as an attachment named after its title: an icon's own SVG or PNG, or a
+ *  template as a .biocartoon file. */
+async function download(env: Env, name: string): Promise<Response> {
+  const m = /^([a-z0-9][a-z0-9-]{0,100})\.(svg|png|biocartoon)$/.exec(name);
+  if (!m) return new Response("Not found", { status: 404 });
+  const [, id, ext] = m;
+  const r = await env.DB.prepare("SELECT title, kind, files FROM submissions WHERE id = ?1").bind(id).first<{ title: string; kind: string; files: string }>();
+  if (!r || (ext === "biocartoon") !== (r.kind === "template")) return new Response("Not found", { status: 404 });
+  const files: string[] = JSON.parse(r.files);
+  const headers = { ...SECURITY_HEADERS, "content-disposition": attachment(r.title, `.${ext}`) };
+  if (ext !== "biocartoon") {
+    const key = `${id}/image.${ext}`;
+    const obj = files.includes(key) ? await env.PENDING.get(key) : null;
+    if (!obj) return new Response("Not found", { status: 404 });
+    const type = ext === "svg" ? "image/svg+xml" : "image/png";
+    return new Response(obj.body, { headers: { ...headers, ...(ext === "svg" && { "content-security-policy": SVG_CSP }), "content-type": type } });
+  }
+  const json = await env.PENDING.get(`${id}/template.json`);
+  if (!json) return new Response("Not found", { status: 404 });
+  const images = new Map<string, Uint8Array>();
+  for (const f of files) {
+    const own = new RegExp(`^${id}/(img-\\d{1,3}\\.png)$`).exec(f);
+    const obj = own && (await env.PENDING.get(f));
+    if (obj) images.set(own[1], new Uint8Array(await obj.arrayBuffer()));
+  }
+  return new Response(templateToBiocartoon(await json.json(), images), { headers: { ...headers, "content-type": "application/json" } });
+}
+
 /** What a pending update replaces: the newest approved version of the asset it names, or why there is none. */
 interface Target {
   id: string;
@@ -268,12 +302,63 @@ function card(r: Row, target: Target | null, keyLabel: string | null): string {
     <dt>License</dt><dd>${esc(r.license)}</dd><dt>Generative AI</dt><dd>${r.generative_ai_used == null ? "not said" : r.generative_ai_used ? `used${r.generative_ai_details ? `: ${esc(r.generative_ai_details)}` : ""}` : "not used"}</dd><dt>Size</dt><dd>${r.width ? `${r.width}×${r.height}, ` : ""}${Math.max(1, Math.round(r.bytes / 1024))} KB${svg ? " SVG" : ""}</dd>
     <dt>Submitted</dt><dd>${esc(r.created_at)}</dd>${r.key_id ? `<dt>Upload key</dt><dd>${esc(r.key_id === "master" ? "master" : keyLabel ?? r.key_id)}</dd>` : ""}</dl>
     ${textList}
+    ${downloads(r, svg)}
     <input type="hidden" name="id" value="${esc(r.id)}">${officialBoxes(r, target)}
     <button formaction="/approve/${esc(r.id)}" class="ok">Approve</button>
     <button formaction="/reject/${esc(r.id)}" class="no">Reject</button>
   </div>
 </section>`;
 }
+
+/** Download links: an icon as SVG (when it is one) and PNG, a template as a .biocartoon file. The
+ *  PNG of an SVG icon is rendered by the page's script (RENDER_SCRIPT), as publish would. */
+function downloads(r: Row, svg: boolean): string {
+  const link = (ext: string) => `<a href="/download/${esc(r.id)}.${ext}" download>.${ext}</a>`;
+  const links =
+    r.kind === "template"
+      ? [link("biocartoon")]
+      : svg
+        ? [link("svg"), `<a href="#" data-render="/file/${esc(r.id)}/image.svg" data-name="${esc(pngName(r.title))}">.png</a>`]
+        : [link("png")];
+  return `<p class="dl">Download: ${links.join(" ")}</p>`;
+}
+
+const pngName = (title: string) => decodeURIComponent(attachment(title, ".png").split("filename*=UTF-8''")[1]);
+
+/** Renders an SVG icon to a PNG download, 1024 px on its long side like data/rasterize.py. */
+const RENDER_SCRIPT = `document.addEventListener("click", async (e) => {
+  const a = e.target.closest("a[data-render]");
+  if (!a) return;
+  e.preventDefault();
+  try {
+    const svg = new DOMParser().parseFromString(await (await fetch(a.dataset.render)).text(), "image/svg+xml").documentElement;
+    const vb = (svg.getAttribute("viewBox") || "").trim().split(/[\\s,]+/).map(Number);
+    let w = vb.length === 4 ? vb[2] : parseFloat(svg.getAttribute("width"));
+    let h = vb.length === 4 ? vb[3] : parseFloat(svg.getAttribute("height"));
+    if (!(w > 0 && h > 0)) w = h = 1;
+    const s = 1024 / Math.max(w, h);
+    w = Math.max(1, Math.round(w * s));
+    h = Math.max(1, Math.round(h * s));
+    svg.setAttribute("width", w);
+    svg.setAttribute("height", h);
+    const src = URL.createObjectURL(new Blob([new XMLSerializer().serializeToString(svg)], { type: "image/svg+xml" }));
+    const img = new Image();
+    await new Promise((ok, fail) => { img.onload = ok; img.onerror = fail; img.src = src; });
+    URL.revokeObjectURL(src);
+    const c = document.createElement("canvas");
+    c.width = w;
+    c.height = h;
+    c.getContext("2d").drawImage(img, 0, 0, w, h);
+    const png = await new Promise((ok) => c.toBlob(ok, "image/png"));
+    const l = document.createElement("a");
+    l.href = URL.createObjectURL(png);
+    l.download = a.dataset.name;
+    l.click();
+    setTimeout(() => URL.revokeObjectURL(l.href), 60000);
+  } catch (err) {
+    a.textContent = ".png (couldn't render)";
+  }
+});`;
 
 /** What the contributor asked for, and the reviewer's choice, which is open only if they asked for it. */
 /** The layers the contributor named, each with its colours as swatches; nothing when none. */
@@ -378,6 +463,7 @@ async function page(env: Env, done: string | null, undoId: string | null, pg: nu
   const keys = new Map(
     (await env.DB.prepare("SELECT id, label FROM upload_keys").all<{ id: string; label: string }>()).results.map((k) => [k.id, k.label]),
   );
+  const nonce = crypto.randomUUID().replace(/-/g, "");
   const html = `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width">
 <title>BioCartoon review (${total?.n ?? 0})</title><style>
 body{font:15px system-ui,sans-serif;margin:0 auto;max-width:1000px;padding:16px;color:#1d1d22;background:#f6f6f8}
@@ -399,7 +485,8 @@ li{overflow-wrap:anywhere}button{font:inherit;padding:7px 18px;border-radius:6px
 button[disabled]{opacity:.5;cursor:default}.publish{background:#fff;border:1px solid #dcdce2;border-radius:10px;padding:10px 14px;margin:12px 0;font-size:14px}.publish span{color:#555}
 .publish pre{white-space:pre-wrap;overflow-wrap:anywhere;font-size:12px;max-height:300px;overflow:auto;background:#f6f6f8;padding:8px;border-radius:6px}
 table{border-collapse:collapse;font-size:13px;width:100%}td{border-top:1px solid #ddd;padding:4px 6px}
-</style></head><body>
+.dl{font-size:13px;margin:0 0 10px;color:#777}.dl a{margin-right:8px}
+</style><script nonce="${nonce}">${RENDER_SCRIPT}</script></head><body>
 <h1>Review queue: ${total?.n ?? 0} pending</h1>
 ${done ? `<div class="done"><span>${esc(done)}</span>${undoId ? undoForm(undoId) : ""}</div>` : ""}
 ${publishBox(publish, pending.results.length, total?.n ?? 0, cutoff)}
@@ -418,5 +505,12 @@ ${suggestions.results.length ? `<table>${suggestions.results.map(suggestionRow).
 <p style="color:#777;font-size:13px">Approved items reach the app the next time <code>data/publish_catalog.py</code> runs (Publish catalog now above, or the weekly sync), and an undone approval leaves it then too.
 Rejections can be undone for ${REJECTED_KEEP_DAYS} days.</p>
 </body></html>`;
-  return new Response(html, { headers: { ...SECURITY_HEADERS, "content-type": "text/html; charset=utf-8" } });
+  return new Response(html, {
+    headers: {
+      ...SECURITY_HEADERS,
+      // The script renders an SVG icon to a PNG: it fetches the SVG and draws it from a blob: URL.
+      "content-security-policy": `${SECURITY_HEADERS["content-security-policy"].replace("img-src 'self'", "img-src 'self' blob:")}; script-src 'nonce-${nonce}'; connect-src 'self'`,
+      "content-type": "text/html; charset=utf-8",
+    },
+  });
 }

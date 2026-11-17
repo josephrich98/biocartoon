@@ -15,6 +15,10 @@
 //   /shares, /shares/<id>, /shares/<id>/<version>: encrypted share links, for guests too (src/shares.ts)
 //   /keys, /keys/<id>: make, list and revoke shareable upload keys, with the master key (src/upload_keys.ts)
 //
+// The hosted MCP server (`biocartoon mcp --http`, for ChatGPT and claude.ai) relays its users' submissions
+// from one address. With the MCP_TOKEN secret as `X-MCP-Token`, they share their own daily allowance
+// (MAX_PER_DAY_VIA_MCP) instead of that address's.
+//
 // An asset's meta may carry `replaces: "<id>"` (`biocartoon upload --update ID`): a new version of
 // that approved asset. It needs an upload key allowed to update it (src/upload_keys.ts).
 
@@ -22,7 +26,7 @@ import * as accounts from "./accounts.ts";
 import type { Env } from "./env.ts";
 import { guarded, json, sha256Hex } from "./http.ts";
 import {
-  MAX_OPEN_REMOVALS, MAX_OPEN_SUGGESTIONS, MAX_PENDING, MAX_PER_IP_PER_DAY, MAX_PER_IP_PER_DAY_WITH_KEY, MAX_REMOVALS_PER_IP_PER_DAY, MAX_REQUEST_BYTES,
+  MAX_OPEN_REMOVALS, MAX_OPEN_SUGGESTIONS, MAX_PENDING, MAX_PER_DAY_VIA_MCP, MAX_PER_IP_PER_DAY, MAX_PER_IP_PER_DAY_WITH_KEY, MAX_REMOVALS_PER_IP_PER_DAY, MAX_REQUEST_BYTES,
   MAX_SUGGESTIONS_PER_IP_PER_DAY, MAX_TEMPLATE_JSON_BYTES,
 } from "./limits.ts";
 import * as publishRequests from "./publish_requests.ts";
@@ -128,6 +132,15 @@ async function updateTarget(env: Env, replaces: unknown, kind: unknown, key: upl
   return replaces;
 }
 
+/** Whether the request comes from the hosted MCP server: it carries the MCP_TOKEN secret. A wrong token is refused. */
+export async function viaMcp(req: Request, env: Env): Promise<boolean> {
+  const sent = req.headers.get("x-mcp-token");
+  if (sent === null) return false;
+  // Comparing digests keeps the time taken independent of how much of the token matches.
+  if (env.MCP_TOKEN && (await sha256Hex(sent)) === (await sha256Hex(env.MCP_TOKEN))) return true;
+  throw new Rejected("Invalid X-MCP-Token", 403);
+}
+
 async function submit(req: Request, env: Env): Promise<Response> {
   const length = Number(req.headers.get("content-length"));
   if (!length) throw new Rejected("Content-Length is required", 411);
@@ -135,8 +148,10 @@ async function submit(req: Request, env: Env): Promise<Response> {
 
   const key = await uploadKeys.fromRequest(req, env);
   const keyed = key !== null;
-  const perDay = keyed ? MAX_PER_IP_PER_DAY_WITH_KEY : MAX_PER_IP_PER_DAY;
-  const ipHash = (await sha256Hex(`${env.IP_SALT ?? "biocartoon"}:${req.headers.get("cf-connecting-ip") ?? "?"}`)).slice(0, 32);
+  const mcp = await viaMcp(req, env);
+  const perDay = keyed ? MAX_PER_IP_PER_DAY_WITH_KEY : mcp ? MAX_PER_DAY_VIA_MCP : MAX_PER_IP_PER_DAY;
+  const sender = mcp ? "mcp" : (req.headers.get("cf-connecting-ip") ?? "?");
+  const ipHash = (await sha256Hex(`${env.IP_SALT ?? "biocartoon"}:${sender}`)).slice(0, 32);
   const now = new Date();
   const dayAgo = new Date(now.getTime() - 86_400_000).toISOString();
   const counts = await env.DB.prepare(

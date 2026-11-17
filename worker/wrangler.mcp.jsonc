@@ -1,0 +1,23 @@
+// The hosted MCP server at mcp.biocartoon.com (src/mcp.ts): the `biocartoon` binary from catalog/Dockerfile
+// in a Cloudflare Container. Building the image needs Docker running; Containers need the Workers Paid plan.
+//   npx wrangler secret put MCP_TOKEN -c wrangler.mcp.jsonc   (and the same value on biocartoon-submit)
+//   npm run deploy:mcp
+{
+  "name": "biocartoon-mcp",
+  "main": "src/mcp.ts",
+  "compatibility_date": "2026-10-01",
+  "routes": [{ "pattern": "mcp.biocartoon.com", "custom_domain": true }],
+  "workers_dev": false,
+  "containers": [
+    {
+      "class_name": "McpServer",
+      "image": "../catalog/Dockerfile",
+      "instance_type": "basic",
+      "max_instances": 4
+    }
+  ],
+  "durable_objects": {
+    "bindings": [{ "name": "MCP_SERVER", "class_name": "McpServer" }]
+  },
+  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["McpServer"] }]
+}

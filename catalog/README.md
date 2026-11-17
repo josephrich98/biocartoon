@@ -75,7 +75,9 @@ server also lists the shared slide templates. The BioCartoon desktop editor ship
     - `--templates-ext png|biocartoon`: the thumbnail (default), or a `.biocartoon` file the editor opens
     - `--output-dir DIR` (default `./biocartoon-catalog`), `--jobs N` (parallel downloads, default 8), `--limit N` (the first N of each, to try it out)
 - `biocartoon upload FILE...`: submit image files/folders to the database (approval required to merge in); `--tags T,...` adds words to find them by
-- `biocartoon mcp`: serve the same tools over MCP, mostly for agents (e.g., `claude mcp add biocartoon -- biocartoon mcp`)
+- `biocartoon mcp`: serve the same tools, and artwork submission, over MCP for AI assistants (e.g., `claude mcp add biocartoon -- biocartoon mcp`). ChatGPT and claude.ai can use the hosted server at `https://mcp.biocartoon.com/mcp` instead: see [AI assistants](https://github.com/josephrich98/biocartoon#ai-assistants)
+    - `--http`: over Streamable HTTP at `http://ADDR/mcp`, for remote clients (`--listen ADDR`, default `127.0.0.1:8080`, or `0.0.0.0:$PORT` when `PORT` is set)
+- `biocartoon install-skills`: install the agent skills (find icons; create one; upload files) for Claude Code, `--agent codex`, or `--dest DIR`
 - `biocartoon --version`: the program's version, and when the local catalog was published and downloaded
 - `biocartoon --sources`: list icon sources for `biocartoon search --source S`
 - `biocartoon --categories`: list icon categories for `biocartoon search --category C`

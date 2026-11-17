@@ -358,8 +358,15 @@ pub struct Refused {
 
 /// Submit one asset, with the upload key if one is given; returns the submission id.
 pub fn submit_asset(url: &str, meta: &Meta, file: &Prepared, key: Option<&str>) -> Result<String, Refused> {
+    let meta = serde_json::to_value(meta).map_err(|e| Refused { status: 0, message: e.to_string() })?;
+    submit_meta(url, &meta, file, key, &[])
+}
+
+/// [`submit_asset`] with the `meta` field as JSON (fields [`Meta`] doesn't have, like the
+/// reviewers' contact `email`) and extra request headers.
+pub fn submit_meta(url: &str, meta: &serde_json::Value, file: &Prepared, key: Option<&str>, headers: &[(&str, &str)]) -> Result<String, Refused> {
     let refused = |message: String| Refused { status: 0, message };
-    let meta = serde_json::to_string(meta).map_err(|e| refused(e.to_string()))?;
+    let meta = meta.to_string();
     let boundary = format!("biocartoon-{:x}", std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0, |d| d.as_nanos()));
     let mut body = Vec::new();
     for (name, value) in [("kind", "asset"), ("meta", meta.as_str())] {
@@ -376,6 +383,9 @@ pub fn submit_asset(url: &str, meta: &Meta, file: &Prepared, key: Option<&str>) 
     let mut req = agent.post(&format!("{}/submit", url.trim_end_matches('/'))).header("Content-Type", &format!("multipart/form-data; boundary={boundary}"));
     if let Some(key) = key {
         req = req.header("X-Upload-Key", key);
+    }
+    for (k, v) in headers {
+        req = req.header(*k, *v);
     }
     let mut res = req
         .send(&body[..])

@@ -1,0 +1,17 @@
+{
+  "$schema": "https://anthropic.com/claude-code/marketplace.schema.json",
+  "name": "biocartoon",
+  "description": "Find, create and contribute open-licensed scientific illustrations with BioCartoon.",
+  "owner": {
+    "name": "Joseph Rich",
+    "url": "https://github.com/josephrich98"
+  },
+  "plugins": [
+    {
+      "name": "biocartoon",
+      "description": "Search about 20,000 open-licensed biology illustrations, preview and download them with their credit lines, and draw and submit new ones to the shared library.",
+      "source": "./",
+      "category": "productivity"
+    }
+  ]
+}

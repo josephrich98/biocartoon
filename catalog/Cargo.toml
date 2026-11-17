@@ -32,6 +32,8 @@ env_logger = "0.11"
 rust_xlsxwriter = "0.101.0"
 # `upload --layer-color-map` reads an SVG's colours as the editor's Layers panel does.
 usvg = "0.45"
+# `mcp --http`: the MCP server for remote clients (ChatGPT, claude.ai).
+tiny_http = "0.12"
 
 [target.'cfg(target_arch = "wasm32")'.dependencies]
 rusqlite = { version = "0.40", features = ["serialize"] }

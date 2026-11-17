@@ -9,10 +9,12 @@
     "migrate:local": "wrangler d1 migrations apply biocartoon-submissions --local --persist-to .wrangler/state",
     "migrate": "wrangler d1 migrations apply biocartoon-submissions --remote",
     "deploy": "wrangler deploy && wrangler deploy -c wrangler.review.jsonc",
+    "deploy:mcp": "wrangler deploy -c wrangler.mcp.jsonc",
     "test": "node --test test/*.test.ts",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@cloudflare/containers": "^0.3.7",
     "obscenity": "^0.4.6"
   },
   "devDependencies": {
