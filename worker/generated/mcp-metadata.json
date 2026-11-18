@@ -19,7 +19,8 @@
       "annotations": {
         "destructiveHint": false,
         "openWorldHint": false,
-        "readOnlyHint": true
+        "readOnlyHint": true,
+        "title": "Search illustrations"
       },
       "description": "Search the icon catalog. Returns the closest matches whether or not any truly fits: read each result's title, description, tags and matched_fields before using it (see the server instructions). Without a query, lists the most popular / first assets.",
       "inputSchema": {
@@ -78,13 +79,15 @@
         "required": [],
         "type": "object"
       },
-      "name": "search_assets"
+      "name": "search_assets",
+      "title": "Search illustrations"
     },
     {
       "annotations": {
         "destructiveHint": false,
         "openWorldHint": false,
-        "readOnlyHint": true
+        "readOnlyHint": true,
+        "title": "Get illustration details"
       },
       "description": "Everything the catalog knows about one asset: description, tags, license, credit line, image URL and size.",
       "inputSchema": {
@@ -100,13 +103,15 @@
         ],
         "type": "object"
       },
-      "name": "get_asset"
+      "name": "get_asset",
+      "title": "Get illustration details"
     },
     {
       "annotations": {
         "destructiveHint": false,
         "openWorldHint": false,
-        "readOnlyHint": true
+        "readOnlyHint": true,
+        "title": "Find colour variants"
       },
       "description": "The same drawing in its other colour schemes / styles (same source and title).",
       "inputSchema": {
@@ -122,13 +127,15 @@
         ],
         "type": "object"
       },
-      "name": "asset_variants"
+      "name": "asset_variants",
+      "title": "Find colour variants"
     },
     {
       "annotations": {
         "destructiveHint": false,
         "openWorldHint": false,
-        "readOnlyHint": true
+        "readOnlyHint": true,
+        "title": "View illustration"
       },
       "description": "Look at an asset: returns its catalog thumbnail when max_side is at most 256 and one is available, otherwise its original PNG (up to 2 MB). The free hosted endpoint does not resize images.",
       "inputSchema": {
@@ -148,13 +155,15 @@
         ],
         "type": "object"
       },
-      "name": "asset_image"
+      "name": "asset_image",
+      "title": "View illustration"
     },
     {
       "annotations": {
         "destructiveHint": false,
         "openWorldHint": false,
-        "readOnlyHint": true
+        "readOnlyHint": true,
+        "title": "Get illustration SVG"
       },
       "description": "An asset's SVG markup, to adapt it (\"like this icon but ...\"): edit the markup rather than redrawing from scratch. Also says whether an adaptation may be submitted to the library under the asset's license. Servier and some uploads have no SVG; very detailed drawings are too large to edit as code (redraw from asset_image instead).",
       "inputSchema": {
@@ -174,13 +183,15 @@
         ],
         "type": "object"
       },
-      "name": "asset_svg"
+      "name": "asset_svg",
+      "title": "Get illustration SVG"
     },
     {
       "annotations": {
         "destructiveHint": false,
         "openWorldHint": false,
-        "readOnlyHint": true
+        "readOnlyHint": true,
+        "title": "Preview illustrations"
       },
       "description": "Look at up to 12 catalog previews with asset IDs, titles, collections, licenses and credits. Uses published thumbnails where available. Use render_assets to show selected icons in the interactive gallery.",
       "inputSchema": {
@@ -199,7 +210,8 @@
         ],
         "type": "object"
       },
-      "name": "preview_assets"
+      "name": "preview_assets",
+      "title": "Preview illustrations"
     },
     {
       "_meta": {
@@ -212,7 +224,8 @@
       "annotations": {
         "destructiveHint": false,
         "openWorldHint": false,
-        "readOnlyHint": true
+        "readOnlyHint": true,
+        "title": "Show illustration gallery"
       },
       "description": "Show selected icons in an interactive gallery with previews, licenses, credit lines and PNG/SVG downloads. First call search_assets and judge which results fit, then pass up to 12 selected IDs. Returns usable text and links in clients without app UI.",
       "inputSchema": {
@@ -235,13 +248,15 @@
         ],
         "type": "object"
       },
-      "name": "render_assets"
+      "name": "render_assets",
+      "title": "Show illustration gallery"
     },
     {
       "annotations": {
         "destructiveHint": false,
         "openWorldHint": false,
-        "readOnlyHint": true
+        "readOnlyHint": true,
+        "title": "Browse a collection"
       },
       "description": "Page through a collection, optionally one category (see list_categories).",
       "inputSchema": {
@@ -269,13 +284,15 @@
         ],
         "type": "object"
       },
-      "name": "browse_assets"
+      "name": "browse_assets",
+      "title": "Browse a collection"
     },
     {
       "annotations": {
         "destructiveHint": false,
         "openWorldHint": false,
-        "readOnlyHint": true
+        "readOnlyHint": true,
+        "title": "List collections"
       },
       "description": "The collections in the catalog with their sizes and licenses.",
       "inputSchema": {
@@ -284,13 +301,15 @@
         "required": [],
         "type": "object"
       },
-      "name": "list_sources"
+      "name": "list_sources",
+      "title": "List collections"
     },
     {
       "annotations": {
         "destructiveHint": false,
         "openWorldHint": false,
-        "readOnlyHint": true
+        "readOnlyHint": true,
+        "title": "List categories"
       },
       "description": "A collection's categories with counts.",
       "inputSchema": {
@@ -306,13 +325,15 @@
         ],
         "type": "object"
       },
-      "name": "list_categories"
+      "name": "list_categories",
+      "title": "List categories"
     },
     {
       "annotations": {
         "destructiveHint": false,
         "openWorldHint": false,
-        "readOnlyHint": true
+        "readOnlyHint": true,
+        "title": "Query the catalog"
       },
       "description": "Run one read-only SQL statement (SQLite) against the catalog, e.g. to count, group or search with your own conditions. See db_schema first. Rows are capped.",
       "inputSchema": {
@@ -332,13 +353,15 @@
         ],
         "type": "object"
       },
-      "name": "sql_query"
+      "name": "sql_query",
+      "title": "Query the catalog"
     },
     {
       "annotations": {
         "destructiveHint": false,
         "openWorldHint": false,
-        "readOnlyHint": true
+        "readOnlyHint": true,
+        "title": "Describe catalog database"
       },
       "description": "The catalog's tables and indexes, with notes on full-text search.",
       "inputSchema": {
@@ -347,13 +370,15 @@
         "required": [],
         "type": "object"
       },
-      "name": "db_schema"
+      "name": "db_schema",
+      "title": "Describe catalog database"
     },
     {
       "annotations": {
         "destructiveHint": false,
         "openWorldHint": false,
-        "readOnlyHint": true
+        "readOnlyHint": true,
+        "title": "List slide templates"
       },
       "description": "Shared slide templates (whole slide layouts users published from the BioCartoon editor), newest first. Optional word filter.",
       "inputSchema": {
@@ -367,13 +392,15 @@
         "required": [],
         "type": "object"
       },
-      "name": "list_templates"
+      "name": "list_templates",
+      "title": "List slide templates"
     },
     {
       "annotations": {
         "destructiveHint": false,
         "openWorldHint": false,
-        "readOnlyHint": true
+        "readOnlyHint": true,
+        "title": "View slide template"
       },
       "description": "The thumbnail of a shared template, to see its layout.",
       "inputSchema": {
@@ -389,7 +416,8 @@
         ],
         "type": "object"
       },
-      "name": "template_image"
+      "name": "template_image",
+      "title": "View slide template"
     },
     {
       "_meta": {
@@ -401,7 +429,8 @@
         "destructiveHint": false,
         "idempotentHint": false,
         "openWorldHint": true,
-        "readOnlyHint": false
+        "readOnlyHint": false,
+        "title": "Submit artwork"
       },
       "description": "Submit one illustration to the shared BioCartoon library. Give the image as exactly one of svg, image, image_url or image_base64. It is held for review and published once a reviewer approves it; returns the submission id. Only call this after showing the user the image and these details and getting their go-ahead (rights_confirmed). The free hosted endpoint accepts PNG or SVG up to 2 MB. Convert or resize other image formats with the local biocartoon command before submitting.",
       "inputSchema": {
@@ -494,13 +523,15 @@
         ],
         "type": "object"
       },
-      "name": "submit_artwork"
+      "name": "submit_artwork",
+      "title": "Submit artwork"
     },
     {
       "annotations": {
         "destructiveHint": false,
         "openWorldHint": false,
-        "readOnlyHint": true
+        "readOnlyHint": true,
+        "title": "Check submission status"
       },
       "description": "Where submissions are in review: pending, approved (it joins the catalog at the next publish) or rejected.",
       "inputSchema": {
@@ -519,7 +550,8 @@
         ],
         "type": "object"
       },
-      "name": "submission_status"
+      "name": "submission_status",
+      "title": "Check submission status"
     },
     {
       "_meta": {
@@ -534,7 +566,8 @@
         "destructiveHint": false,
         "idempotentHint": false,
         "openWorldHint": false,
-        "readOnlyHint": false
+        "readOnlyHint": false,
+        "title": "Compose figure"
       },
       "description": "Make a whole scientific figure on the server: catalog icons for each element, laid out with labels, arrows and a title, shown in the BioCartoon gallery with an editor link, PNG/SVG downloads and credits. Prefer passing elements and connections you planned (each element's query is the plain name of the thing to depict); a bare prompt is planned on the server. Read the returned match report: replace weak matches with a better query or an asset_id from search_assets, and treat placeholder boxes as gaps the library cannot fill. To edit a figure, pass its figure.spec back as `figure` with your changes (keep asset_id on elements that should stay). Credit every icon used. Not for charts of data.",
       "inputSchema": {
@@ -743,14 +776,16 @@
         },
         "type": "object"
       },
-      "name": "compose_figure"
+      "name": "compose_figure",
+      "title": "Compose figure"
     },
     {
       "annotations": {
         "destructiveHint": false,
         "idempotentHint": false,
         "openWorldHint": false,
-        "readOnlyHint": false
+        "readOnlyHint": false,
+        "title": "Open in BioCartoon"
       },
       "description": "A link that opens a figure (a compose_figure spec), one catalog icon, or a shared template in the BioCartoon web editor as the user's own editable copy. The link is private (its key is in the fragment) and lasts 90 days after its last use.",
       "inputSchema": {
@@ -868,13 +903,15 @@
         },
         "type": "object"
       },
-      "name": "open_in_biocartoon"
+      "name": "open_in_biocartoon",
+      "title": "Open in BioCartoon"
     },
     {
       "annotations": {
         "destructiveHint": false,
         "openWorldHint": false,
-        "readOnlyHint": true
+        "readOnlyHint": true,
+        "title": "Export figure"
       },
       "description": "A composed figure as one self-contained SVG file with its pictures embedded, for downloading. Pass the figure.spec from compose_figure.",
       "inputSchema": {
@@ -987,7 +1024,8 @@
         ],
         "type": "object"
       },
-      "name": "export_figure"
+      "name": "export_figure",
+      "title": "Export figure"
     }
   ],
   "resources": [

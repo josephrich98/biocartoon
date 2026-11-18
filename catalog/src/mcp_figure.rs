@@ -73,6 +73,7 @@ mod tests {
         for t in &defs {
             assert_eq!(t["inputSchema"]["type"], "object");
             assert!(t["description"].as_str().unwrap().len() > 40);
+            assert!(t["title"].is_string() && t["annotations"]["title"] == t["title"]);
         }
         assert_eq!(defs[0]["_meta"]["ui"]["resourceUri"], crate::mcp_ui::URI);
     }

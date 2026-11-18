@@ -98,6 +98,7 @@ impl Tools for SubmitTools {
         let sources = if self.local_files { "svg, image, image_url, image_base64 or file_path" } else { "svg, image, image_url or image_base64" };
         let mut submit = tool(
             "submit_artwork",
+            "Submit artwork",
             &format!(
                 "Submit one illustration to the shared BioCartoon library. Give the image as exactly one of {sources}. \
                  It is held for review and published once a reviewer approves it; returns the submission id. Only call this \
@@ -106,13 +107,14 @@ impl Tools for SubmitTools {
             props,
             &["title", "license", "generative_ai_used", "rights_confirmed"],
         );
-        submit["annotations"] = json!({"readOnlyHint": false, "destructiveHint": false, "idempotentHint": false, "openWorldHint": true});
+        submit["annotations"] = json!({"title": "Submit artwork", "readOnlyHint": false, "destructiveHint": false, "idempotentHint": false, "openWorldHint": true});
         // ChatGPT passes conversation files (generated or uploaded images) in `image`.
         submit["_meta"] = json!({"openai/fileParams": ["image"]});
         vec![
             submit,
             read_only(tool(
                 "submission_status",
+                "Check submission status",
                 "Where submissions are in review: pending, approved (it joins the catalog at the next publish) or rejected.",
                 json!({"ids": {"type": "array", "items": {"type": "string"}, "description": "Submission ids from submit_artwork."}}),
                 &["ids"],

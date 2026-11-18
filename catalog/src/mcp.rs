@@ -69,13 +69,15 @@ pub fn image_png(png: &[u8]) -> Value {
 
 /// Marks a tool as only reading (ChatGPT and Claude run these without asking each time).
 pub fn read_only(mut t: Value) -> Value {
-    t["annotations"] = json!({"readOnlyHint": true, "destructiveHint": false, "openWorldHint": false});
+    t["annotations"] = json!({"title": t["title"], "readOnlyHint": true, "destructiveHint": false, "openWorldHint": false});
     t
 }
 
-pub fn tool(name: &str, description: &str, props: Value, required: &[&str]) -> Value {
+/// `title` is the human-readable name clients show (Claude's directory requires one per tool).
+pub fn tool(name: &str, title: &str, description: &str, props: Value, required: &[&str]) -> Value {
     json!({
         "name": name,
+        "title": title,
         "description": description,
         "inputSchema": {"type": "object", "properties": props, "required": required, "additionalProperties": false},
     })
@@ -189,20 +191,20 @@ impl Tools for CatalogTools {
             "file_type": {"type": "string", "enum": ["svg", "png"], "description": "svg: only icons with an SVG (vector) version; png: only PNG-only icons. Default: either."},
         });
         vec![
-            tool("search_assets", "Search the icon catalog. Returns the closest matches whether or not any truly fits: read each result's title, description, tags and matched_fields before using it (see the server instructions). Without a query, lists the most popular / first assets.", search_props, &[]),
-            tool("get_asset", "Everything the catalog knows about one asset: description, tags, license, credit line, image URL and size.", json!({"id": str_prop("Asset id.")}), &["id"]),
-            tool("asset_variants", "The same drawing in its other colour schemes / styles (same source and title).", json!({"id": str_prop("Asset id.")}), &["id"]),
-            tool("asset_image", "Look at an asset: returns its PNG (downscaled) so you can check that it depicts what the user asked for.", json!({"id": str_prop("Asset id."), "max_side": int_prop("Longest side in pixels (default 512).")}), &["id"]),
-            tool("asset_svg", "An asset's SVG markup, to adapt it (\"like this icon but ...\"): edit the markup rather than redrawing from scratch. Also says whether an adaptation may be submitted to the library under the asset's license. Servier and some uploads have no SVG; very detailed drawings are too large to edit as code (redraw from asset_image instead).", json!({"id": str_prop("Asset id."), "max_kb": int_prop("Largest markup to return, in kilobytes (default 150, max 500).")}), &["id"]),
-            tool("preview_assets", "Small previews (at most 256 px) of up to 12 assets at once, each labelled with its id, title, collection and license: for showing the user candidates side by side, or judging several search results in one call.", json!({"ids": {"type": "array", "items": {"type": "string"}, "description": "Asset ids, in the order to show them (at most 12)."}}), &["ids"]),
+            tool("search_assets", "Search illustrations", "Search the icon catalog. Returns the closest matches whether or not any truly fits: read each result's title, description, tags and matched_fields before using it (see the server instructions). Without a query, lists the most popular / first assets.", search_props, &[]),
+            tool("get_asset", "Get illustration details", "Everything the catalog knows about one asset: description, tags, license, credit line, image URL and size.", json!({"id": str_prop("Asset id.")}), &["id"]),
+            tool("asset_variants", "Find colour variants", "The same drawing in its other colour schemes / styles (same source and title).", json!({"id": str_prop("Asset id.")}), &["id"]),
+            tool("asset_image", "View illustration", "Look at an asset: returns its PNG (downscaled) so you can check that it depicts what the user asked for.", json!({"id": str_prop("Asset id."), "max_side": int_prop("Longest side in pixels (default 512).")}), &["id"]),
+            tool("asset_svg", "Get illustration SVG", "An asset's SVG markup, to adapt it (\"like this icon but ...\"): edit the markup rather than redrawing from scratch. Also says whether an adaptation may be submitted to the library under the asset's license. Servier and some uploads have no SVG; very detailed drawings are too large to edit as code (redraw from asset_image instead).", json!({"id": str_prop("Asset id."), "max_kb": int_prop("Largest markup to return, in kilobytes (default 150, max 500).")}), &["id"]),
+            tool("preview_assets", "Preview illustrations", "Small previews (at most 256 px) of up to 12 assets at once, each labelled with its id, title, collection and license: for showing the user candidates side by side, or judging several search results in one call.", json!({"ids": {"type": "array", "items": {"type": "string"}, "description": "Asset ids, in the order to show them (at most 12)."}}), &["ids"]),
             crate::mcp_ui::render_tool(),
-            tool("browse_assets", "Page through a collection, optionally one category (see list_categories).", json!({"source": str_prop("Collection id."), "category": str_prop("Category name."), "offset": int_prop("Skip this many."), "limit": int_prop("Page size (default 40, max 200).")}), &["source"]),
-            tool("list_sources", "The collections in the catalog with their sizes and licenses.", json!({}), &[]),
-            tool("list_categories", "A collection's categories with counts.", json!({"source": str_prop("Collection id.")}), &["source"]),
-            tool("sql_query", "Run one read-only SQL statement (SQLite) against the catalog, e.g. to count, group or search with your own conditions. See db_schema first. Rows are capped.", json!({"sql": str_prop("A SELECT / WITH statement."), "max_rows": int_prop("Row cap (default 100, max 1000).")}), &["sql"]),
-            tool("db_schema", "The catalog's tables and indexes, with notes on full-text search.", json!({}), &[]),
-            tool("list_templates", "Shared slide templates (whole slide layouts users published from the BioCartoon editor), newest first. Optional word filter.", json!({"query": str_prop("Words that must appear in the title, description or category.")}), &[]),
-            tool("template_image", "The thumbnail of a shared template, to see its layout.", json!({"id": str_prop("Template id (from list_templates).")}), &["id"]),
+            tool("browse_assets", "Browse a collection", "Page through a collection, optionally one category (see list_categories).", json!({"source": str_prop("Collection id."), "category": str_prop("Category name."), "offset": int_prop("Skip this many."), "limit": int_prop("Page size (default 40, max 200).")}), &["source"]),
+            tool("list_sources", "List collections", "The collections in the catalog with their sizes and licenses.", json!({}), &[]),
+            tool("list_categories", "List categories", "A collection's categories with counts.", json!({"source": str_prop("Collection id.")}), &["source"]),
+            tool("sql_query", "Query the catalog", "Run one read-only SQL statement (SQLite) against the catalog, e.g. to count, group or search with your own conditions. See db_schema first. Rows are capped.", json!({"sql": str_prop("A SELECT / WITH statement."), "max_rows": int_prop("Row cap (default 100, max 1000).")}), &["sql"]),
+            tool("db_schema", "Describe catalog database", "The catalog's tables and indexes, with notes on full-text search.", json!({}), &[]),
+            tool("list_templates", "List slide templates", "Shared slide templates (whole slide layouts users published from the BioCartoon editor), newest first. Optional word filter.", json!({"query": str_prop("Words that must appear in the title, description or category.")}), &[]),
+            tool("template_image", "View slide template", "The thumbnail of a shared template, to see its layout.", json!({"id": str_prop("Template id (from list_templates).")}), &["id"]),
         ]
         .into_iter()
         .map(read_only)
@@ -539,6 +541,9 @@ pub fn check_tool_schemas(ts: &[Value]) {
     for t in ts {
         let name = t["name"].as_str().unwrap();
         assert!(names.insert(name.to_string()), "duplicate tool {name}");
+        assert!(t["title"].as_str().is_some_and(|s| !s.is_empty()), "{name}: no title");
+        assert_eq!(t["annotations"]["title"], t["title"], "{name}: annotations.title differs");
+        assert!(t["annotations"]["readOnlyHint"].is_boolean() && t["annotations"]["destructiveHint"].is_boolean(), "{name}: missing hints");
         let schema = &t["inputSchema"];
         assert_eq!(schema["type"], "object");
         let props = schema["properties"].as_object().unwrap();

@@ -19,7 +19,7 @@ pub fn resource(uri: &str) -> Option<Value> {
 }
 
 pub fn render_tool() -> Value {
-    let mut t = mcp::tool("render_assets", "Show selected icons in an interactive gallery with previews, licenses, credit lines and PNG/SVG downloads. First call search_assets and judge which results fit, then pass up to 12 selected IDs. Returns usable text and links in clients without app UI.", json!({
+    let mut t = mcp::tool("render_assets", "Show illustration gallery", "Show selected icons in an interactive gallery with previews, licenses, credit lines and PNG/SVG downloads. First call search_assets and judge which results fit, then pass up to 12 selected IDs. Returns usable text and links in clients without app UI.", json!({
         "ids": {"type": "array", "items": {"type": "string", "minLength": 1}, "minItems": 1, "maxItems": 12, "uniqueItems": true, "description": "Selected asset IDs, in display order."}
     }), &["ids"]);
     t["_meta"] = json!({"ui": {"resourceUri": URI}, "openai/toolInvocation/invoking": "Loading illustrations…", "openai/toolInvocation/invoked": "Illustrations ready"});

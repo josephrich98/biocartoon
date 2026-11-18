@@ -1,6 +1,7 @@
 [
   {
     "name": "compose_figure",
+    "title": "Compose figure",
     "description": "Make a whole scientific figure on the server: catalog icons for each element, laid out with labels, arrows and a title, shown in the BioCartoon gallery with an editor link, PNG/SVG downloads and credits. Prefer passing elements and connections you planned (each element's query is the plain name of the thing to depict); a bare prompt is planned on the server. Read the returned match report: replace weak matches with a better query or an asset_id from search_assets, and treat placeholder boxes as gaps the library cannot fill. To edit a figure, pass its figure.spec back as `figure` with your changes (keep asset_id on elements that should stay). Credit every icon used. Not for charts of data.",
     "inputSchema": {
       "type": "object",
@@ -209,6 +210,7 @@
       }
     },
     "annotations": {
+      "title": "Compose figure",
       "readOnlyHint": false,
       "destructiveHint": false,
       "idempotentHint": false,
@@ -225,6 +227,7 @@
   },
   {
     "name": "open_in_biocartoon",
+    "title": "Open in BioCartoon",
     "description": "A link that opens a figure (a compose_figure spec), one catalog icon, or a shared template in the BioCartoon web editor as the user's own editable copy. The link is private (its key is in the fragment) and lasts 90 days after its last use.",
     "inputSchema": {
       "type": "object",
@@ -342,6 +345,7 @@
       }
     },
     "annotations": {
+      "title": "Open in BioCartoon",
       "readOnlyHint": false,
       "destructiveHint": false,
       "idempotentHint": false,
@@ -350,6 +354,7 @@
   },
   {
     "name": "export_figure",
+    "title": "Export figure",
     "description": "A composed figure as one self-contained SVG file with its pictures embedded, for downloading. Pass the figure.spec from compose_figure.",
     "inputSchema": {
       "type": "object",
@@ -462,6 +467,7 @@
       }
     },
     "annotations": {
+      "title": "Export figure",
       "readOnlyHint": true,
       "destructiveHint": false,
       "openWorldHint": false

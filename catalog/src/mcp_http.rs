@@ -189,7 +189,7 @@ mod tests {
     struct Echo;
     impl Tools for Echo {
         fn tools(&self) -> Vec<Value> {
-            vec![mcp::tool("echo", "Echo.", json!({}), &[])]
+            vec![mcp::tool("echo", "Echo", "Echo.", json!({}), &[])]
         }
         fn call(&mut self, name: &str, args: &Value) -> Option<Result<Vec<Value>, String>> {
             (name == "echo").then(|| Ok(vec![mcp::text(args.to_string())]))
