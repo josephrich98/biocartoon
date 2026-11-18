@@ -102,27 +102,34 @@ The hosted server is `https://mcp.biocartoon.com/mcp` (Streamable HTTP, no sign-
 - Optional: add the skills too. Zip each folder in [`catalog/skills/`](catalog/skills), then upload
   the zips under Settings > Capabilities > Skills.
 
-**Claude Code**: this one prompt installs the skills and the hosted server:
+**Claude Code**: install the plugin, which has the skills; they run the `biocartoon` command
+(`pip install biocartoon`), which can also submit files from your computer:
 
 ```
-/plugin install biocartoon --marketplace josephrich98/biocartoon
+/plugin marketplace add josephrich98/biocartoon
+/plugin install biocartoon@biocartoon
 ```
 
-To run the server on your own computer instead (it can also submit local files):
+To use the MCP tools too, add the hosted server or run it on your own computer:
 
 ```bash
+claude mcp add --transport http biocartoon https://mcp.biocartoon.com/mcp
+# or
 pip install biocartoon
 claude mcp add biocartoon -- biocartoon mcp
-biocartoon install-skills
 ```
 
-**Codex:**
+Without the plugin, `biocartoon install-skills` installs the skills.
+
+**Codex**: the plugin has the skills, which run the `biocartoon` command:
 
 ```bash
 codex plugin marketplace add josephrich98/biocartoon
 codex plugin add biocartoon@biocartoon
-codex mcp add biocartoon --url https://mcp.biocartoon.com/mcp
 ```
+
+Optional, for the MCP tools: `codex mcp add biocartoon --url https://mcp.biocartoon.com/mcp`, or
+`codex mcp add biocartoon -- biocartoon mcp` to run the server locally.
 
 **Any other agent or MCP client**:
 - Remote clients: use the URL above.
@@ -377,7 +384,7 @@ worker/                   Cloudflare Workers (TypeScript) for community contribu
   migrations/             D1 database schema
   test/                   unit tests (`npm test`)
 .github/workflows/        CI tests and the PyPI release
-.claude-plugin/           Claude Code plugin and marketplace (the skills and the hosted MCP server)
+.claude-plugin/           Claude Code plugin and marketplace (the skills)
 .codex-plugin/, .agents/  the same for Codex
 ```
 

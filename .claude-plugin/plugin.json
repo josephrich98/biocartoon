@@ -1,7 +1,7 @@
 {
   "name": "biocartoon",
-  "version": "0.4.8",
-  "description": "BioCartoon's MCP server and skills: search about 20,000 open-licensed scientific illustrations, preview and download them with their credit lines, and draw and submit new ones to the shared library.",
+  "version": "0.4.9",
+  "description": "BioCartoon skills: search about 20,000 open-licensed scientific illustrations, preview and download them with their credit lines, and draw and submit new ones to the shared library.",
   "author": {
     "name": "Joseph Rich",
     "url": "https://github.com/josephrich98"
@@ -10,11 +10,5 @@
   "repository": "https://github.com/josephrich98/biocartoon",
   "license": "BSD-2-Clause",
   "keywords": ["biology", "illustration", "icons", "scientific figures", "mcp"],
-  "skills": "./catalog/skills/",
-  "mcpServers": {
-    "biocartoon": {
-      "type": "http",
-      "url": "https://mcp.biocartoon.com/mcp"
-    }
-  }
+  "skills": "./catalog/skills/"
 }
