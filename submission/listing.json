@@ -1,0 +1,27 @@
+{
+  "interface": {
+    "displayName": "BioCartoon",
+    "shortDescription": "Open science illustrations",
+    "longDescription": "Find open-licensed biology illustrations for research papers, teaching, slides and posters. Search the BioCartoon catalog by topic or collection, compare selected candidates in an interactive gallery, download PNG files and SVGs where available, and copy the credit lines required by each illustration's license. Browse shared slide templates and explore an illustration's available colour or style variants.\n\nWhen the library does not contain a suitable illustration, the bundled skills guide the assistant through creating or adapting artwork using the host's available drawing and image-generation tools. With your explicit approval, submit a PNG or SVG and its metadata to BioCartoon's human-reviewed contribution queue. Generative-AI artwork can be contributed only under CC0. Approval and publication are separate from submission.\n\nThe public catalog and hosted MCP tools require no BioCartoon sign-in. Illustrations retain their individual licenses; the library is not uniformly CC0. Hosted artwork uploads accept PNG or SVG up to 2 MB. Conversion and resizing are available through the local BioCartoon CLI.",
+    "category": "Scientific Research",
+    "websiteURL": "https://www.biocartoon.com/",
+    "supportURL": "https://github.com/josephrich98/biocartoon-app/issues",
+    "privacyPolicyURL": "https://www.biocartoon.com/privacy",
+    "logo": "./assets/logo.png",
+    "composerIcon": "./assets/logo.png"
+  },
+  "review": {
+    "commerce": false,
+    "prompts": [
+      "Find three illustrations of a pyramidal neuron and show their licenses and credit lines.",
+      "Give me the PNG and SVG download links for BioCartoon illustration BA001505, with its credit line.",
+      "Show me the other colour or style variants of BioCartoon illustration BA001505.",
+      "Show me a shared BioCartoon slide template that I can use as a starting point.",
+      "Help me prepare this AI-generated cell icon for contribution under CC0. Show me the image and metadata before submitting it."
+    ]
+  },
+  "publication": {
+    "countries": [],
+    "release_notes": "Initial public MCP-backed BioCartoon plugin package. Bundles the find-icons, create-icon and upload skills with the hosted catalog tools and interactive icon gallery. Supports catalog search, PNG/SVG links and credits, colour/style variants, shared slide templates and explicitly confirmed contributions held for human review. The hosted server uses a stateless Cloudflare Worker and a separate public catalog database."
+  }
+}

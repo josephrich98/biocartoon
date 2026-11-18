@@ -451,7 +451,7 @@
             "type": "object"
           },
           "image_base64": {
-            "description": "A PNG, JPEG, WebP or GIF, base64-encoded (a data: URL works too).",
+            "description": "A PNG image, base64-encoded (a data: URL works too), up to 2 MB. For SVG, use svg with the complete markup. Convert other image formats with the local biocartoon command first.",
             "type": "string"
           },
           "image_url": {

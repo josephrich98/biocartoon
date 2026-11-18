@@ -1,0 +1,113 @@
+{
+  "endpoint": "https://mcp.biocartoon.com/mcp",
+  "version": "0.4.10",
+  "tools": 16,
+  "catalogRecords": 21183,
+  "selectedIds": [
+    "SD016288",
+    "BI005029",
+    "SD016427",
+    "SD016456",
+    "SD016523",
+    "SD016585"
+  ],
+  "galleryBytes": 675577,
+  "checks": [
+    {
+      "method": "initialize",
+      "milliseconds": 116
+    },
+    {
+      "method": "tools/list",
+      "milliseconds": 45
+    },
+    {
+      "method": "resources/list",
+      "milliseconds": 71
+    },
+    {
+      "method": "resources/read",
+      "milliseconds": 116
+    },
+    {
+      "method": "tools/call",
+      "tool": "search_assets",
+      "milliseconds": 158
+    },
+    {
+      "method": "tools/call",
+      "tool": "render_assets",
+      "milliseconds": 70
+    },
+    {
+      "method": "tools/call",
+      "tool": "get_asset",
+      "milliseconds": 64
+    },
+    {
+      "method": "tools/call",
+      "tool": "asset_variants",
+      "milliseconds": 94
+    },
+    {
+      "method": "tools/call",
+      "tool": "browse_assets",
+      "milliseconds": 79
+    },
+    {
+      "method": "tools/call",
+      "tool": "list_sources",
+      "milliseconds": 98
+    },
+    {
+      "method": "tools/call",
+      "tool": "list_categories",
+      "milliseconds": 53
+    },
+    {
+      "method": "tools/call",
+      "tool": "db_schema",
+      "milliseconds": 34
+    },
+    {
+      "method": "tools/call",
+      "tool": "sql_query",
+      "milliseconds": 52
+    },
+    {
+      "method": "tools/call",
+      "tool": "asset_image",
+      "milliseconds": 105
+    },
+    {
+      "method": "tools/call",
+      "tool": "preview_assets",
+      "milliseconds": 71
+    },
+    {
+      "method": "tools/call",
+      "tool": "asset_svg",
+      "milliseconds": 40
+    },
+    {
+      "method": "tools/call",
+      "tool": "list_templates",
+      "milliseconds": 53
+    },
+    {
+      "method": "tools/call",
+      "tool": "template_image",
+      "milliseconds": 190
+    },
+    {
+      "method": "tools/call",
+      "tool": "submission_status",
+      "milliseconds": 100
+    },
+    {
+      "method": "tools/call",
+      "tool": "submit_artwork",
+      "milliseconds": 22
+    }
+  ]
+}

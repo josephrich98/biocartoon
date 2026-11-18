@@ -5,6 +5,31 @@ on:
   pull_request:
 
 jobs:
+  submission:
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.x"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - run: python3 -m unittest discover -s scripts -p 'test_*.py' -v
+      - run: node --test scripts/check_mcp.test.mjs
+      - name: Build and validate public submission draft
+        run: python3 scripts/prepare_submission.py
+      - name: Summarize readiness and review drift
+        run: cat dist/submission/BUILD.md >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: biocartoon-submission-${{ github.sha }}
+          path: dist/submission/
+          if-no-files-found: error
+          retention-days: 14
+
   plugin-ui:
     runs-on: ubuntu-24.04
     defaults:

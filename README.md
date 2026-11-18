@@ -290,6 +290,20 @@ resources, search, downloads, templates, submission status and refusal of unconf
 it does not create a submission. Then update the plugin through its existing release process.
 The package builder does not change an installed account plugin.
 
+Every push and pull request also builds and validates the public submission draft.
+Download `biocartoon-submission-COMMIT` from the `submission` job's GitHub Actions
+artifacts (retained for 14 days). It includes the public plugin ZIP, review materials,
+commit and file hashes, and a report of missing fields and changes since the recorded
+review contract. Build it locally with `python3 scripts/prepare_submission.py`.
+Review cases, policies and recordings remain curated; builds do not mark them passed
+or submit the plugin to OpenAI. See [submission preparation](submission/README.md).
+
+`npm run deploy:mcp` runs the read-only live check after a successful deploy. A failed
+check reports failure without undoing the deployment. GitHub's `MCP live checks`
+workflow also runs on successful deployment statuses for the `biocartoon-mcp`
+environment, or manually from Actions, and saves result artifacts. Direct Cloudflare
+dashboard deployments need that GitHub status event or a manual check.
+
 ## Command-Line Interface and MCP server
 
 The `biocartoon` command searches the published catalog from a shell:

@@ -1,0 +1,10 @@
+{
+  "title": "Review demo cell",
+  "description": "Synthetic cell illustration used to demonstrate the BioCartoon contribution review workflow.",
+  "tags": ["cell", "review", "demo"],
+  "category": "cells.cell_types",
+  "credit": "Review demo",
+  "license": "CC0-1.0",
+  "generative_ai_used": true,
+  "generative_ai_details": "Synthetic SVG drawn by an OpenAI assistant for plugin review testing."
+}

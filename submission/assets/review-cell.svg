@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="256" height="256" viewBox="0 0 256 256" role="img" aria-labelledby="title description">
+  <title id="title">Review demo cell</title>
+  <desc id="description">A synthetic demonstration cell created with generative AI for review testing. It contains no personal data. Proposed contribution license: CC0-1.0; publication requires explicit author confirmation.</desc>
+  <path d="M52 60C76 31 119 30 153 40C196 50 224 87 221 128C218 172 188 214 140 219C96 224 49 203 35 161C22 121 27 88 52 60Z" fill="#b8dfd4" stroke="#377c70" stroke-width="6"/>
+  <ellipse cx="132" cy="126" rx="45" ry="40" fill="#cdb4df" stroke="#84629a" stroke-width="5"/>
+  <circle cx="143" cy="120" r="13" fill="#9468ab"/>
+  <path d="M67 109C84 96 97 110 91 124C85 139 66 135 63 123C62 118 63 113 67 109Z" fill="#edc589" stroke="#b6894b" stroke-width="4"/>
+  <path d="M153 176C166 162 186 166 185 180C184 195 163 200 155 189C152 185 151 180 153 176Z" fill="#edc589" stroke="#b6894b" stroke-width="4"/>
+  <circle cx="91" cy="171" r="7" fill="#6fac9d"/>
+  <circle cx="175" cy="83" r="6" fill="#6fac9d"/>
+</svg>

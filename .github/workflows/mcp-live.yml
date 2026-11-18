@@ -1,0 +1,31 @@
+name: MCP live checks
+on:
+  workflow_dispatch:
+  deployment_status:
+
+permissions:
+  contents: read
+
+jobs:
+  live:
+    # Other deployments (for example the website) are unrelated to this endpoint.
+    if: github.event_name == 'workflow_dispatch' || (github.event.deployment_status.state == 'success' && github.event.deployment.environment == 'biocartoon-mcp')
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.deployment.sha || github.sha }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - name: Check deployed public MCP endpoint
+        run: node scripts/check_mcp.mjs
+      - name: Upload live results including failures
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: biocartoon-live-${{ github.run_id }}-${{ github.run_attempt }}
+          path: dist/live-mcp-check.json
+          if-no-files-found: warn
+          retention-days: 14

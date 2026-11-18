@@ -1,13 +1,17 @@
 // Read-only checks of the hosted MCP App (the sole submission check refuses before writing).
 import https from 'node:https';
 import http from 'node:http';
-import { writeFile, mkdir } from 'node:fs/promises';
+import { readFile, writeFile, mkdir } from 'node:fs/promises';
+import { dirname } from 'node:path';
 import assert from 'node:assert/strict';
 
 const option = name => { const i = process.argv.indexOf(name); return i < 0 ? undefined : process.argv[i + 1]; };
 const endpoint = option('--url') ?? 'https://mcp.biocartoon.com/mcp';
 const connectIp = option('--connect-ip');
+const output = option('--output') ?? new URL('../dist/live-mcp-check.json', import.meta.url);
+const expected = JSON.parse(await readFile(new URL('../worker/generated/mcp-metadata.json', import.meta.url), 'utf8'));
 const checks = []; let id = 0;
+const report = { recorded_at: new Date().toISOString(), endpoint, status: 'running', checks };
 async function rpc(method, params = {}) {
   const url = new URL(endpoint), start = performance.now();
   const body = JSON.stringify({ jsonrpc: '2.0', id: ++id, method, params });
@@ -26,9 +30,13 @@ async function rpc(method, params = {}) {
   return reply.result;
 }
 async function tool(name, args = {}) { const r = await rpc('tools/call', { name, arguments: args }); assert.notEqual(r.isError, true, JSON.stringify(r)); return r; }
+async function checkLive() {
 const init = await rpc('initialize', { protocolVersion: '2025-06-18', capabilities: { extensions: { 'io.modelcontextprotocol/ui': { mimeTypes: ['text/html;profile=mcp-app'] } } }, clientInfo: { name: 'biocartoon-check', version: '1' } });
+report.version = init.serverInfo.version;
 assert.ok(init.capabilities.resources);
-const { tools } = await rpc('tools/list'); assert.equal(tools.length, 16);
+const { tools } = await rpc('tools/list'); report.tools = tools.length;
+assert.deepEqual(tools.map(t => t.name).sort(), expected.tools.map(t => t.name).sort(), 'Deployed tool names differ from this checkout');
+for (const t of tools) for (const key of ['readOnlyHint', 'openWorldHint', 'destructiveHint']) assert.equal(typeof t.annotations?.[key], 'boolean', `${t.name}.${key} must be boolean`);
 const galleryTool = tools.find(t => t.name === 'render_assets'); assert.ok(galleryTool._meta.ui.resourceUri);
 const resources = await rpc('resources/list'); assert.equal(resources.resources[0].uri, galleryTool._meta.ui.resourceUri);
 const gallery = await rpc('resources/read', { uri: galleryTool._meta.ui.resourceUri });
@@ -50,7 +58,14 @@ const templates = await tool('list_templates');
 const firstTemplate = templates.structuredContent.templates.find(t => t.thumb_url); if (firstTemplate) await tool('template_image', { id: firstTemplate.id });
 await tool('submission_status', { ids: ['biocartoon-readiness-check'] });
 const refused = await rpc('tools/call', { name: 'submit_artwork', arguments: { rights_confirmed: false } }); assert.equal(refused.isError, true);
-const result = { endpoint, version: init.serverInfo.version, tools: tools.length, catalogRecords: rows, selectedIds: ids, galleryBytes: Buffer.byteLength(gallery.contents[0].text), checks };
-await mkdir(new URL('../dist/', import.meta.url), { recursive: true });
-await writeFile(new URL('../dist/live-mcp-check.json', import.meta.url), JSON.stringify(result, null, 2) + '\n');
-console.log(JSON.stringify({ endpoint, version: init.serverInfo.version, tools: tools.length, catalogRecords: rows, checksPassed: checks.length }));
+Object.assign(report, { status: 'passed', catalogRecords: rows, selectedIds: ids, galleryBytes: Buffer.byteLength(gallery.contents[0].text), checksPassed: checks.length });
+}
+try { await checkLive(); }
+catch (error) {
+  report.status = 'failed'; report.error = error instanceof Error ? error.message : String(error);
+  process.exitCode = 1;
+} finally {
+  await mkdir(output instanceof URL ? new URL('./', output) : dirname(output), { recursive: true });
+  await writeFile(output, JSON.stringify(report, null, 2) + '\n');
+  console.log(JSON.stringify(report));
+}

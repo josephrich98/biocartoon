@@ -22,6 +22,7 @@ def build(binary=None):
             tool['description'] = 'Look at up to 12 catalog previews with asset IDs, titles, collections, licenses and credits. Uses published thumbnails where available. Use render_assets to show selected icons in the interactive gallery.'
         if tool['name'] == 'submit_artwork':
             tool['inputSchema']['properties'].pop('file_path', None)
+            tool['inputSchema']['properties']['image_base64']['description'] = 'A PNG image, base64-encoded (a data: URL works too), up to 2 MB. For SVG, use svg with the complete markup. Convert other image formats with the local biocartoon command first.'
             tool['description'] = tool['description'].replace(', image_base64 or file_path', ' or image_base64')
             tool['description'] += ' The free hosted endpoint accepts PNG or SVG up to 2 MB. Convert or resize other image formats with the local biocartoon command before submitting.'
     output = ROOT / 'worker/generated/mcp-metadata.json'

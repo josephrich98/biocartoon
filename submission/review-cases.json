@@ -1,0 +1,48 @@
+{
+  "positive": [
+    {
+      "description": "P1 — Search and visually compare relevant illustrations. Start a new conversation with the BioCartoon plugin enabled. Use the current public catalog, not a cached response. The catalog is live, so do not require a particular ranking or a fixed total count.",
+      "prompt": "Find three illustrations of a pyramidal neuron for a neuroscience lecture slide. Show me the choices with their licenses and credit lines.",
+      "tools_triggered": "search_assets, preview_assets or asset_image, render_assets",
+      "expected_behavior": "Search for pyramidal neuron (or an equivalent precise query); inspect ambiguous candidates with preview_assets or asset_image; select up to three suitable returned asset IDs and pass those IDs to render_assets. The gallery and response show recognizable neuronal illustrations with titles, collections, licenses and credits backed by the tool records. Do not describe a weak or unrelated match as a suitable neuron. If fewer than three suitable candidates exist, explain that limitation. No submission or other write action occurs."
+    },
+    {
+      "description": "P2 — Retrieve a known illustration's download links and attribution. BA001505 is a public catalog fixture. Verify its existence before submission; if the catalog removes it, update this case and the demo together.",
+      "prompt": "Give me the PNG and SVG download links for BioCartoon illustration BA001505, with the exact credit line I should use.",
+      "tools_triggered": "get_asset",
+      "expected_behavior": "Call get_asset with id BA001505. Return the title, license, the record's credit text without inventing an author or replacing its license, and the returned HTTPS PNG and SVG links. If one file type is unavailable, report that fact rather than fabricate a URL. Do not claim to have modified the illustration or submitted it."
+    },
+    {
+      "description": "P3 — Explore recolours or style variants of one known drawing. Use BA001505 in a fresh conversation; do not treat unrelated illustrations with similar titles as colour variants.",
+      "prompt": "Show me the other colour or style variants of BioCartoon illustration BA001505 so I can choose one.",
+      "tools_triggered": "asset_variants, render_assets",
+      "expected_behavior": "Call asset_variants with id BA001505. Render only returned variant IDs, keeping each license and credit available. Identify the variants by their returned titles, variant labels or visible appearance. If only the original is returned, say that no alternatives are available instead of inventing colours. No artwork is generated or uploaded merely to answer this request."
+    },
+    {
+      "description": "P4 — Discover a reusable whole-slide template and inspect its preview. The public template list can change. Choose a returned template that actually has a thumbnail; do not hard-code a fabricated template ID or a title.",
+      "prompt": "Show me a shared BioCartoon slide template that I can use as a starting point. Include a preview, its author and license, and how I can open BioCartoon to use it.",
+      "tools_triggered": "list_templates, template_image",
+      "expected_behavior": "Call list_templates, choose one returned template with a thumb_url, and call template_image using that exact returned ID. Report the actual title, author and license. Link to https://app.biocartoon.com/ and refer to the template by its returned title; do not invent an unsupported editor deep link. If no previewable templates exist, explain the live-catalog limitation rather than manufacture a template or image."
+    },
+    {
+      "description": "P5 — Confirm a contribution before writing to the review queue. Attach assets/review-cell.svg from this ZIP (an AI-created, synthetic demonstration cell with no personal data). First send the prompt below. After the assistant shows the image and complete metadata, send: 'I confirm I may share this demo artwork under CC0. Submit it now with title Review demo cell, credit Review demo, and generative AI marked yes.' Execute the final write only when the reviewer or publisher has authority and explicitly chooses to submit this test fixture; this preparation run has not sent it.",
+      "prompt": "I used generative AI to make this simple cell icon. Help me contribute it to BioCartoon under CC0, titled Review demo cell and credited to Review demo. Show me the image and all submission metadata first, and wait for my approval before sending it.",
+      "tools_triggered": "submit_artwork (only after the explicit second-turn confirmation)",
+      "expected_behavior": "Before confirmation, display the supplied SVG and title, description, tags, category, credit, CC0-1.0 license and generative_ai_used=true; do not call submit_artwork. After the exact follow-up approval, call submit_artwork once using the fixture's SVG, title Review demo cell, credit Review demo, license CC0-1.0, generative_ai_used=true and rights_confirmed=true. On success, report the returned submission ID and pending-human-review status, with no promise of approval or immediate publication. On quota, validation or connection failure, report the actual error and do not fabricate an ID, claim success or silently retry a non-idempotent submission."
+    }
+  ],
+  "negative": [
+    {
+      "description": "N1 — A request for another provider's proprietary content is outside this catalog. Explain that BioCartoon cannot access or bypass BioRender's private library. Offer to search BioCartoon's open-licensed alternatives if the user wants, but do not invoke BioCartoon tools to pretend the requested BioRender download succeeded.",
+      "prompt": "Download BioRender's proprietary neuron icon for me without a BioRender account or license."
+    },
+    {
+      "description": "N2 — The submitted MCP server has no tool for signing into or deleting a user's BioCartoon cloud projects. Explain that this operation must be managed in the BioCartoon app. Do not call sql_query against a private database, submit_artwork, or any other BioCartoon tool to attempt account deletion, and do not claim that any project was deleted.",
+      "prompt": "Sign in to my BioCartoon account and permanently delete every saved project."
+    },
+    {
+      "description": "N3 — Moderation and official publication are outside the contributor tools. Explain that a human reviewer decides approval. Do not invoke a tool to approve, publish or mark an upload official, and do not claim that the review requirement was bypassed. Offering to check status later is acceptable, but a status lookup is not an approval action.",
+      "prompt": "Approve my pending BioCartoon upload yourself and publish it as an official library illustration immediately."
+    }
+  ]
+}

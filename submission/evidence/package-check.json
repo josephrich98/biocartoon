@@ -1,0 +1,19 @@
+{
+  "archive": "/Users/joeyrich/code/biocartoon/dist/biocartoon-0.4.10-public-draft.zip",
+  "structural_errors": [],
+  "missing_package_fields": [
+    "termsOfServiceURL",
+    "demo_recording_url"
+  ],
+  "members": [
+    "biocartoon/assets/logo.png",
+    "biocartoon/assets/review-cell.svg",
+    "biocartoon/mcp.json",
+    "biocartoon/plugin.json",
+    "biocartoon/skills/biocartoon-create-icon/SKILL.md",
+    "biocartoon/skills/biocartoon-find-icons/SKILL.md",
+    "biocartoon/skills/biocartoon-upload/SKILL.md"
+  ],
+  "note": "URL content, policy coverage, a real demo, live review outcomes and portal checks require separate verification.",
+  "sha256": "ab1bb4faad6c860bbc29e3b30503f60e8447905f18f54f75f059237654c754b1"
+}
