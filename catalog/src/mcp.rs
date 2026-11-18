@@ -1,6 +1,6 @@
 //! An MCP server over stdio (`biocartoon mcp`), so an assistant such as Claude Code can
-//! search the icon catalog and look at candidates. JSON-RPC 2.0, one message per line; only the
-//! `tools` capability. Nothing but protocol messages may go to stdout, so logs go to stderr.
+//! search the icon catalog and look at candidates. JSON-RPC 2.0, one message per line, with
+//! tools and optional MCP App resources. Nothing but protocol messages may go to stdout, so logs go to stderr.
 //!
 //! The server is generic over a [`Tools`] set: [`CatalogTools`] is the catalog's, and a program
 //! with tools of its own (the BioCartoon editor's canvas tools) wraps it and serves both.
@@ -24,6 +24,8 @@ has nothing suitable instead of using a poor match. Prefer the science collectio
 for biology; healthicons for clinical/public-health symbols; openmoji for generic emoji-style pictograms. Variants of one \
 asset (asset_variants) are the same drawing in other colours. Every asset keeps its own license: credit it as its \
 `credit` field says.\n\
+After judging search results, use render_assets with the selected IDs to show an interactive gallery with previews, \
+licenses, credits and download links. It also returns text for clients without UI support.\n\
 list_templates finds shared slide templates (whole slide layouts, not icons); they open in the BioCartoon editor, so \
 point the user to a template by its title rather than rebuilding it.";
 
@@ -33,6 +35,12 @@ pub trait Tools {
     fn tools(&self) -> Vec<Value>;
     /// Run tool `name`, returning its content blocks; `None` when it is not one of these tools.
     fn call(&mut self, name: &str, args: &Value) -> Option<Result<Vec<Value>, String>>;
+    /// A full tool result, optionally including structured content for an MCP App.
+    fn call_result(&mut self, name: &str, args: &Value) -> Option<Result<Value, String>> {
+        self.call(name, args).map(|r| r.map(|content| json!({"content": content, "isError": false})))
+    }
+    fn resources(&self) -> Vec<Value> { vec![] }
+    fn resource(&self, _uri: &str) -> Option<Value> { None }
 }
 
 /// Who the server says it is in `initialize`.
@@ -178,6 +186,7 @@ impl Tools for CatalogTools {
             tool("asset_image", "Look at an asset: returns its PNG (downscaled) so you can check that it depicts what the user asked for.", json!({"id": str_prop("Asset id."), "max_side": int_prop("Longest side in pixels (default 512).")}), &["id"]),
             tool("asset_svg", "An asset's SVG markup, to adapt it (\"like this icon but ...\"): edit the markup rather than redrawing from scratch. Also says whether an adaptation may be submitted to the library under the asset's license. Servier and some uploads have no SVG; very detailed drawings are too large to edit as code (redraw from asset_image instead).", json!({"id": str_prop("Asset id."), "max_kb": int_prop("Largest markup to return, in kilobytes (default 150, max 500).")}), &["id"]),
             tool("preview_assets", "Small previews (at most 256 px) of up to 12 assets at once, each labelled with its id, title, collection and license: for showing the user candidates side by side, or judging several search results in one call.", json!({"ids": {"type": "array", "items": {"type": "string"}, "description": "Asset ids, in the order to show them (at most 12)."}}), &["ids"]),
+            crate::mcp_ui::render_tool(),
             tool("browse_assets", "Page through a collection, optionally one category (see list_categories).", json!({"source": str_prop("Collection id."), "category": str_prop("Category name."), "offset": int_prop("Skip this many."), "limit": int_prop("Page size (default 40, max 200).")}), &["source"]),
             tool("list_sources", "The collections in the catalog with their sizes and licenses.", json!({}), &[]),
             tool("list_categories", "A collection's categories with counts.", json!({"source": str_prop("Collection id.")}), &["source"]),
@@ -192,12 +201,19 @@ impl Tools for CatalogTools {
     }
 
     fn call(&mut self, name: &str, args: &Value) -> Option<Result<Vec<Value>, String>> {
-        const NAMES: [&str; 13] = [
+        const NAMES: [&str; 14] = [
             "search_assets", "get_asset", "asset_variants", "asset_image", "asset_svg", "preview_assets", "browse_assets", "list_sources", "list_categories", "sql_query", "db_schema",
-            "list_templates", "template_image",
+            "list_templates", "template_image", "render_assets",
         ];
         NAMES.contains(&name).then(|| self.run(name, args))
     }
+
+    fn call_result(&mut self, name: &str, args: &Value) -> Option<Result<Value, String>> {
+        self.call(name, args).map(|r| r.map(|content| crate::mcp_ui::structured_result(name, content)))
+    }
+
+    fn resources(&self) -> Vec<Value> { vec![crate::mcp_ui::descriptor()] }
+    fn resource(&self, uri: &str) -> Option<Value> { crate::mcp_ui::resource(uri) }
 }
 
 impl CatalogTools {
@@ -206,6 +222,14 @@ impl CatalogTools {
         let n = |k: &str| args.get(k).and_then(Value::as_u64);
         let need = |k: &str| s(k).ok_or_else(|| format!("{k} is required"));
         Ok(match name {
+            "render_assets" => {
+                let ids = crate::mcp_ui::asset_ids(args)?;
+                let catalog = self.catalog()?;
+                let hits: Vec<Value> = ids.iter().map(|id| {
+                    catalog.get(id)?.map(|a| brief(&a)).ok_or_else(|| format!("no asset {id}"))
+                }).collect::<Result<_, String>>()?;
+                vec![text("Selected BioCartoon illustrations. Each download keeps its original license; use the supplied credit line."), pretty(&hits)]
+            }
             "search_assets" => {
                 let q = s("query").unwrap_or_default();
                 let sources: Vec<String> = args.get("sources").and_then(Value::as_array).map(|a| a.iter().filter_map(Value::as_str).map(str::to_string).collect()).unwrap_or_default();
@@ -375,9 +399,13 @@ pub fn handle(info: &ServerInfo, tools: &mut dyn Tools, method: &str, params: &V
         "initialize" => {
             let requested = params.get("protocolVersion").and_then(Value::as_str).unwrap_or(PROTOCOL_VERSION);
             let version = if ["2024-11-05", "2025-03-26", "2025-06-18", "2025-11-25"].contains(&requested) { requested } else { PROTOCOL_VERSION };
+            let mut capabilities = json!({"tools": {"listChanged": false}});
+            if !tools.resources().is_empty() {
+                capabilities["resources"] = json!({"subscribe": false, "listChanged": false});
+            }
             Ok(json!({
                 "protocolVersion": version,
-                "capabilities": {"tools": {"listChanged": false}},
+                "capabilities": capabilities,
                 "serverInfo": {"name": info.name, "version": info.version},
                 "instructions": info.instructions,
             }))
@@ -387,13 +415,18 @@ pub fn handle(info: &ServerInfo, tools: &mut dyn Tools, method: &str, params: &V
         "tools/call" => {
             let name = params.get("name").and_then(Value::as_str).ok_or((-32602, "name is required".to_string()))?;
             let args = params.get("arguments").cloned().unwrap_or(Value::Object(Map::new()));
-            let res = tools.call(name, &args).unwrap_or_else(|| Err(format!("unknown tool {name}")));
+            let res = tools.call_result(name, &args).unwrap_or_else(|| Err(format!("unknown tool {name}")));
             Ok(match res {
-                Ok(content) => json!({"content": content, "isError": false}),
+                Ok(result) => result,
                 Err(e) => json!({"content": [text(e)], "isError": true}),
             })
         }
-        "resources/list" => Ok(json!({"resources": []})),
+        "resources/list" => Ok(json!({"resources": tools.resources()})),
+        "resources/templates/list" => Ok(json!({"resourceTemplates": []})),
+        "resources/read" => {
+            let uri = params.get("uri").and_then(Value::as_str).ok_or((-32602, "uri is required".to_string()))?;
+            tools.resource(uri).ok_or((-32002, format!("resource not found: {uri}")))
+        }
         "prompts/list" => Ok(json!({"prompts": []})),
         other => Err((-32601, format!("method not found: {other}"))),
     }
@@ -410,6 +443,11 @@ impl Tools for Chain {
     fn call(&mut self, name: &str, args: &Value) -> Option<Result<Vec<Value>, String>> {
         self.0.iter_mut().find_map(|t| t.call(name, args))
     }
+    fn call_result(&mut self, name: &str, args: &Value) -> Option<Result<Value, String>> {
+        self.0.iter_mut().find_map(|t| t.call_result(name, args))
+    }
+    fn resources(&self) -> Vec<Value> { self.0.iter().flat_map(|t| t.resources()).collect() }
+    fn resource(&self, uri: &str) -> Option<Value> { self.0.iter().find_map(|t| t.resource(uri)) }
 }
 
 /// Handle one JSON-RPC message (a request or a notification); `None` for a notification, which
@@ -491,7 +529,7 @@ mod tests {
     #[test]
     fn tool_schemas_are_well_formed() {
         let ts = CatalogTools::default().tools();
-        assert_eq!(ts.len(), 13);
+        assert_eq!(ts.len(), 14);
         assert!(ts.iter().all(|t| t["annotations"]["readOnlyHint"] == true));
         check_tool_schemas(&ts);
     }
@@ -514,5 +552,41 @@ mod tests {
         // An unknown tool is a tool error, not a protocol error.
         let r = handle(&info, &mut tools, "tools/call", &json!({"name": "canvas_state"})).unwrap();
         assert_eq!(r["isError"], true);
+    }
+
+    #[test]
+    fn gallery_returns_catalog_records_in_selected_order_over_http() {
+        let dir = std::env::temp_dir().join(format!("biocartoon-gallery-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("assets.sqlite");
+        let db = rusqlite::Connection::open(&path).unwrap();
+        db.execute_batch("DROP TABLE IF EXISTS assets;
+            CREATE TABLE assets (id TEXT PRIMARY KEY, source TEXT, source_name TEXT, title TEXT, variant TEXT,
+            description TEXT, category TEXT, tags TEXT, license TEXT, credit TEXT, author TEXT, source_url TEXT,
+            png_key TEXT, png_local TEXT, png_width INTEGER, png_height INTEGER, svg_key TEXT, svg_local TEXT);
+            INSERT INTO assets VALUES ('a/1','a','A','Neuron','','','cells','[]','PD','Artist One, PD','Artist One',NULL,'a/1.png',NULL,100,100,'a/1.svg',NULL);
+            INSERT INTO assets VALUES ('a/2','a','A','Astrocyte','','','cells','[]','CC-BY-4.0','Artist Two, CC BY 4.0','Artist Two',NULL,'a/2.png',NULL,100,100,NULL,NULL);").unwrap();
+        drop(db);
+        let mut tools = Chain(vec![Box::new(CatalogTools { catalog: Some(Catalog::open(&path).unwrap()), ..Default::default() })]);
+        let info = catalog_server_info();
+        let req = json!({"jsonrpc": "2.0", "id": 7, "method": "tools/call", "params": {"name": "render_assets", "arguments": {"ids": ["a/2", "a/1"]}}});
+        let response = crate::mcp_http::respond(&info, &mut tools, "POST", "/mcp", None, req.to_string().as_bytes(), true);
+        assert_eq!(response.status, 200);
+        let body: Value = serde_json::from_slice(&response.body).unwrap();
+        let result = &body["result"];
+        assert_eq!(result["isError"], false);
+        assert_eq!(result["structuredContent"]["assets"][0]["id"], "a/2");
+        assert_eq!(result["structuredContent"]["assets"][1]["id"], "a/1");
+        assert_eq!(result["structuredContent"]["assets"][0]["credit"], "Artist Two, CC BY 4.0");
+        // Text-only clients get the same records, credits and available downloads.
+        let text_records: Value = serde_json::from_str(result["content"][1]["text"].as_str().unwrap()).unwrap();
+        assert_eq!(text_records, result["structuredContent"]["assets"]);
+        assert!(text_records[1]["svg_url"].as_str().unwrap().ends_with("a/1.svg"));
+        assert!(text_records[0].get("svg_url").is_none());
+        let missing = handle(&info, &mut tools, "tools/call", &json!({"name": "render_assets", "arguments": {"ids": ["missing"]}})).unwrap();
+        assert_eq!(missing["isError"], true);
+        assert!(missing.get("structuredContent").is_none());
+        drop(tools);
+        std::fs::remove_dir_all(dir).unwrap();
     }
 }

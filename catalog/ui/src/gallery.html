@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>BioCartoon illustrations</title>
+<style>
+:root{color-scheme:light dark;--bg:#fffefa;--panel:#fff;--ink:#253c34;--muted:#68746c;--line:#e4e8df;--accent:#285b45;--wash:#edf4e9;font-family:var(--font-sans,system-ui,-apple-system,sans-serif);font-size:14px}
+:root[data-theme=dark]{--bg:#18221d;--panel:#202e26;--ink:#e4ede4;--muted:#a8b8ac;--line:#38483d;--accent:#afd0a8;--wash:#2d4031}
+@media(prefers-color-scheme:dark){:root:not([data-theme=light]){--bg:#18221d;--panel:#202e26;--ink:#e4ede4;--muted:#a8b8ac;--line:#38483d;--accent:#afd0a8;--wash:#2d4031}}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink)}main{padding:22px;max-width:1050px;margin:auto}header{display:flex;align-items:center;justify-content:space-between;gap:16px;margin-bottom:20px}h1{font-size:22px;letter-spacing:-.7px;margin:0}header p{margin:4px 0 0;color:var(--muted);font-size:12px}.eyebrow{display:block;color:var(--accent);font-weight:650;font-size:10px;letter-spacing:1.4px;text-transform:uppercase;margin-bottom:5px}a{color:var(--accent)}button,input,select{font:inherit}button,a,input,select{outline-offset:3px}button,.link{border:1px solid var(--line);border-radius:8px;padding:8px 11px;background:var(--panel);color:var(--ink);cursor:pointer;text-decoration:none;font-size:12px;font-weight:550}button:hover,.link:hover{border-color:var(--accent);background:var(--wash)}button:disabled{opacity:.5;cursor:wait}form{display:flex;gap:8px;margin-bottom:13px}input,select{background:var(--panel);color:var(--ink);border:1px solid var(--line);border-radius:9px;padding:10px;min-width:0}input{flex:1}select{max-width:160px}form button{background:var(--accent);color:var(--bg);border-color:var(--accent);font-size:13px}form button:hover{background:var(--accent);opacity:.9}#status{color:var(--muted);font-size:12px;margin:0 0 14px;min-height:18px}#error{color:light-dark(#9a3428,#ffb0a3);background:var(--wash);border-radius:8px;padding:12px;margin-bottom:14px}.grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px}.card{border:1px solid var(--line);border-radius:12px;overflow:hidden;background:var(--panel);display:flex;flex-direction:column}.card.selected{border-color:var(--accent);box-shadow:0 0 0 1px var(--accent)}.preview{border:0;border-radius:0;width:100%;background:#f5f6f0;color:#253c34;min-height:155px;display:grid;place-items:center;padding:18px}.preview:hover{background:#edf1e7}.preview img{width:100%;height:125px;object-fit:contain}.info{padding:12px;display:flex;flex-direction:column;gap:8px;flex:1}.title{font-size:13px;font-weight:650;margin:0;line-height:1.4}.meta{display:flex;align-items:center;justify-content:space-between;gap:5px;font-size:10px;color:var(--muted)}.license{border-radius:4px;background:var(--wash);color:var(--accent);padding:3px 5px}.actions{display:flex;gap:6px;flex-wrap:wrap;margin-top:auto}.actions a{font-size:11px;padding:6px 9px}details{font-size:11px;color:var(--muted);line-height:1.5}summary{cursor:pointer}details p{overflow-wrap:anywhere}.credit-button{font-size:11px;padding:5px 8px}.empty{grid-column:1/-1;padding:45px 20px;text-align:center;color:var(--muted);border:1px dashed var(--line);border-radius:12px}#selection{margin-top:16px;padding:14px;border:1px solid var(--line);border-radius:10px;background:var(--wash)}#selection h2{font-size:14px;margin:0 0 8px}#selection p{font-size:12px;line-height:1.5;overflow-wrap:anywhere}#selection .actions{margin-top:10px}footer{font-size:10px;color:var(--muted);margin-top:16px;line-height:1.5}label.sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}[hidden]{display:none!important}
+@media(max-width:580px){main{padding:16px}.grid{grid-template-columns:repeat(2,minmax(0,1fr))}header{align-items:flex-start}header .link{font-size:11px}form{flex-wrap:wrap}input{flex-basis:100%}select{flex:1;max-width:none}.preview{min-height:135px}.preview img{height:105px}}
+@media(max-width:330px){.grid{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+<main>
+  <header><div><span class="eyebrow">The open illustration library</span><h1>BioCartoon</h1><p>A little science. A clearer picture.</p></div><a class="link" href="https://app.biocartoon.com" target="_blank" rel="noopener noreferrer">Open BioCartoon ↗</a></header>
+  <form id="search" aria-label="Search illustrations">
+    <label class="sr-only" for="query">Search illustrations</label><input id="query" type="search" placeholder="Find a cell, organ, molecule…" maxlength="200" required>
+    <label class="sr-only" for="source">Collection</label><select id="source"><option value="">All collections</option value="user">BioCartoon</option><option value="bioart">NIH BioArt</option><option value="bioicons">Bioicons</option><option value="servier">Servier</option><option value="scidraw">SciDraw</option><option value="healthicons">Health Icons</option><option value="reactome">Reactome</option><option value="openmoji">OpenMoji</option></select>
+    <button id="search-button" disabled>Search</button>
+  </form>
+  <p id="status" role="status" aria-live="polite">Connecting to BioCartoon…</p>
+  <div id="error" role="alert" hidden></div>
+  <section id="gallery" class="grid" aria-label="Illustrations" aria-busy="true"></section>
+  <section id="selection" aria-label="Selected illustration" hidden></section>
+  <footer>Each illustration keeps its original license. Include its credit line wherever required.</footer>
+</main>
+<!-- gallery-script -->
+</body>
+</html>

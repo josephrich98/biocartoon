@@ -10,11 +10,13 @@
     "migrate": "wrangler d1 migrations apply biocartoon-submissions --remote",
     "deploy": "wrangler deploy && wrangler deploy -c wrangler.review.jsonc",
     "deploy:mcp": "wrangler deploy -c wrangler.mcp.jsonc",
+    "dev:mcp": "wrangler dev -c wrangler.mcp.jsonc --port 8789 --persist-to .wrangler/state",
+    "import:mcp:local": "node scripts/import_mcp_catalog.mjs --local",
+    "import:mcp": "node scripts/import_mcp_catalog.mjs --remote",
     "test": "node --test test/*.test.ts",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@cloudflare/containers": "^0.3.7",
     "obscenity": "^0.4.6"
   },
   "devDependencies": {

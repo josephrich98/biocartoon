@@ -16,6 +16,7 @@ data/catalog/
 node_modules/
 .wrangler/
 .dev.vars
+/dist/
 
 # OS
 .DS_Store

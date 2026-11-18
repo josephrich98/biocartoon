@@ -1,10 +1,18 @@
-# The hosted MCP server: `biocartoon mcp --http` in a container, for assistants that reach only remote
-# servers (ChatGPT, claude.ai). Deployed on Cloudflare Containers by worker/wrangler.mcp.jsonc, but it
-# runs on any container host: it listens on $PORT and needs nothing but outbound HTTPS.
+# Optional self-hosted Rust MCP server: `biocartoon mcp --http` in a container, for assistants
+# that reach remote servers. The public endpoint now uses the free Worker in worker/src/mcp.ts.
+# This image runs on other container hosts: it listens on $PORT and needs outbound HTTPS.
 #   docker build -t biocartoon-mcp catalog && docker run -p 8080:8080 biocartoon-mcp
+FROM node:24-bookworm-slim AS ui
+WORKDIR /ui
+COPY ui/package.json ui/package-lock.json ./
+RUN npm ci --ignore-scripts
+COPY ui/ ./
+RUN npm run typecheck && npm run build
+
 FROM rust:1-bookworm AS build
 WORKDIR /src
 COPY . .
+COPY --from=ui /ui/dist/gallery.html ui/dist/gallery.html
 RUN cargo build --release --locked --bin biocartoon
 
 FROM debian:bookworm-slim

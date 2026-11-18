@@ -91,8 +91,18 @@ ChatGPT, Claude or a coding agent. Without leaving the conversation, you can:
 Submissions are held for review like any other upload.
 
 The hosted server is `https://mcp.biocartoon.com/mcp` (Streamable HTTP, no sign-in).
+It runs on Cloudflare Workers Free with a separate public D1 catalog; it needs no Container
+or paid-plan upgrade. See [Plugin development and deployment](#plugin-development-and-deployment).
 
-**ChatGPT** (needs developer mode, which is in ChatGPT's settings under Apps / Connectors > Advanced):
+The plugin bundles the three skills and this MCP connection. In hosts supporting MCP Apps,
+the assistant can show selected icons in an interactive gallery with license labels,
+credit lines, PNG/SVG download links, collection search and colour variants. Selecting an
+icon makes its ID and credit available to the assistant. Clients without app UI still
+receive the same selected records and links as text.
+
+**ChatGPT**: the portable plugin package bundles both skills and the MCP App connection;
+an installed package needs no separate connector. To test just the server URL manually,
+use developer mode (under Apps / Connectors > Advanced):
 - Create a connector with the MCP server URL `https://mcp.biocartoon.com/mcp` and no authentication.
 - In a chat, turn on BioCartoon from the tools (+) menu.
 - ChatGPT passes images it generated, or that you attached, straight to `submit_artwork`.
@@ -102,15 +112,16 @@ The hosted server is `https://mcp.biocartoon.com/mcp` (Streamable HTTP, no sign-
 - Optional: add the skills too. Zip each folder in [`catalog/skills/`](catalog/skills), then upload
   the zips under Settings > Capabilities > Skills.
 
-**Claude Code**: install the plugin, which has the skills; they run the `biocartoon` command
-(`pip install biocartoon`), which can also submit files from your computer:
+**Claude Code**: install the plugin, which includes the skills and hosted MCP connection.
+The skills can also run the `biocartoon` command (`pip install biocartoon`), including
+submitting files from your computer:
 
 ```
 /plugin marketplace add josephrich98/biocartoon
 /plugin install biocartoon@biocartoon
 ```
 
-To use the MCP tools too, add the hosted server or run it on your own computer:
+Without the plugin, add the hosted server directly, or run it on your own computer:
 
 ```bash
 claude mcp add --transport http biocartoon https://mcp.biocartoon.com/mcp
@@ -121,14 +132,14 @@ claude mcp add biocartoon -- biocartoon mcp
 
 Without the plugin, `biocartoon install-skills` installs the skills.
 
-**Codex**: the plugin has the skills, which run the `biocartoon` command:
+**Codex**: the plugin includes the skills and hosted MCP connection:
 
 ```bash
 codex plugin marketplace add josephrich98/biocartoon
 codex plugin add biocartoon@biocartoon
 ```
 
-Optional, for the MCP tools: `codex mcp add biocartoon --url https://mcp.biocartoon.com/mcp`, or
+Without the plugin: `codex mcp add biocartoon --url https://mcp.biocartoon.com/mcp`, or
 `codex mcp add biocartoon -- biocartoon mcp` to run the server locally.
 
 **Any other agent or MCP client**:
@@ -166,6 +177,7 @@ The MCP tools:
 |---|---|
 | `search_assets` | icons matching words, optionally only some collections or tags |
 | `preview_assets`, `asset_image` | look at up to 12 icons side by side, or at one in more detail |
+| `render_assets` | show up to 12 selected icons in an interactive gallery, with credits and PNG/SVG links; text fallback in other clients |
 | `get_asset`, `asset_variants` | everything about an icon (license, credit line, PNG/SVG links), and its other colour schemes |
 | `asset_svg` | an icon's SVG markup, to adapt it, and whether its license lets an adaptation be submitted |
 | `browse_assets`, `list_sources`, `list_categories` | page through a collection or one of its categories |
@@ -190,6 +202,84 @@ To run the HTTP server yourself:
 - `biocartoon mcp --http` serves it at `http://127.0.0.1:8080/mcp`. Use `--listen ADDR`, or set
   `PORT` to listen on `0.0.0.0:$PORT`.
 - Or run it from the container: `docker build -t biocartoon-mcp catalog && docker run -p 8080:8080 biocartoon-mcp`.
+
+### Plugin development and deployment
+
+The repo's Codex/Claude compatibility manifests use `.mcp.json`. Portable packages use
+`mcp.json` with the same endpoint. The skill sources remain in `catalog/skills/` so the CLI
+can embed them. Build a portable private package containing both the skills and connection:
+
+```bash
+python3 scripts/package_plugin.py
+# dist/biocartoon-0.4.10.zip (one plugin, no account upload or publication)
+```
+
+The gallery uses the standard MCP Apps bridge and ships as an embedded, self-contained
+HTML resource (`ui://biocartoon/icon-gallery-v1.html`). `search_assets` remains a data tool;
+after judging results, the assistant calls `render_assets` with selected IDs. The gallery
+can call the same search and variant tools without opening another widget. Its only external
+image origin is `https://assets.biocartoon.com`; it does not contact the API directly.
+
+```bash
+cd catalog/ui
+npm ci
+npm run typecheck
+npm run build
+npx playwright install chromium
+npm test
+```
+
+Commit `catalog/ui/dist/gallery.html` with UI source changes. This lets plain Cargo and PyPI
+builds embed the gallery without requiring Node. CI rebuilds and checks that it matches.
+The Docker build also rebuilds the UI before compiling Rust. Run `cargo test --release`
+from `catalog/` to check the server and catalog.
+
+The hosted server uses TypeScript MCP handlers and D1's indexed full-text search.
+It serves the same gallery and tool contracts as the Rust server. There are no Containers,
+Durable Objects, paid image transforms or AI APIs in this deployment. Its submission service
+binding reuses the existing `biocartoon-submit` Worker, including validation, rate limits,
+storage and human moderation. No new image bucket is created.
+
+Keep the Cloudflare account on **Workers Free** for a hard $0 backend limit: quotas stop
+requests/queries rather than adding overage charges. The account's existing image storage
+and submission service retain their own limits and costs. The hosted endpoint accepts
+PNG/SVG artwork up to 2 MB; use the local CLI for conversion and resizing.
+
+The tool metadata is generated from the local server so tool names, skills and gallery
+resource IDs remain consistent. Rebuild it when changing the Rust tool definitions:
+
+```bash
+cd catalog
+cargo build --release --locked --bin biocartoon
+cd ..
+python3 scripts/build_mcp_metadata.py
+```
+
+For initial deployment on a verified free-plan account:
+
+```bash
+python3 data/export_mcp_catalog.py       # published public snapshots -> dist/mcp-catalog.sql
+cd worker
+# For a new account only: create biocartoon-catalog with Wrangler and update its database_id
+# in wrangler.mcp.jsonc. Keep it separate from biocartoon-submissions.
+npm ci
+npm run import:mcp:local
+npm run dev:mcp                         # local MCP + D1 on http://localhost:8789/mcp
+# First remote import only (it replaces the public catalog):
+npm run import:mcp
+npm run deploy:mcp
+```
+
+Later publishes automatically sync changed catalog rows to D1 (use `publish_catalog.py --no-mcp`
+to skip). This avoids rewriting the entire catalog against the free daily write allowance.
+If a sync hits a quota, the publisher reports the failure without undoing its R2 publication
+or backup. Retry after the quota resets with
+`python3 data/sync_mcp_catalog.py` (`--dry-run` compares without writing).
+
+Check the live endpoint with `node scripts/check_mcp.mjs`. It checks tool discovery, gallery
+resources, search, downloads, templates, submission status and refusal of unconfirmed artwork;
+it does not create a submission. Then update the plugin through its existing release process.
+The package builder does not change an installed account plugin.
 
 ## Command-Line Interface and MCP server
 
@@ -350,11 +440,11 @@ catalog/                  Rust crate biocartoon-catalog: the catalog library, th
   src/query.rs            synchronous catalog access for the CLI and MCP server
   src/cli.rs              the `biocartoon` commands
   src/mcp.rs              the MCP server (`biocartoon mcp`)
-  src/mcp_http.rs         its Streamable HTTP transport (`biocartoon mcp --http`, the hosted server)
+  src/mcp_http.rs         optional standalone Streamable HTTP transport (`biocartoon mcp --http`)
   src/mcp_submit.rs       the MCP tools that submit artwork for review
   src/skills.rs           `biocartoon install-skills`
   skills/                 the agent skills (biocartoon-find-icons, biocartoon-create-icon, biocartoon-upload)
-  Dockerfile              the hosted MCP server's container
+  Dockerfile              optional self-hosted Rust server (not used by the free hosted endpoint)
   src/taxonomy.rs         BioCartoon's own categories, mapped from each source's
   src/templates.rs        the published slide templates
   src/upload.rs           `biocartoon upload`: submits images to the submissions Worker
@@ -367,6 +457,8 @@ data/                     Python pipeline that builds and publishes the catalog
   upload_r2.py            upload asset files to the R2 bucket (resumable)
   uploads.py              collect approved community contributions from the bucket
   publish_catalog.py      publish the trimmed, gzipped catalog to R2 for the app and CLI
+  export_mcp_catalog.py   export public snapshots to D1 for the first MCP deployment
+  sync_mcp_catalog.py     incrementally refresh the hosted MCP catalog after publication
   sync.py                 incremental sync of new upstream assets (add-only)
   publish_poll.py         runs publishes queued with "Publish catalog now" on the review page
   refresh_credits.py      rewrite every asset's credit line
@@ -380,7 +472,10 @@ worker/                   Cloudflare Workers (TypeScript) for community contribu
   src/publish.ts          copies an approved submission into the public bucket
   src/publish_requests.ts the "Publish catalog now" queue the Mac polls
   src/stars.ts            star counts on catalog assets
-  src/mcp.ts              mcp.biocartoon.com: runs catalog/Dockerfile on Cloudflare Containers
+  src/mcp.ts              mcp.biocartoon.com: stateless MCP App on Workers Free
+  src/mcp_catalog.ts      public D1 catalog search and read-only tools
+  src/mcp_artwork.ts      PNG/SVG inspection and relay to the existing review queue
+  generated/             tool metadata shared with the local Rust server
   migrations/             D1 database schema
   test/                   unit tests (`npm test`)
 .github/workflows/        CI tests and the PyPI release

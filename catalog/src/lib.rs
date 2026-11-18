@@ -27,6 +27,8 @@ pub mod cli;
 #[cfg(not(target_arch = "wasm32"))]
 pub mod mcp;
 #[cfg(not(target_arch = "wasm32"))]
+pub mod mcp_ui;
+#[cfg(not(target_arch = "wasm32"))]
 pub mod mcp_http;
 #[cfg(not(target_arch = "wasm32"))]
 pub mod mcp_submit;

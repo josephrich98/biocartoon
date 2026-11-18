@@ -1,0 +1,830 @@
+{
+  "capabilities": {
+    "resources": {
+      "listChanged": false,
+      "subscribe": false
+    },
+    "tools": {
+      "listChanged": false
+    }
+  },
+  "instructions": "The BioCartoon catalog is a library of about 20,000 open-licensed scientific illustrations (NIH BioArt, Bioicons, Servier Medical Art, SciDraw, Health Icons, Reactome, OpenMoji, plus user uploads).\nSearch ALWAYS returns the closest matches, even when nothing in the library fits. Judge every result from its title, description, tags, category and matched_fields (a term found only in the description is a weak match; title or tags are strong). Look at the picture with asset_image when a title is ambiguous, and tell the user plainly when the library has nothing suitable instead of using a poor match. Prefer the science collections (bioart, bioicons, servier, scidraw) for biology; healthicons for clinical/public-health symbols; openmoji for generic emoji-style pictograms. Variants of one asset (asset_variants) are the same drawing in other colours. Every asset keeps its own license: credit it as its `credit` field says.\nAfter judging search results, use render_assets with the selected IDs to show an interactive gallery with previews, licenses, credits and download links. It also returns text for clients without UI support.\nlist_templates finds shared slide templates (whole slide layouts, not icons); they open in the BioCartoon editor, so point the user to a template by its title rather than rebuilding it.\n\nContributing artwork: when the library has nothing that fits, you may help the user make their own illustration (draw it as a clean, self-contained SVG, or generate an image if you can) and, if they want, submit it to the shared library with submit_artwork. Before submitting, show the user the image and the details you will send (title, description, tags, credit name, license, whether generative AI was used) and get their explicit go-ahead: they are licensing it to everyone. Generated images must be submitted with generative_ai_used=true and license CC0-1.0. Submissions wait for a human reviewer and join the catalog after the next publish; submission_status reports where they are.\nAdapting a library icon (\"like BA001505 but ...\"): read its markup with asset_svg and edit it, keeping its style. An adaptation must keep the original's license terms, so it may be submitted only when that license allows (asset_svg says): public-domain and CC0 originals, any way; CC BY, MIT and BSD originals only as CC-BY-4.0 by a person, without generative AI; ShareAlike originals not at all. Pass the original's id as derived_from; the user can always keep an adaptation for their own figure, crediting the original.",
+  "protocolVersion": "2025-06-18",
+  "serverInfo": {
+    "name": "biocartoon",
+    "version": "0.4.10"
+  },
+  "tools": [
+    {
+      "annotations": {
+        "destructiveHint": false,
+        "openWorldHint": false,
+        "readOnlyHint": true
+      },
+      "description": "Search the icon catalog. Returns the closest matches whether or not any truly fits: read each result's title, description, tags and matched_fields before using it (see the server instructions). Without a query, lists the most popular / first assets.",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "limit": {
+            "description": "Most results to return (default 12, max 60).",
+            "type": "integer"
+          },
+          "query": {
+            "description": "Words to look for (prefix match over title, tags, category, description).",
+            "type": "string"
+          },
+          "sort": {
+            "description": "Order of the returned set: relevance (default), az, za, popular.",
+            "type": "string"
+          },
+          "sources": {
+            "description": "Restrict to these collections: bioart, bioicons, servier, scidraw, healthicons, reactome, openmoji, user. Default: all.",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "tags": {
+            "description": "Keep only assets with one of these tags (a whole tag, any case). Default: any.",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          }
+        },
+        "required": [],
+        "type": "object"
+      },
+      "name": "search_assets"
+    },
+    {
+      "annotations": {
+        "destructiveHint": false,
+        "openWorldHint": false,
+        "readOnlyHint": true
+      },
+      "description": "Everything the catalog knows about one asset: description, tags, license, credit line, image URL and size.",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "description": "Asset id.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id"
+        ],
+        "type": "object"
+      },
+      "name": "get_asset"
+    },
+    {
+      "annotations": {
+        "destructiveHint": false,
+        "openWorldHint": false,
+        "readOnlyHint": true
+      },
+      "description": "The same drawing in its other colour schemes / styles (same source and title).",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "description": "Asset id.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id"
+        ],
+        "type": "object"
+      },
+      "name": "asset_variants"
+    },
+    {
+      "annotations": {
+        "destructiveHint": false,
+        "openWorldHint": false,
+        "readOnlyHint": true
+      },
+      "description": "Look at an asset: returns its catalog thumbnail when max_side is at most 256 and one is available, otherwise its original PNG (up to 2 MB). The free hosted endpoint does not resize images.",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "description": "Asset id.",
+            "type": "string"
+          },
+          "max_side": {
+            "description": "Longest side in pixels (default 512).",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id"
+        ],
+        "type": "object"
+      },
+      "name": "asset_image"
+    },
+    {
+      "annotations": {
+        "destructiveHint": false,
+        "openWorldHint": false,
+        "readOnlyHint": true
+      },
+      "description": "An asset's SVG markup, to adapt it (\"like this icon but ...\"): edit the markup rather than redrawing from scratch. Also says whether an adaptation may be submitted to the library under the asset's license. Servier and some uploads have no SVG; very detailed drawings are too large to edit as code (redraw from asset_image instead).",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "description": "Asset id.",
+            "type": "string"
+          },
+          "max_kb": {
+            "description": "Largest markup to return, in kilobytes (default 150, max 500).",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id"
+        ],
+        "type": "object"
+      },
+      "name": "asset_svg"
+    },
+    {
+      "annotations": {
+        "destructiveHint": false,
+        "openWorldHint": false,
+        "readOnlyHint": true
+      },
+      "description": "Look at up to 12 catalog previews with asset IDs, titles, collections, licenses and credits. Uses published thumbnails where available. Use render_assets to show selected icons in the interactive gallery.",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "ids": {
+            "description": "Asset ids, in the order to show them (at most 12).",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "ids"
+        ],
+        "type": "object"
+      },
+      "name": "preview_assets"
+    },
+    {
+      "_meta": {
+        "openai/toolInvocation/invoked": "Illustrations ready",
+        "openai/toolInvocation/invoking": "Loading illustrations…",
+        "ui": {
+          "resourceUri": "ui://biocartoon/icon-gallery-v1.html"
+        }
+      },
+      "annotations": {
+        "destructiveHint": false,
+        "openWorldHint": false,
+        "readOnlyHint": true
+      },
+      "description": "Show selected icons in an interactive gallery with previews, licenses, credit lines and PNG/SVG downloads. First call search_assets and judge which results fit, then pass up to 12 selected IDs. Returns usable text and links in clients without app UI.",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "ids": {
+            "description": "Selected asset IDs, in display order.",
+            "items": {
+              "minLength": 1,
+              "type": "string"
+            },
+            "maxItems": 12,
+            "minItems": 1,
+            "type": "array",
+            "uniqueItems": true
+          }
+        },
+        "required": [
+          "ids"
+        ],
+        "type": "object"
+      },
+      "name": "render_assets"
+    },
+    {
+      "annotations": {
+        "destructiveHint": false,
+        "openWorldHint": false,
+        "readOnlyHint": true
+      },
+      "description": "Page through a collection, optionally one category (see list_categories).",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "category": {
+            "description": "Category name.",
+            "type": "string"
+          },
+          "limit": {
+            "description": "Page size (default 40, max 200).",
+            "type": "integer"
+          },
+          "offset": {
+            "description": "Skip this many.",
+            "type": "integer"
+          },
+          "source": {
+            "description": "Collection id.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "source"
+        ],
+        "type": "object"
+      },
+      "name": "browse_assets"
+    },
+    {
+      "annotations": {
+        "destructiveHint": false,
+        "openWorldHint": false,
+        "readOnlyHint": true
+      },
+      "description": "The collections in the catalog with their sizes and licenses.",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {},
+        "required": [],
+        "type": "object"
+      },
+      "name": "list_sources"
+    },
+    {
+      "annotations": {
+        "destructiveHint": false,
+        "openWorldHint": false,
+        "readOnlyHint": true
+      },
+      "description": "A collection's categories with counts.",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "source": {
+            "description": "Collection id.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "source"
+        ],
+        "type": "object"
+      },
+      "name": "list_categories"
+    },
+    {
+      "annotations": {
+        "destructiveHint": false,
+        "openWorldHint": false,
+        "readOnlyHint": true
+      },
+      "description": "Run one read-only SQL statement (SQLite) against the catalog, e.g. to count, group or search with your own conditions. See db_schema first. Rows are capped.",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "max_rows": {
+            "description": "Row cap (default 100, max 1000).",
+            "type": "integer"
+          },
+          "sql": {
+            "description": "A SELECT / WITH statement.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "sql"
+        ],
+        "type": "object"
+      },
+      "name": "sql_query"
+    },
+    {
+      "annotations": {
+        "destructiveHint": false,
+        "openWorldHint": false,
+        "readOnlyHint": true
+      },
+      "description": "The catalog's tables and indexes, with notes on full-text search.",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {},
+        "required": [],
+        "type": "object"
+      },
+      "name": "db_schema"
+    },
+    {
+      "annotations": {
+        "destructiveHint": false,
+        "openWorldHint": false,
+        "readOnlyHint": true
+      },
+      "description": "Shared slide templates (whole slide layouts users published from the BioCartoon editor), newest first. Optional word filter.",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "query": {
+            "description": "Words that must appear in the title, description or category.",
+            "type": "string"
+          }
+        },
+        "required": [],
+        "type": "object"
+      },
+      "name": "list_templates"
+    },
+    {
+      "annotations": {
+        "destructiveHint": false,
+        "openWorldHint": false,
+        "readOnlyHint": true
+      },
+      "description": "The thumbnail of a shared template, to see its layout.",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "description": "Template id (from list_templates).",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id"
+        ],
+        "type": "object"
+      },
+      "name": "template_image"
+    },
+    {
+      "_meta": {
+        "openai/fileParams": [
+          "image"
+        ]
+      },
+      "annotations": {
+        "destructiveHint": false,
+        "idempotentHint": false,
+        "openWorldHint": true,
+        "readOnlyHint": false
+      },
+      "description": "Submit one illustration to the shared BioCartoon library. Give the image as exactly one of svg, image, image_url, image_base64 or file_path. It is held for review and published once a reviewer approves it; returns the submission id. Only call this after showing the user the image and these details and getting their go-ahead (rights_confirmed). The free hosted endpoint accepts PNG or SVG up to 2 MB. Convert or resize other image formats with the local biocartoon command before submitting.",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "category": {
+            "description": "Its category: a BioCartoon category slug (cells, cells.cell_types, lab_and_techniques.lab_equipment, ...) or free text.",
+            "type": "string"
+          },
+          "credit": {
+            "description": "The name to credit (the user's name or handle, as they choose). Default: anonymous. CC-BY-4.0 needs one.",
+            "type": "string"
+          },
+          "derived_from": {
+            "description": "The id of the library asset this is adapted from, if any (e.g. BA001505). Required for an adaptation: its license decides whether and how it may be submitted, and the original's credit line is added to the description.",
+            "type": "string"
+          },
+          "description": {
+            "description": "What it shows (up to 500 characters).",
+            "type": "string"
+          },
+          "email": {
+            "description": "Optional contact address for the reviewers (never published).",
+            "type": "string"
+          },
+          "file_path": {
+            "description": "Path of an image file on this computer (SVG, PNG, JPEG, WebP, GIF, BMP, TIFF).",
+            "type": "string"
+          },
+          "generative_ai_details": {
+            "description": "How generative AI was used, e.g. the model and what the user changed by hand (up to 500 characters).",
+            "type": "string"
+          },
+          "generative_ai_used": {
+            "description": "Whether generative AI made any part of it. True for anything you drew or generated.",
+            "type": "boolean"
+          },
+          "image": {
+            "description": "An image file from the conversation (ChatGPT passes generated or uploaded images this way).",
+            "properties": {
+              "download_url": {
+                "type": "string"
+              },
+              "file_id": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "download_url"
+            ],
+            "type": "object"
+          },
+          "image_base64": {
+            "description": "A PNG, JPEG, WebP or GIF, base64-encoded (a data: URL works too).",
+            "type": "string"
+          },
+          "image_url": {
+            "description": "An https URL the image can be downloaded from.",
+            "type": "string"
+          },
+          "license": {
+            "description": "CC0-1.0 (anyone may use it, no credit needed) or CC-BY-4.0 (credit required; only for artwork made without generative AI).",
+            "enum": [
+              "CC0-1.0",
+              "CC-BY-4.0"
+            ],
+            "type": "string"
+          },
+          "rights_confirmed": {
+            "description": "True only once the user has confirmed they may share this image under the license, and wants it submitted.",
+            "type": "boolean"
+          },
+          "svg": {
+            "description": "The illustration as SVG markup (one complete <svg> element with a viewBox; no scripts, external links or web fonts).",
+            "type": "string"
+          },
+          "tags": {
+            "description": "Words to find it by (up to 20, 40 characters each).",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "title": {
+            "description": "Name of the illustration, as people would search for it (up to 80 characters), e.g. \"Pyramidal neuron\".",
+            "type": "string"
+          }
+        },
+        "required": [
+          "title",
+          "license",
+          "generative_ai_used",
+          "rights_confirmed"
+        ],
+        "type": "object"
+      },
+      "name": "submit_artwork"
+    },
+    {
+      "annotations": {
+        "destructiveHint": false,
+        "openWorldHint": false,
+        "readOnlyHint": true
+      },
+      "description": "Where submissions are in review: pending, approved (it joins the catalog at the next publish) or rejected.",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "ids": {
+            "description": "Submission ids from submit_artwork.",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "ids"
+        ],
+        "type": "object"
+      },
+      "name": "submission_status"
+    }
+  ],
+  "resources": [
+    {
+      "description": "Compare illustrations, read their credits, and download PNG or SVG files.",
+      "mimeType": "text/html;profile=mcp-app",
+      "name": "BioCartoon icon gallery",
+      "uri": "ui://biocartoon/icon-gallery-v1.html"
+    }
+  ],
+  "synonyms": [
+    [
+      "mouse",
+      "mice",
+      "rat",
+      "rodent",
+      "hamster",
+      "guinea pig",
+      "gerbil"
+    ],
+    [
+      "drosophila",
+      "fruit fly"
+    ],
+    [
+      "nematode",
+      "elegans",
+      "roundworm"
+    ],
+    [
+      "zebrafish",
+      "danio"
+    ],
+    [
+      "frog",
+      "xenopus",
+      "toad",
+      "tadpole"
+    ],
+    [
+      "yeast",
+      "saccharomyces"
+    ],
+    [
+      "arabidopsis",
+      "thale cress"
+    ],
+    [
+      "monkey",
+      "macaque",
+      "primate",
+      "ape",
+      "chimpanzee",
+      "gorilla",
+      "baboon"
+    ],
+    [
+      "pig",
+      "swine",
+      "piglet",
+      "hog",
+      "porcine"
+    ],
+    [
+      "cow",
+      "cattle",
+      "bovine",
+      "calf",
+      "bull"
+    ],
+    [
+      "dog",
+      "canine",
+      "puppy"
+    ],
+    [
+      "cat",
+      "feline",
+      "kitten"
+    ],
+    [
+      "chicken",
+      "hen",
+      "rooster",
+      "poultry"
+    ],
+    [
+      "sheep",
+      "lamb",
+      "ovine"
+    ],
+    [
+      "horse",
+      "equine",
+      "pony"
+    ],
+    [
+      "bird",
+      "avian"
+    ],
+    [
+      "bacteria",
+      "bacterium",
+      "bacterial",
+      "microbe",
+      "germ",
+      "prokaryote"
+    ],
+    [
+      "virus",
+      "viral",
+      "virion"
+    ],
+    [
+      "phage",
+      "bacteriophage"
+    ],
+    [
+      "fungus",
+      "fungi",
+      "fungal",
+      "mold",
+      "mould"
+    ],
+    [
+      "antibody",
+      "immunoglobulin",
+      "igg",
+      "igm",
+      "iga",
+      "ige"
+    ],
+    [
+      "erythrocyte",
+      "rbc",
+      "red blood cell"
+    ],
+    [
+      "leukocyte",
+      "wbc",
+      "white blood cell"
+    ],
+    [
+      "platelet",
+      "thrombocyte"
+    ],
+    [
+      "vaccine",
+      "vaccination",
+      "immunization",
+      "immunisation"
+    ],
+    [
+      "neuron",
+      "neurone",
+      "nerve cell"
+    ],
+    [
+      "brain",
+      "cerebral",
+      "cerebrum"
+    ],
+    [
+      "heart",
+      "cardiac"
+    ],
+    [
+      "kidney",
+      "renal"
+    ],
+    [
+      "liver",
+      "hepatic"
+    ],
+    [
+      "lung",
+      "pulmonary"
+    ],
+    [
+      "stomach",
+      "gastric"
+    ],
+    [
+      "intestine",
+      "intestinal",
+      "gut",
+      "bowel"
+    ],
+    [
+      "skin",
+      "dermal",
+      "epidermis",
+      "cutaneous"
+    ],
+    [
+      "bone",
+      "skeleton",
+      "skeletal"
+    ],
+    [
+      "tooth",
+      "teeth",
+      "dental"
+    ],
+    [
+      "eye",
+      "ocular",
+      "eyeball"
+    ],
+    [
+      "artery",
+      "arterial"
+    ],
+    [
+      "vein",
+      "venous"
+    ],
+    [
+      "sperm",
+      "spermatozoon",
+      "spermatozoa"
+    ],
+    [
+      "oocyte",
+      "ovum",
+      "egg cell"
+    ],
+    [
+      "embryo",
+      "fetus",
+      "foetus"
+    ],
+    [
+      "tumor",
+      "tumour",
+      "cancer",
+      "carcinoma",
+      "neoplasm",
+      "malignancy"
+    ],
+    [
+      "pill",
+      "tablet",
+      "capsule"
+    ],
+    [
+      "syringe",
+      "needle",
+      "injection"
+    ],
+    [
+      "doctor",
+      "physician",
+      "clinician",
+      "medic"
+    ],
+    [
+      "hospital",
+      "clinic"
+    ],
+    [
+      "mitochondria",
+      "mitochondrion",
+      "mitochondrial"
+    ],
+    [
+      "mrna",
+      "messenger rna"
+    ],
+    [
+      "dna",
+      "deoxyribonucleic",
+      "double helix"
+    ],
+    [
+      "pipette",
+      "micropipette",
+      "pipettor"
+    ],
+    [
+      "eppendorf",
+      "microcentrifuge tube",
+      "microtube"
+    ],
+    [
+      "petri",
+      "culture dish",
+      "agar plate"
+    ],
+    [
+      "flask",
+      "erlenmeyer"
+    ],
+    [
+      "microscope",
+      "microscopy"
+    ],
+    [
+      "centrifuge",
+      "centrifugation"
+    ],
+    [
+      "scientist",
+      "researcher"
+    ],
+    [
+      "baby",
+      "infant",
+      "newborn"
+    ],
+    [
+      "child",
+      "children",
+      "kid"
+    ],
+    [
+      "computer",
+      "laptop",
+      "pc"
+    ],
+    [
+      "graph",
+      "chart",
+      "plot"
+    ]
+  ]
+}

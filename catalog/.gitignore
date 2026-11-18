@@ -1,2 +1,4 @@
 target/
 dist/
+!ui/dist/
+!ui/dist/gallery.html

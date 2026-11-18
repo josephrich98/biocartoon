@@ -1,7 +1,7 @@
 {
   "name": "biocartoon",
-  "version": "0.4.9",
-  "description": "BioCartoon skills: search about 20,000 open-licensed scientific illustrations, preview and download them with their credit lines, and draw and submit new ones to the shared library.",
+  "version": "0.4.10",
+  "description": "Search open-licensed scientific illustrations, compare previews, download PNG/SVG files with credit lines, and contribute new artwork to BioCartoon.",
   "author": {
     "name": "Joseph Rich",
     "url": "https://github.com/josephrich98"
@@ -9,20 +9,30 @@
   "homepage": "https://www.biocartoon.com",
   "repository": "https://github.com/josephrich98/biocartoon",
   "license": "BSD-2-Clause",
-  "keywords": ["biology", "illustration", "icons", "scientific figures", "mcp"],
+  "keywords": [
+    "biology",
+    "illustration",
+    "icons",
+    "scientific figures",
+    "mcp"
+  ],
   "skills": "./catalog/skills/",
   "interface": {
     "displayName": "BioCartoon",
-    "shortDescription": "Find and contribute scientific illustrations",
-    "longDescription": "Search the BioCartoon library of open-licensed biology illustrations, download them with their credit lines, and draw and submit new ones.",
+    "shortDescription": "Open science illustrations",
+    "longDescription": "Search the BioCartoon library, compare illustrations in an interactive gallery, download PNG/SVG files with their credit lines, and create and contribute artwork.",
     "developerName": "Joseph Rich",
     "category": "Productivity",
-    "capabilities": ["Instructions"],
+    "capabilities": [
+      "Instructions",
+      "Interactive"
+    ],
     "websiteURL": "https://www.biocartoon.com",
     "defaultPrompt": [
       "Find an illustration of a pyramidal neuron for my figure.",
       "Draw a BioCartoon-style icon of a ribosome and submit it.",
       "Which CC0 icons of mitochondria are there?"
     ]
-  }
+  },
+  "mcpServers": "./.mcp.json"
 }

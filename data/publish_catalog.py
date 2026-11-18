@@ -313,6 +313,7 @@ def main():
                     help="the submit Worker, whose /stars/all gives the star counts")
     ap.add_argument("--no-stars", action="store_true", help="leave star counts as they are in --db")
     ap.add_argument("--no-backup", action="store_true", help="skip the R2 backup of the master after publishing")
+    ap.add_argument("--no-mcp", action="store_true", help="skip incrementally updating the hosted MCP catalog in D1")
     a = ap.parse_args()
     if not a.bucket and not a.dry_run:
         sys.exit("set R2_BUCKET or pass --bucket")
@@ -393,6 +394,14 @@ def main():
             print(f"published r2://{a.bucket}/catalog/ ({', '.join(sent)})")
         write_local(live)
         readme_stats.update(tmp / "assets.sqlite", templates_db=tmp / "templates.sqlite")
+        if not a.no_mcp:
+            try:
+                from sync_mcp_catalog import sync
+                print(f"MCP catalog: {sync(DATA / 'catalog')}")
+            except Exception as e:
+                # R2 publication succeeded; retain it and its backup even if D1's daily free
+                # allowance is exhausted. The same incremental sync can be retried later.
+                print(f"warning: MCP catalog sync failed: {e}; retry python3 data/sync_mcp_catalog.py")
         if not a.no_backup:
             from backup_db import backup
             from config import R2_BACKUP_BUCKET

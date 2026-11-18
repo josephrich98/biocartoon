@@ -51,6 +51,12 @@ the collection it came from, so each one used must be credited as its `credit` f
    - its license
    - a preview (the image from `preview_assets`, or the `thumb_url`)
 
+   When `render_assets` is available, call it with the IDs of the candidates you judged suitable.
+   It opens an interactive gallery with previews, license labels, credit lines, PNG/SVG links,
+   collection search and colour variants. Search and judge first; do not display weak matches as
+   recommendations. Keep using `preview_assets` to inspect ambiguous drawings yourself. Clients
+   without app UI still receive the selected records and download links as text.
+
    If the user wants a colour that one drawing doesn't come in, mention its colour variants. If they want
    an icon changed ("like this but ..."), use the `biocartoon-create-icon` skill to adapt it.
 

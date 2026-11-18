@@ -1,23 +1,16 @@
-// The hosted MCP server at mcp.biocartoon.com (src/mcp.ts): the `biocartoon` binary from catalog/Dockerfile
-// in a Cloudflare Container. Building the image needs Docker running; Containers need the Workers Paid plan.
-//   npx wrangler secret put MCP_TOKEN -c wrangler.mcp.jsonc   (and the same value on biocartoon-submit)
-//   npm run deploy:mcp
+// Stateless MCP + interactive gallery on Workers Free. No Containers or Durable Objects.
+// Confirm Workers Free before remote import/deployment; the free plan hard-stops at quotas.
+// The public catalog is isolated from the existing private submissions/account database.
 {
   "name": "biocartoon-mcp",
   "main": "src/mcp.ts",
   "compatibility_date": "2026-10-01",
   "routes": [{ "pattern": "mcp.biocartoon.com", "custom_domain": true }],
   "workers_dev": false,
-  "containers": [
-    {
-      "class_name": "McpServer",
-      "image": "../catalog/Dockerfile",
-      "instance_type": "basic",
-      "max_instances": 4
-    }
-  ],
-  "durable_objects": {
-    "bindings": [{ "name": "MCP_SERVER", "class_name": "McpServer" }]
-  },
-  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["McpServer"] }]
+  "rules": [{ "type": "Text", "globs": ["**/*.html"], "fallthrough": true }],
+  "d1_databases": [{
+    "binding": "CATALOG", "database_name": "biocartoon-catalog",
+    "database_id": "42877efa-f7d5-4f61-b829-3637ddace9aa"
+  }],
+  "services": [{ "binding": "SUBMISSIONS", "service": "biocartoon-submit" }]
 }

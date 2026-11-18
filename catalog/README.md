@@ -11,6 +11,13 @@ into a single database with a graphical interface for search and figure generati
 This package is the `biocartoon` command-line interface and MCP server, which search and download
 the database from a shell, a script, or an assistant such as Claude.
 
+The MCP server also serves an optional interactive icon gallery (`render_assets`) in MCP Apps
+hosts, with previews, licenses, credit lines and PNG/SVG links. Other clients receive text results.
+The embedded HTML in `ui/dist/gallery.html` is committed so Cargo and PyPI builds need no Node
+toolchain. To change the gallery, run `npm ci && npm run typecheck && npm run build` in `ui/`,
+then commit the regenerated HTML with its source. See the repository README for plugin packaging,
+browser tests and hosted deployment.
+
 ## Usage
 
 Web application: [app.biocartoon.com](https://app.biocartoon.com)
