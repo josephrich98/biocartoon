@@ -2,7 +2,7 @@
 use crate::mcp;
 use serde_json::{json, Value};
 
-pub const URI: &str = "ui://biocartoon/icon-gallery-v1.html";
+pub const URI: &str = "ui://biocartoon/icon-gallery-v2.html";
 const MIME: &str = "text/html;profile=mcp-app";
 
 pub fn descriptor() -> Value {

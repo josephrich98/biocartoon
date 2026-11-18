@@ -87,6 +87,10 @@ ChatGPT, Claude or a coding agent. Without leaving the conversation, you can:
   (ChatGPT), refine it with you, and submit it to the shared library
 - adapt an existing icon ("like BA001505, but with the nucleus in blue"): the assistant reads the
   icon's SVG and edits it
+- make a whole figure ("a schematic of antigen presentation to T cells"): the server picks an icon for
+  each element and lays them out with labels, arrows and a title (`compose_figure`). Elements with no
+  fitting icon become labelled boxes. You get a preview, SVG/PNG downloads, the credit lines, and a link
+  that opens the figure in the BioCartoon editor as your own editable copy
 
 Submissions are held for review like any other upload.
 
@@ -94,13 +98,18 @@ The hosted server is `https://mcp.biocartoon.com/mcp` (Streamable HTTP, no sign-
 It runs on Cloudflare Workers Free with a separate public D1 catalog; it needs no Container
 or paid-plan upgrade. See [Plugin development and deployment](#plugin-development-and-deployment).
 
-The plugin bundles the three skills and this MCP connection. In hosts supporting MCP Apps,
-the assistant can show selected icons in an interactive gallery with license labels,
-credit lines, PNG/SVG download links, collection search and colour variants. Selecting an
-icon makes its ID and credit available to the assistant. Clients without app UI still
-receive the same selected records and links as text.
+The plugin bundles the four skills and this MCP connection. In hosts supporting MCP Apps,
+the assistant shows icons, templates and composed figures in an interactive gallery. It has
+a search bar with sort and filters (database, author, category, license, file type, tags,
+artwork type). Each card offers **Edit**, which sends your change request to the assistant,
+**Download** (SVG or PNG), **Open in BioCartoon**, and a credit and license dropdown with a
+copy button. Clients without app UI still get the same records and links as text.
 
-**ChatGPT**: the portable plugin package bundles both skills and the MCP App connection;
+Editor links are share links (`app.biocartoon.com/#share=...`). The MCP server encrypts the
+project, and the decryption key is only in the link's fragment. Links from all MCP users
+share one allowance on the submissions Worker (`X-MCP-Token`).
+
+**ChatGPT**: the portable plugin package bundles the skills and the MCP App connection;
 an installed package needs no separate connector. To test just the server URL manually,
 use developer mode (under Apps / Connectors > Advanced):
 - Create a connector with the MCP server URL `https://mcp.biocartoon.com/mcp` and no authentication.
@@ -215,7 +224,7 @@ python3 scripts/package_plugin.py
 ```
 
 The gallery uses the standard MCP Apps bridge and ships as an embedded, self-contained
-HTML resource (`ui://biocartoon/icon-gallery-v1.html`). `search_assets` remains a data tool;
+HTML resource (`ui://biocartoon/icon-gallery-v2.html`). `search_assets` remains a data tool;
 after judging results, the assistant calls `render_assets` with selected IDs. The gallery
 can call the same search and variant tools without opening another widget. Its only external
 image origin is `https://assets.biocartoon.com`; it does not contact the API directly.

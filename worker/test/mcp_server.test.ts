@@ -90,7 +90,9 @@ test("MCP keeps all tools and gallery resources in the plugin contract, with val
     const init = await (await call({ jsonrpc: "2.0", id: 1, method: "initialize", params: {} })).json() as any;
     assert.equal(init.result.capabilities.resources.subscribe, false);
     const tools = await (await call({ jsonrpc: "2.0", id: 2, method: "tools/list" })).json() as any;
-    assert.equal(tools.result.tools.length, 16);
+    assert.equal(tools.result.tools.length, 19);
+    for (const name of ["compose_figure", "open_in_biocartoon", "export_figure"]) assert.ok(tools.result.tools.some((t: any) => t.name === name), name);
+    assert.equal(tools.result.tools.find((t: any) => t.name === "compose_figure")._meta.ui.resourceUri, tools.result.tools.find((t: any) => t.name === "render_assets")._meta.ui.resourceUri);
     assert.equal('file_path' in tools.result.tools.find((t: any) => t.name === 'submit_artwork').inputSchema.properties, false);
     const render = tools.result.tools.find((t: any) => t.name === "render_assets");
     const ui = await (await call({ jsonrpc: "2.0", id: 3, method: "resources/read", params: { uri: render._meta.ui.resourceUri } })).json() as any;

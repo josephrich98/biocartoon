@@ -67,7 +67,7 @@ export default {
       if (id !== undefined && !shares.validShareId(id)) return accounts.cors(req, json({ error: "This share link isn't valid" }, 400), env);
       const route = `${req.method} ${version !== undefined ? "/shares/:id/:version" : id !== undefined ? "/shares/:id" : "/shares"}`;
       const handler: Record<string, () => Promise<Response>> = {
-        "POST /shares": () => shares.create(req, env),
+        "POST /shares": async () => shares.create(req, env, await viaMcp(req, env)),
         "GET /shares/:id": () => shares.info(id!, env),
         "GET /shares/:id/:version": () => shares.download(id!, version!, env),
         "PUT /shares/:id": () => shares.update(req, id!, env),

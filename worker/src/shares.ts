@@ -20,7 +20,7 @@ import type { Env } from "./env.ts";
 import { json, sha256Hex } from "./http.ts";
 import {
   MAX_ACTIVE_SHARE_BYTES_GUEST, MAX_ACTIVE_SHARE_BYTES_USER, MAX_ACTIVE_SHARES_GUEST, MAX_ACTIVE_SHARES_USER, MAX_NEW_SHARES_PER_IP_PER_DAY, MAX_SHARE_BYTES,
-  MAX_SHARE_VERSIONS, SHARE_IDLE_DAYS,
+  MAX_SHARE_VERSIONS, SHARE_IDLE_DAYS, MAX_SHARE_BYTES_VIA_MCP, MAX_NEW_SHARES_PER_DAY_VIA_MCP, MAX_ACTIVE_SHARES_VIA_MCP, MAX_ACTIVE_SHARE_BYTES_VIA_MCP,
 } from "./limits.ts";
 import { Rejected } from "./text.ts";
 
@@ -61,10 +61,10 @@ interface Share {
   last_used: string;
 }
 
-async function body(req: Request): Promise<Uint8Array> {
+async function body(req: Request, max = MAX_SHARE_BYTES): Promise<Uint8Array> {
   const length = Number(req.headers.get("content-length"));
   if (!length) throw new Rejected("Content-Length is required", 411);
-  if (length > MAX_SHARE_BYTES) throw new Rejected(`This project is over ${MAX_SHARE_BYTES >> 20} MB, too large to share`, 413);
+  if (length > max) throw new Rejected(`This project is over ${max >> 20} MB, too large to share`, 413);
   const b = new Uint8Array(await req.arrayBuffer());
   if (b.length !== length) throw new Rejected("The upload was cut short", 400);
   if (b.length < 4 + 12 + 16 || MAGIC.some((m, i) => b[i] !== m)) throw new Rejected("Expected an encrypted BioCartoon project", 400);
@@ -97,12 +97,15 @@ function newShareId(): string {
   return btoa(String.fromCharCode(...b)).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
 }
 
-export async function create(req: Request, env: Env): Promise<Response> {
+/** `mcp`: made by the hosted MCP server for its users (an editor link for a composed figure). They all
+ *  come from one address and none signs in, so they share one allowance of their own (the ip_hash
+ *  "mcp"), with a smaller size limit since such projects only reference catalog pictures. */
+export async function create(req: Request, env: Env, mcp = false): Promise<Response> {
   const edit = req.headers.get("x-share-edit");
   const owner = req.headers.get("x-share-owner");
   if (!validSecret(edit) || !validSecret(owner) || edit === owner) throw new Rejected("x-share-edit and x-share-owner must be two random secrets", 400);
-  const userId = await optionalUser(req, env);
-  const ipHash = (await sha256Hex(`${env.IP_SALT ?? "biocartoon"}:${req.headers.get("cf-connecting-ip") ?? "?"}`)).slice(0, 32);
+  const userId = mcp ? null : await optionalUser(req, env);
+  const ipHash = mcp ? "mcp" : (await sha256Hex(`${env.IP_SALT ?? "biocartoon"}:${req.headers.get("cf-connecting-ip") ?? "?"}`)).slice(0, 32);
   const dayAgo = iso(Date.now() - 86_400_000);
   const [recent, active] = await env.DB.batch<{ n: number; bytes: number }>([
     env.DB.prepare("SELECT count(*) AS n, 0 AS bytes FROM shares WHERE ip_hash = ?1 AND created_at > ?2").bind(ipHash, dayAgo),
@@ -110,12 +113,12 @@ export async function create(req: Request, env: Env): Promise<Response> {
       ? env.DB.prepare("SELECT count(*) AS n, coalesce(sum(bytes), 0) AS bytes FROM shares WHERE user_id = ?1").bind(userId)
       : env.DB.prepare("SELECT count(*) AS n, coalesce(sum(bytes), 0) AS bytes FROM shares WHERE ip_hash = ?1 AND user_id IS NULL").bind(ipHash),
   ]);
-  if ((recent.results[0]?.n ?? 0) >= MAX_NEW_SHARES_PER_IP_PER_DAY) throw new Rejected("Too many new share links today; please try again tomorrow", 429);
-  const [maxCount, maxBytes] = userId ? [MAX_ACTIVE_SHARES_USER, MAX_ACTIVE_SHARE_BYTES_USER] : [MAX_ACTIVE_SHARES_GUEST, MAX_ACTIVE_SHARE_BYTES_GUEST];
+  if ((recent.results[0]?.n ?? 0) >= (mcp ? MAX_NEW_SHARES_PER_DAY_VIA_MCP : MAX_NEW_SHARES_PER_IP_PER_DAY)) throw new Rejected("Too many new share links today; please try again tomorrow", 429);
+  const [maxCount, maxBytes] = mcp ? [MAX_ACTIVE_SHARES_VIA_MCP, MAX_ACTIVE_SHARE_BYTES_VIA_MCP] : userId ? [MAX_ACTIVE_SHARES_USER, MAX_ACTIVE_SHARE_BYTES_USER] : [MAX_ACTIVE_SHARES_GUEST, MAX_ACTIVE_SHARE_BYTES_GUEST];
   const a = active.results[0] ?? { n: 0, bytes: 0 };
-  if (a.n >= maxCount) throw new Rejected(`Limit reached: ${maxCount} share links at once. Turn off sharing for some projects first${userId ? "" : ", or sign in for more"}.`, 413);
-  const b = await body(req);
-  if (a.bytes + b.length > maxBytes) throw new Rejected(`Your share links hold ${maxBytes >> 20} MB already. Turn off sharing for some projects first${userId ? "" : ", or sign in for more"}.`, 413);
+  if (a.n >= maxCount) throw new Rejected(mcp ? "Too many editor links are open at once; please try again later" : `Limit reached: ${maxCount} share links at once. Turn off sharing for some projects first${userId ? "" : ", or sign in for more"}.`, 413);
+  const b = await body(req, mcp ? MAX_SHARE_BYTES_VIA_MCP : MAX_SHARE_BYTES);
+  if (a.bytes + b.length > maxBytes) throw new Rejected(mcp ? "Editor links are using all their space; please try again later" : `Your share links hold ${maxBytes >> 20} MB already. Turn off sharing for some projects first${userId ? "" : ", or sign in for more"}.`, 413);
   const id = newShareId();
   const t = now();
   const blob = blobKey(id, 1);

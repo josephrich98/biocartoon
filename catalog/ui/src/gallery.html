@@ -5,26 +5,152 @@
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>BioCartoon illustrations</title>
 <style>
-:root{color-scheme:light dark;--bg:#fffefa;--panel:#fff;--ink:#253c34;--muted:#68746c;--line:#e4e8df;--accent:#285b45;--wash:#edf4e9;font-family:var(--font-sans,system-ui,-apple-system,sans-serif);font-size:14px}
-:root[data-theme=dark]{--bg:#18221d;--panel:#202e26;--ink:#e4ede4;--muted:#a8b8ac;--line:#38483d;--accent:#afd0a8;--wash:#2d4031}
-@media(prefers-color-scheme:dark){:root:not([data-theme=light]){--bg:#18221d;--panel:#202e26;--ink:#e4ede4;--muted:#a8b8ac;--line:#38483d;--accent:#afd0a8;--wash:#2d4031}}
-*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink)}main{padding:22px;max-width:1050px;margin:auto}header{display:flex;align-items:center;justify-content:space-between;gap:16px;margin-bottom:20px}h1{font-size:22px;letter-spacing:-.7px;margin:0}header p{margin:4px 0 0;color:var(--muted);font-size:12px}.eyebrow{display:block;color:var(--accent);font-weight:650;font-size:10px;letter-spacing:1.4px;text-transform:uppercase;margin-bottom:5px}a{color:var(--accent)}button,input,select{font:inherit}button,a,input,select{outline-offset:3px}button,.link{border:1px solid var(--line);border-radius:8px;padding:8px 11px;background:var(--panel);color:var(--ink);cursor:pointer;text-decoration:none;font-size:12px;font-weight:550}button:hover,.link:hover{border-color:var(--accent);background:var(--wash)}button:disabled{opacity:.5;cursor:wait}form{display:flex;gap:8px;margin-bottom:13px}input,select{background:var(--panel);color:var(--ink);border:1px solid var(--line);border-radius:9px;padding:10px;min-width:0}input{flex:1}select{max-width:160px}form button{background:var(--accent);color:var(--bg);border-color:var(--accent);font-size:13px}form button:hover{background:var(--accent);opacity:.9}#status{color:var(--muted);font-size:12px;margin:0 0 14px;min-height:18px}#error{color:light-dark(#9a3428,#ffb0a3);background:var(--wash);border-radius:8px;padding:12px;margin-bottom:14px}.grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px}.card{border:1px solid var(--line);border-radius:12px;overflow:hidden;background:var(--panel);display:flex;flex-direction:column}.card.selected{border-color:var(--accent);box-shadow:0 0 0 1px var(--accent)}.preview{border:0;border-radius:0;width:100%;background:#f5f6f0;color:#253c34;min-height:155px;display:grid;place-items:center;padding:18px}.preview:hover{background:#edf1e7}.preview img{width:100%;height:125px;object-fit:contain}.info{padding:12px;display:flex;flex-direction:column;gap:8px;flex:1}.title{font-size:13px;font-weight:650;margin:0;line-height:1.4}.meta{display:flex;align-items:center;justify-content:space-between;gap:5px;font-size:10px;color:var(--muted)}.license{border-radius:4px;background:var(--wash);color:var(--accent);padding:3px 5px}.actions{display:flex;gap:6px;flex-wrap:wrap;margin-top:auto}.actions a{font-size:11px;padding:6px 9px}details{font-size:11px;color:var(--muted);line-height:1.5}summary{cursor:pointer}details p{overflow-wrap:anywhere}.credit-button{font-size:11px;padding:5px 8px}.empty{grid-column:1/-1;padding:45px 20px;text-align:center;color:var(--muted);border:1px dashed var(--line);border-radius:12px}#selection{margin-top:16px;padding:14px;border:1px solid var(--line);border-radius:10px;background:var(--wash)}#selection h2{font-size:14px;margin:0 0 8px}#selection p{font-size:12px;line-height:1.5;overflow-wrap:anywhere}#selection .actions{margin-top:10px}footer{font-size:10px;color:var(--muted);margin-top:16px;line-height:1.5}label.sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}[hidden]{display:none!important}
-@media(max-width:580px){main{padding:16px}.grid{grid-template-columns:repeat(2,minmax(0,1fr))}header{align-items:flex-start}header .link{font-size:11px}form{flex-wrap:wrap}input{flex-basis:100%}select{flex:1;max-width:none}.preview{min-height:135px}.preview img{height:105px}}
-@media(max-width:330px){.grid{grid-template-columns:1fr}}
+:root{color-scheme:light dark;
+  --bg:#f6f6f4;--panel:#ffffff;--card:#ffffff;--well:#f1f1ee;--ink:#18181b;--muted:#5f6368;--line:#e2e2de;--field:#ffffff;--field-line:#d6d6d1;
+  --orange:#FF6C0C;--orange-ink:#1a0d03;--orange-soft:#ffe6d6;--orange-text:#c24d00;--scrim:rgba(24,24,27,.55);--shadow:0 1px 2px rgba(0,0,0,.06),0 6px 18px rgba(0,0,0,.06);
+  font-family:var(--font-sans,Inter,system-ui,-apple-system,"Segoe UI",sans-serif);font-size:14px}
+:root[data-theme=dark]{--bg:#0f0f10;--panel:#1c1c1e;--card:#0b0b0c;--well:#f4f4f2;--ink:#f2f2f3;--muted:#a1a1aa;--line:#2e2e32;--field:#26262a;--field-line:#3a3a3f;--orange:#FF6C0C;--orange-ink:#1a0d03;--orange-soft:#3a2010;--orange-text:#ff8a3d;--scrim:rgba(0,0,0,.6);--shadow:none}
+@media(prefers-color-scheme:dark){:root:not([data-theme=light]){--bg:#0f0f10;--panel:#1c1c1e;--card:#0b0b0c;--well:#f4f4f2;--ink:#f2f2f3;--muted:#a1a1aa;--line:#2e2e32;--field:#26262a;--field-line:#3a3a3f;--orange:#FF6C0C;--orange-ink:#1a0d03;--orange-soft:#3a2010;--orange-text:#ff8a3d;--scrim:rgba(0,0,0,.6);--shadow:none}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink)}
+main{padding:18px 18px 22px;max-width:1100px;margin:auto}
+button,input,select,textarea{font:inherit;color:inherit}
+:focus-visible{outline:2px solid var(--orange);outline-offset:2px}
+.sr-only{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
+svg.i{width:18px;height:18px;flex:none;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+
+/* Header: logo, name, Open BioCartoon */
+header{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:14px}
+.brand{display:flex;align-items:center;gap:10px;min-width:0}
+.brand svg{width:34px;height:34px;flex:none}
+.brand h1{font-size:21px;font-weight:700;letter-spacing:-.4px;margin:0}
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:7px;border:1px solid var(--field-line);background:var(--field);border-radius:10px;padding:8px 13px;cursor:pointer;font-weight:600;font-size:13px;white-space:nowrap;text-decoration:none;color:var(--ink)}
+.btn:hover{border-color:var(--muted)}
+.btn:disabled{opacity:.5;cursor:default}
+.btn.orange{background:var(--orange);border-color:var(--orange);color:var(--orange-ink)}
+.btn.orange:hover{filter:brightness(1.06)}
+
+/* Search row: the editor's search field, then sort, filter, search */
+#search{display:flex;align-items:center;gap:8px;flex-wrap:nowrap}
+.field{flex:1;min-width:0;display:flex;align-items:center;gap:8px;background:var(--field);border:1px solid var(--field-line);border-radius:12px;padding:0 12px;height:42px;color:var(--muted)}
+.field:focus-within{border-color:var(--orange)}
+.field input{flex:1;min-width:0;border:0;background:transparent;outline:0;font-size:15px;color:var(--ink);height:100%}
+.field input::-webkit-search-cancel-button{cursor:pointer}
+select{background:var(--field);border:1px solid var(--field-line);border-radius:9px;padding:8px 28px 8px 10px;appearance:none;-webkit-appearance:none;cursor:pointer;
+  background-image:linear-gradient(45deg,transparent 50%,currentColor 50%),linear-gradient(135deg,currentColor 50%,transparent 50%);background-position:calc(100% - 15px) 52%,calc(100% - 10px) 52%;background-size:5px 5px;background-repeat:no-repeat;min-width:0}
+#filter-button[aria-expanded=true],#filter-button.active{background:var(--orange);border-color:var(--orange);color:var(--orange-ink)}
+.count[hidden]{display:none}.count{display:inline-grid;place-items:center;min-width:18px;height:18px;border-radius:9px;background:rgba(0,0,0,.18);font-size:11px;padding:0 5px}
+
+/* Filter menu */
+#filters{margin-top:10px;background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:12px 14px;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:4px 26px;box-shadow:var(--shadow)}
+#filters[hidden]{display:none}
+.row{display:grid;grid-template-columns:118px minmax(0,1fr);align-items:center;gap:10px;min-height:40px}
+.row label{font-size:14px}
+.row select,.row input{width:100%}
+.row input{background:var(--field);border:1px solid var(--field-line);border-radius:9px;padding:8px 10px}
+.row input::placeholder{color:var(--muted)}
+.filters-foot{grid-column:1/-1;display:flex;justify-content:flex-end;gap:8px;padding-top:6px}
+
+#status{color:var(--muted);font-size:12px;margin:12px 2px 0;min-height:16px}
+#error{color:light-dark(#9a3428,#ffb4a6);background:var(--orange-soft);border-radius:10px;padding:10px 12px;margin-top:10px;font-size:13px}
+
+/* Result panels with a carousel of cards */
+.panel{background:var(--panel);border:1px solid var(--line);border-radius:18px;padding:18px 18px 20px;margin-top:14px;box-shadow:var(--shadow)}
+.panel h2{font-size:24px;letter-spacing:-.5px;margin:0 0 14px;font-weight:700}
+.panel p.note{color:var(--muted);font-size:12px;margin:-6px 0 12px;line-height:1.5}
+.carousel{position:relative}
+.track{display:grid;grid-auto-flow:column;grid-auto-columns:minmax(220px,calc((100% - 32px)/3));gap:16px;overflow-x:auto;scroll-snap-type:x mandatory;scrollbar-width:none;padding:2px 2px 4px;overscroll-behavior-x:contain}
+.track::-webkit-scrollbar{display:none}
+.nav{position:absolute;top:calc(var(--media-h,210px)/2 - 26px);width:52px;height:52px;border-radius:50%;border:0;background:#161618;color:#fff;display:grid;place-items:center;cursor:pointer;box-shadow:0 4px 14px rgba(0,0,0,.35);z-index:2}
+.nav svg.i{width:24px;height:24px;stroke-width:2.4}
+.nav.prev{left:-10px}.nav.next{right:-10px}
+.nav[hidden]{display:none}
+
+.card{scroll-snap-align:start;background:var(--card);border:1px solid var(--line);border-radius:14px;overflow:hidden;display:flex;flex-direction:column;min-width:0}
+.card.selected{border-color:var(--orange);box-shadow:0 0 0 1px var(--orange)}
+.media{position:relative;height:var(--media-h,210px);background:var(--well);display:grid;place-items:center;padding:16px;overflow:hidden}
+.media img{width:100%;height:100%;object-fit:contain;min-height:0}
+.media .missing{color:#555;font-size:12px}
+.overlay{position:absolute;inset:0;background:var(--scrim);display:flex;flex-direction:column;justify-content:center;gap:10px;padding:18px 22px;opacity:0;pointer-events:none;transition:opacity .12s}
+.card:hover .overlay,.card:focus-within .overlay,.card.open .overlay{opacity:1;pointer-events:auto}
+.overlay .btn{width:100%;padding:11px 12px;font-size:14px;border-radius:11px;background:rgba(22,22,24,.82);border-color:rgba(255,255,255,.28);color:#fff}
+.overlay .btn:hover{border-color:#fff}
+.overlay .btn.orange{background:var(--orange);border-color:var(--orange);color:var(--orange-ink)}
+.menu{display:none;gap:8px}
+.menu.show{display:flex}
+.menu .btn{flex:1}
+.media.editing .overlay{display:none}
+.composer{position:absolute;inset:0;background:var(--scrim);display:flex;flex-direction:column;justify-content:center;gap:8px;padding:14px;z-index:1}
+.composer textarea{width:100%;max-width:560px;margin:0 auto;height:min(118px,60%);resize:none;border-radius:10px;border:1px solid rgba(255,255,255,.35);background:rgba(15,15,16,.9);color:#fff;padding:10px 12px;font-size:13.5px;line-height:1.45}
+.composer textarea::placeholder{color:#c9c9cf}
+.composer div{display:flex;gap:8px;justify-content:flex-end;width:100%;max-width:560px;margin:0 auto}
+.composer .btn{background:rgba(22,22,24,.85);border-color:rgba(255,255,255,.3);color:#fff}
+.composer .btn.orange{background:var(--orange);border-color:var(--orange);color:var(--orange-ink)}
+.body{padding:14px 16px 14px;display:flex;flex-direction:column;gap:8px;flex:1}
+.title{font-size:18px;font-weight:700;line-height:1.25;margin:0;letter-spacing:-.2px;overflow-wrap:anywhere}
+.sub{font-size:12px;color:var(--muted)}
+details{font-size:12px;color:var(--muted)}
+summary{cursor:pointer;list-style:none;display:inline-flex;align-items:center;gap:6px;padding:4px 0;user-select:none}
+summary::-webkit-details-marker{display:none}
+summary::after{content:"";width:6px;height:6px;border-right:1.6px solid currentColor;border-bottom:1.6px solid currentColor;transform:rotate(45deg) translateY(-2px);transition:transform .12s}
+details[open] summary::after{transform:rotate(225deg) translateY(-1px)}
+.credit{display:flex;align-items:flex-start;gap:8px;margin-top:6px;background:var(--field);border:1px solid var(--line);border-radius:9px;padding:8px}
+.credit p{margin:0;flex:1;line-height:1.5;color:var(--ink);overflow-wrap:anywhere;user-select:text}
+.credit .chip{display:inline-block;font-size:10.5px;font-weight:700;padding:2px 6px;border-radius:5px;background:var(--orange-soft);color:var(--orange-text);margin-bottom:4px}
+.copy{flex:none;padding:5px 9px;font-size:12px;border-radius:7px}
+
+/* A composed figure gets the whole panel width */
+.figure-card{border-radius:16px}
+.figure-card .media{height:auto;aspect-ratio:var(--ratio,4/3);max-height:560px;padding:10px;background:#fff}
+.figure-card .media>svg{width:100%;height:100%;display:block}
+.figure-card .overlay{padding:0 26%}
+.figure-card .composer{padding:18px 20%}
+.gaps{font-size:12px;color:var(--muted);line-height:1.5}
+
+.empty{padding:36px 16px;text-align:center;color:var(--muted);border:1px dashed var(--line);border-radius:12px}
+footer{font-size:11px;color:var(--muted);margin-top:14px;line-height:1.5}
+
+@media(hover:none){.overlay{position:static;opacity:1;pointer-events:auto;background:transparent;flex-direction:row;flex-wrap:wrap;padding:10px 12px 0}
+  .overlay .btn{width:auto;flex:1;background:var(--field);border-color:var(--field-line);color:var(--ink);padding:8px;font-size:12.5px}
+  .overlay .btn.orange{color:var(--orange-ink)}.figure-card .overlay{padding:10px 12px 0}}
+@media(max-width:640px){main{padding:14px 12px}
+  #search{flex-wrap:wrap}.field{flex-basis:100%}#filter-button,#search-button{flex:1}
+  #filters{grid-template-columns:1fr}.row{grid-template-columns:100px minmax(0,1fr)}
+  .track{grid-auto-columns:78%}.panel{padding:14px 12px;border-radius:14px}.panel h2{font-size:20px}
+  .nav{display:none}.figure-card .overlay,.figure-card .composer{padding-left:14px;padding-right:14px}}
 </style>
 </head>
 <body>
 <main>
-  <header><div><span class="eyebrow">The open illustration library</span><h1>BioCartoon</h1><p>A little science. A clearer picture.</p></div><a class="link" href="https://app.biocartoon.com" target="_blank" rel="noopener noreferrer">Open BioCartoon ↗</a></header>
-  <form id="search" aria-label="Search illustrations">
-    <label class="sr-only" for="query">Search illustrations</label><input id="query" type="search" placeholder="Find a cell, organ, molecule…" maxlength="200" required>
-    <label class="sr-only" for="source">Collection</label><select id="source"><option value="">All collections</option value="user">BioCartoon</option><option value="bioart">NIH BioArt</option><option value="bioicons">Bioicons</option><option value="servier">Servier</option><option value="scidraw">SciDraw</option><option value="healthicons">Health Icons</option><option value="reactome">Reactome</option><option value="openmoji">OpenMoji</option></select>
-    <button id="search-button" disabled>Search</button>
+  <header>
+    <div class="brand"><!-- logo --><h1>BioCartoon</h1></div>
+    <a class="btn" id="open-app" href="https://app.biocartoon.com" target="_blank" rel="noopener noreferrer">Open BioCartoon <svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M14 4h6v6M20 4l-9 9M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5"/></svg></a>
+  </header>
+  <form id="search" role="search" aria-label="Search artwork">
+    <div class="field">
+      <svg class="i" viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+      <label class="sr-only" for="query">Search illustrations</label>
+      <input id="query" type="search" placeholder="Search artwork: cell, organ, molecule…" maxlength="200" autocomplete="off">
+    </div>
+    <button class="btn" id="filter-button" type="button" aria-expanded="false" aria-controls="filters">
+      <svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5h16l-6 7.5V19l-4 1.5v-8z"/></svg>Filters<span class="count" id="filter-count" hidden></span>
+    </button>
+    <button class="btn orange" id="search-button" disabled>Search</button>
   </form>
+  <section id="filters" aria-label="Filters" hidden>
+    <div class="row"><label for="f-source">Database</label><select id="f-source"><option value="">Any</option></select></div>
+    <div class="row"><label for="f-author">Author</label><input id="f-author" placeholder="Any (commas for several)" maxlength="120"></div>
+    <div class="row"><label for="f-category">Category</label><select id="f-category" disabled><option value="">Any</option></select></div>
+    <div class="row"><label for="f-license">License</label><select id="f-license"><option value="">Any</option></select></div>
+    <div class="row"><label for="f-type">File type</label><select id="f-type"><option value="">Any</option><option value="svg">SVG (vector)</option><option value="png">PNG only</option></select></div>
+    <div class="row"><label for="f-tags">Tags</label><input id="f-tags" placeholder="Any (commas for several)" maxlength="200"></div>
+    <div class="row"><label for="sort">Sort</label><select id="sort"><option value="">Relevance</option><option value="popular">Popular</option><option value="az">A–Z</option><option value="za">Z–A</option></select></div>
+    <div class="row"><label for="f-kind">Artwork type</label><select id="f-kind"><option value="both">Icons and templates</option><option value="icons">Icons</option><option value="templates">Templates</option></select></div>
+    <div class="filters-foot"><button class="btn" type="button" id="clear-filters">Clear filters</button></div>
+  </section>
   <p id="status" role="status" aria-live="polite">Connecting to BioCartoon…</p>
   <div id="error" role="alert" hidden></div>
-  <section id="gallery" class="grid" aria-label="Illustrations" aria-busy="true"></section>
-  <section id="selection" aria-label="Selected illustration" hidden></section>
+  <div id="results" aria-busy="true"></div>
   <footer>Each illustration keeps its original license. Include its credit line wherever required.</footer>
 </main>
 <!-- gallery-script -->

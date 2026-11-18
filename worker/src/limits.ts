@@ -66,3 +66,9 @@ export const MAX_ACTIVE_SHARE_BYTES_GUEST = 500 * 1024 * 1024;
 /** ...and for a signed-in account. */
 export const MAX_ACTIVE_SHARES_USER = 200;
 export const MAX_ACTIVE_SHARE_BYTES_USER = 2 * 1024 * 1024 * 1024;
+/** ...and for the hosted MCP server's editor links (compose_figure, open_in_biocartoon), all its users
+ *  together. Those projects only reference catalog pictures, so each is small. */
+export const MAX_SHARE_BYTES_VIA_MCP = 1024 * 1024;
+export const MAX_NEW_SHARES_PER_DAY_VIA_MCP = 3000;
+export const MAX_ACTIVE_SHARES_VIA_MCP = 100_000;
+export const MAX_ACTIVE_SHARE_BYTES_VIA_MCP = 4 * 1024 * 1024 * 1024;

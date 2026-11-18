@@ -2,6 +2,7 @@ import metadata from "../generated/mcp-metadata.json" with { type: "json" };
 import { catalogTool, text, type Args, type ToolResult } from "./mcp_catalog.ts";
 import { artworkTool, type McpEnv } from "./mcp_artwork.ts";
 import { sha256Hex } from "./http.ts";
+import { FIGURE_TOOL_NAMES, figureTool } from "./mcp_figure.ts";
 
 const URI = metadata.resources[0].uri;
 const MIME = "text/html;profile=mcp-app";
@@ -18,7 +19,7 @@ const json = (value: unknown, status = 200) => new Response(JSON.stringify(value
 const rpcError = (id: unknown, code: number, message: string) => ({ jsonrpc: "2.0", id: id ?? null, error: { code, message } });
 
 async function toolCall(env: McpEnv, name: string, args: Args, request: Request, ctx?: ExecutionContext): Promise<ToolResult> {
-  const run = () => ARTWORK_TOOLS.has(name) ? artworkTool(env, name, args, request) : catalogTool(env.CATALOG, name, args);
+  const run = () => FIGURE_TOOL_NAMES.has(name) ? figureTool(env, name, args, request) : ARTWORK_TOOLS.has(name) ? artworkTool(env, name, args, request) : catalogTool(env.CATALOG, name, args);
   // Cache public catalog results only; never artwork, contacts, status or submissions.
   if (!CACHE_TOOLS.has(name) || typeof caches === "undefined") return run();
   const key = new Request(`https://mcp.biocartoon.com/cache/${metadata.serverInfo.version}/${await sha256Hex(JSON.stringify([name, args]))}`);

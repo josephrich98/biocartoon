@@ -7,6 +7,9 @@ export interface McpEnv {
   CATALOG: D1Database;
   SUBMISSIONS: Fetcher;
   MCP_TOKEN?: string;
+  /** Optional Workers AI binding: plans a figure from a bare prompt (src/mcp_figure.ts). */
+  AI?: { run(model: string, input: Record<string, unknown>): Promise<unknown> };
+  PLAN_MODEL?: string;
 }
 const MAX_IMAGE = 2 * 1024 * 1024;
 

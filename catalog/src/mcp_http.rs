@@ -177,6 +177,7 @@ pub fn serve_catalog(addr: &str, threads: usize) -> Result<(), String> {
         Box::new(mcp::Chain(vec![
             Box::new(mcp::CatalogTools::reloading(Duration::from_secs(5 * 60))),
             Box::new(crate::mcp_submit::SubmitTools { local_files: false }),
+            Box::new(crate::mcp_figure::FigureTools),
         ]))
     })
 }

@@ -81,21 +81,37 @@ function order(sort: string, searching = false): string {
   if (["az", "a-z", "alphabetical"].includes(sort) || !searching) return "a.title COLLATE NOCASE, a.id";
   return "bm25(assets_fts, 10.0, 1.0, 3.0, 1.0, 0.5), a.id";
 }
-async function search(db: D1Database, args: Args): Promise<ToolResult> {
+const FILE_TYPES = new Set(["svg", "png"]);
+/** The ranked, de-duplicated catalog rows for a search_assets call (also used by compose_figure). */
+export async function searchRows(db: D1Database, args: Args): Promise<Row[]> {
   const query = str(args, "query"); if (query.length > 200) throw new Error("query must be at most 200 characters");
-  const sources = strings(args, "sources"), tags = strings(args, "tags"), limit = num(args, "limit", 12, 60);
+  const sources = strings(args, "sources"), tags = strings(args, "tags"), licenses = strings(args, "licenses"), limit = num(args, "limit", 12, 60);
+  const authors = str(args, "author").split(",").map(a => a.trim().toLowerCase()).filter(Boolean).slice(0, 10);
+  const category = str(args, "category"), fileType = str(args, "file_type").toLowerCase();
+  if (fileType && !FILE_TYPES.has(fileType)) throw new Error("file_type must be svg or png");
   const run = async (match: string) => {
     const params: (string | number)[] = match ? [match] : [];
     let where = "a.png_key IS NOT NULL AND coalesce(a.dup,0)=0" + sourceFilter(sources, params);
     if (tags.length) { where += ` AND EXISTS (SELECT 1 FROM json_each(a.tags) t WHERE lower(t.value) IN (${tags.map(() => "?").join(",")}))`; params.push(...tags.map(t => t.toLowerCase())); }
+    if (licenses.length) { where += ` AND a.license IN (${licenses.map(() => "?").join(",")})`; params.push(...licenses); }
+    if (authors.length) { where += ` AND (${authors.map(() => "instr(lower(coalesce(a.author,'')), ?) > 0").join(" OR ")})`; params.push(...authors); }
+    // An asset filed under several ", "-separated categories is in each.
+    if (category) { where += " AND (a.category = ? OR instr(', ' || a.category || ', ', ', ' || ? || ', ') > 0)"; params.push(category, category); }
+    if (fileType === "svg") where += " AND a.svg_key IS NOT NULL";
+    if (fileType === "png") where += " AND a.svg_key IS NULL";
     const from = match ? "assets_fts JOIN assets a ON a.rowid = assets_fts.rowid" : "assets a";
     const hits = await rows(db, `SELECT a.* FROM ${from} WHERE ${match ? "assets_fts MATCH ? AND " : ""}${where} ORDER BY ${order(str(args, "sort"), !!match)} LIMIT ?`, [...params, Math.min(360, limit * 6)]);
     const seen = new Set();
     return hits.filter(a => { const key = a.grp || a.id; if (seen.has(key)) return false; seen.add(key); return true; }).slice(0, limit);
   };
-  const match = ftsQuery(query);
+  // `phrase`: the words next to each other, in this order (finds "B cell" among thousands of "b*" words).
+  const match = args.phrase === true && words(query).length ? `"${words(query).join(" ").replaceAll('"', '""')}"` : ftsQuery(query);
   let hits = await run(match);
   if (!hits.length && words(query).length > 1) hits = await run(ftsQuery(query, " OR "));
+  return hits;
+}
+async function search(db: D1Database, args: Args): Promise<ToolResult> {
+  const query = str(args, "query"), hits = await searchRows(db, args);
   return records(hits.map(a => asset(a, query)), hits.length ? `${hits.length} closest matches for ${JSON.stringify(query)}. Judge titles, tags and pictures before recommending a match.` : `No illustrations found for ${JSON.stringify(query)}. Try fewer words or a synonym.`);
 }
 

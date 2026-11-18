@@ -27,7 +27,12 @@ asset (asset_variants) are the same drawing in other colours. Every asset keeps 
 After judging search results, use render_assets with the selected IDs to show an interactive gallery with previews, \
 licenses, credits and download links. It also returns text for clients without UI support.\n\
 list_templates finds shared slide templates (whole slide layouts, not icons); they open in the BioCartoon editor, so \
-point the user to a template by its title rather than rebuilding it.";
+point the user to a template by its title rather than rebuilding it.\n\
+Whole figures (a process, pathway, experiment or comparison): plan the elements (each a depictable thing, with a \
+1-3 word query) and the arrows between them, and call compose_figure. It picks catalog icons, lays them out with \
+labels and arrows, shows the figure in the gallery and returns an editor link (open_in_biocartoon makes one for any \
+figure, icon or template). Judge its match report as you would search results; for changes, pass figure.spec back \
+edited. Gaps stay as labelled boxes: say so rather than hiding them. Not for data charts.";
 
 /// A set of MCP tools.
 pub trait Tools {
@@ -178,6 +183,10 @@ impl Tools for CatalogTools {
             "tags": {"type": "array", "items": {"type": "string"}, "description": "Keep only assets with one of these tags (a whole tag, any case). Default: any."},
             "limit": int_prop("Most results to return (default 12, max 60)."),
             "sort": str_prop("Order of the returned set: relevance (default), az, za, popular."),
+            "licenses": {"type": "array", "items": {"type": "string"}, "description": "Keep only these licenses as stored (PD, CC0-1.0, CC-BY-4.0, CC-BY-SA-4.0, ...). Default: any."},
+            "author": str_prop("Part of the author's name; commas for several (any of them). Default: any."),
+            "category": str_prop("A collection's own category (see list_categories); use with sources. Default: any."),
+            "file_type": {"type": "string", "enum": ["svg", "png"], "description": "svg: only icons with an SVG (vector) version; png: only PNG-only icons. Default: either."},
         });
         vec![
             tool("search_assets", "Search the icon catalog. Returns the closest matches whether or not any truly fits: read each result's title, description, tags and matched_fields before using it (see the server instructions). Without a query, lists the most popular / first assets.", search_props, &[]),
@@ -236,11 +245,28 @@ impl CatalogTools {
                 let limit = n("limit").unwrap_or(12).clamp(1, 60) as usize;
                 // "relevance" keeps the editor's pick order (science collections first, then rank).
                 let sort = parse_sort(&s("sort").unwrap_or_default());
-                let tags: Vec<String> = args.get("tags").and_then(Value::as_array).map(|a| a.iter().filter_map(Value::as_str).map(str::to_string).collect()).unwrap_or_default();
-                let hits = if tags.is_empty() {
+                let list = |k: &str| -> Vec<String> { args.get(k).and_then(Value::as_array).map(|a| a.iter().filter_map(Value::as_str).map(str::to_string).collect()).unwrap_or_default() };
+                let tags = list("tags");
+                let licenses = list("licenses");
+                let authors: Vec<String> = s("author").unwrap_or_default().split(',').map(|a| a.trim().to_string()).filter(|a| !a.is_empty()).collect();
+                let formats: Vec<String> = match s("file_type").as_deref() {
+                    None | Some("") => vec![],
+                    Some("svg") => vec![crate::catalog::FORMAT_SVG.to_string()],
+                    Some("png") => vec![crate::catalog::FORMAT_PNG.to_string()],
+                    Some(_) => return Err("file_type must be svg or png".into()),
+                };
+                // A category belongs to a collection: the chosen ones, or any of them.
+                let db_cats: Vec<(String, String)> = match s("category").filter(|c| !c.is_empty()) {
+                    Some(c) => {
+                        let dbs: Vec<String> = if sources.is_empty() { ["biocartoon", "user", "bioart", "bioicons", "servier", "scidraw", "healthicons", "reactome", "openmoji"].map(String::from).to_vec() } else { sources.clone() };
+                        dbs.into_iter().map(|d| (d, c.clone())).collect()
+                    }
+                    None => vec![],
+                };
+                let hits = if tags.is_empty() && licenses.is_empty() && authors.is_empty() && formats.is_empty() && db_cats.is_empty() {
                     self.catalog()?.search(&q, &sources, limit, sort)?
                 } else {
-                    let filter = Filter { tags, ..Filter::sources(&sources) };
+                    let filter = Filter { tags, licenses, authors, formats, db_cats, ..Filter::sources(&sources) };
                     self.catalog()?.search_filtered(&q, &filter, 0, limit, sort)?.0
                 };
                 let note = if hits.is_empty() {
@@ -498,7 +524,7 @@ pub fn catalog_server_info() -> ServerInfo {
 /// Serve the catalog and submission tools on stdin/stdout (`biocartoon mcp` from this crate).
 /// Submissions may name local files here, since the server runs on the user's own computer.
 pub fn serve_catalog() -> Result<(), String> {
-    let mut tools = Chain(vec![Box::new(CatalogTools::default()), Box::new(crate::mcp_submit::SubmitTools { local_files: true })]);
+    let mut tools = Chain(vec![Box::new(CatalogTools::default()), Box::new(crate::mcp_submit::SubmitTools { local_files: true }), Box::new(crate::mcp_figure::FigureTools)]);
     serve(&catalog_server_info(), &mut tools)
 }
 

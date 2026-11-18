@@ -8,6 +8,7 @@ pub const SKILLS: &[(&str, &str)] = &[
     ("biocartoon-find-icons", include_str!("../skills/biocartoon-find-icons/SKILL.md")),
     ("biocartoon-create-icon", include_str!("../skills/biocartoon-create-icon/SKILL.md")),
     ("biocartoon-upload", include_str!("../skills/biocartoon-upload/SKILL.md")),
+    ("biocartoon-make-figure", include_str!("../skills/biocartoon-make-figure/SKILL.md")),
 ];
 
 /// A file left in each installed skill, so a later install or uninstall knows it put it there.
