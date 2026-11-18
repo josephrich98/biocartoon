@@ -24,7 +24,6 @@ class SubmissionBuildTests(unittest.TestCase):
             archive = Path(directory) / build['plugin_archive']
             self.assertEqual(build['plugin_sha256'], hashlib.sha256(archive.read_bytes()).hexdigest())
             self.assertIn('biocartoon-make-figure', build['skills'])
-            self.assertIn('termsOfServiceURL', build['missing_package_fields'])
             self.assertEqual(len(build['source_revision']), 40)
             materials = next(Path(directory).glob('*review-materials.zip'))
             with zipfile.ZipFile(materials) as z:

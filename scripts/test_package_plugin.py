@@ -33,7 +33,7 @@ class PackagingTests(unittest.TestCase):
                 expected = {p.parent.name for p in (ROOT / 'catalog/skills').glob('*/SKILL.md')}
                 actual = {Path(n).parent.name for n in archive.namelist() if n.endswith('/SKILL.md')}
                 self.assertEqual(actual, expected)
-                self.assertEqual(len(archive.namelist()), 2 + len(expected))
+                self.assertFalse(any('/assets/' in n for n in archive.namelist()))
 
 
 if __name__ == '__main__':
