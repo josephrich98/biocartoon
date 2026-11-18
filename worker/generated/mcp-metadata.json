@@ -380,7 +380,7 @@
         "openWorldHint": true,
         "readOnlyHint": false
       },
-      "description": "Submit one illustration to the shared BioCartoon library. Give the image as exactly one of svg, image, image_url, image_base64 or file_path. It is held for review and published once a reviewer approves it; returns the submission id. Only call this after showing the user the image and these details and getting their go-ahead (rights_confirmed). The free hosted endpoint accepts PNG or SVG up to 2 MB. Convert or resize other image formats with the local biocartoon command before submitting.",
+      "description": "Submit one illustration to the shared BioCartoon library. Give the image as exactly one of svg, image, image_url or image_base64. It is held for review and published once a reviewer approves it; returns the submission id. Only call this after showing the user the image and these details and getting their go-ahead (rights_confirmed). The free hosted endpoint accepts PNG or SVG up to 2 MB. Convert or resize other image formats with the local biocartoon command before submitting.",
       "inputSchema": {
         "additionalProperties": false,
         "properties": {
@@ -402,10 +402,6 @@
           },
           "email": {
             "description": "Optional contact address for the reviewers (never published).",
-            "type": "string"
-          },
-          "file_path": {
-            "description": "Path of an image file on this computer (SVG, PNG, JPEG, WebP, GIF, BMP, TIFF).",
             "type": "string"
           },
           "generative_ai_details": {
