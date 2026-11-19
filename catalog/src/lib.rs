@@ -32,6 +32,7 @@ pub mod mcp_ui;
 pub mod mcp_http;
 #[cfg(not(target_arch = "wasm32"))]
 pub mod mcp_submit;
+#[cfg(not(target_arch = "wasm32"))]
 pub mod mcp_figure;
 #[cfg(not(target_arch = "wasm32"))]
 pub mod skills;
