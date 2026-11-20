@@ -1,0 +1,176 @@
+
+  - button "Pyramidal Neuron Illustrations":
+    - generic: Pyramidal Neuron Illustrations
+  - button "Share":
+  - button "Toggle summary":
+  - region "Conversation":
+    - heading "You said:" [level=4]
+    - paragraph:
+      - text: Find three illustrations of a pyramidal neuron for a neuroscience lecture slide. Show me the choices with their licenses and credit lines.
+      - link "BioCartoon2":
+        - /url: /plugins/plugin_asdk_app_6afd771a248081919ca9a171e0e2af58
+        - text: BioCartoon2
+    - button "Copy message"
+    - button "Worked for 19s" [expanded]:
+      - generic: Worked for 19s
+    - heading "ChatGPT said:" [level=4]
+    - status
+    - paragraph: I’ll look for three pyramidal neuron illustrations in BioCartoon and check the license and credit for each.
+    - paragraph: Searching Pyramidal Neuron Icons
+    - status: Opened app
+    - button "Open app in tab":
+    - iframe [active]:
+      - iframe [active] [id="root"]:
+        - main:
+          - heading "BioCartoon" [level=1]
+          - link "Open BioCartoon":
+            - /url: https://app.biocartoon.com
+            - text: Open BioCartoon
+          - search "Search artwork":
+            - generic: Search illustrations
+            - searchbox "Search illustrations"
+            - button "Filters":
+              - text: Filters
+            - button "Search"
+          - status: Selected illustrations · 3 illustrations
+          - region "Selected illustrations":
+            - heading "Selected illustrations" [level=2]
+            - article:
+              - img "Pyramidal Neuron"
+              - button "Edit":
+                - text: Edit
+              - button "Download":
+                - text: Download
+              - button "Open in BioCartoon":
+                - text: Open in BioCartoon
+              - heading "Pyramidal Neuron" [level=3]
+              - generic: NIH BioArt · BA001505
+              - generic "Credit & license"
+              - paragraph:
+                - generic: Public domain
+                - text: "\"Pyramidal Neuron\" by Ryan Kissinger, NIAID NIH BioArt Source (https://bioart.niaid.nih.gov/bioart/424), public domain"
+              - button "Copy":
+                - text: Copy
+            - article:
+              - img "Pyramidal Neuron"
+              - button "Edit":
+                - text: Edit
+              - button "Download":
+                - text: Download
+              - button "Open in BioCartoon":
+                - text: Open in BioCartoon
+              - heading "Pyramidal Neuron" [level=3]
+              - generic: Bioicons · BI005029
+              - generic "Credit & license"
+            - article:
+              - img "Simple pyramidal neuron"
+              - button "Edit":
+                - text: Edit
+              - button "Download":
+                - text: Download
+              - button "Open in BioCartoon":
+                - text: Open in BioCartoon
+              - heading "Simple pyramidal neuron" [level=3]
+              - generic: SciDraw · SD016523
+              - generic "Credit & license"
+          - generic: Each illustration keeps its original license. Include its credit line wherever required.
+    - heading "ChatGPT said:" [level=4]
+    - table:
+      - rowgroup:
+        - row "Preview License Credit line Download":
+          - columnheader "Preview"
+          - columnheader "License"
+          - columnheader "Credit line"
+          - columnheader "Download"
+      - rowgroup:
+        - row "Beige pyramidal neuron Unverified image Load image Public domain “Pyramidal Neuron” by Ryan Kissinger, NIAID NIH BioArt Source, public domain. Source SVG · PNG":
+          - cell "Beige pyramidal neuron Unverified image Load image":
+            - generic: Beige pyramidal neuron
+            - generic: Unverified image
+            - button "Load image"
+          - cell "Public domain"
+          - cell "“Pyramidal Neuron” by Ryan Kissinger, NIAID NIH BioArt Source, public domain. Source":
+            - text: “Pyramidal Neuron” by Ryan Kissinger, NIAID NIH BioArt Source, public domain.
+            - link "Source":
+              - /url: https://bioart.niaid.nih.gov/bioart/424
+              - generic: Source
+          - cell "SVG · PNG":
+            - link "SVG":
+              - /url: https://assets.biocartoon.com/bioart/424_633913.svg
+              - generic: SVG
+            - text: ·
+            - link "PNG":
+              - /url: https://assets.biocartoon.com/bioart/424_633913.png
+              - generic: PNG
+        - row "Bioicons pyramidal neuron Unverified image Load image CC0 1.0 “Pyramidal Neuron” by Fabian-Mikulasch, Bioicons, CC0. Source SVG · PNG":
+          - cell "Bioicons pyramidal neuron Unverified image Load image":
+            - generic: Bioicons pyramidal neuron
+            - generic: Unverified image
+            - button "Load image"
+          - cell "CC0 1.0"
+          - cell "“Pyramidal Neuron” by Fabian-Mikulasch, Bioicons, CC0. Source":
+            - text: “Pyramidal Neuron” by Fabian-Mikulasch, Bioicons, CC0.
+            - link "Source":
+              - /url: https://bioicons.com
+              - generic: Source
+          - cell "SVG · PNG":
+            - link "SVG":
+              - /url: https://assets.biocartoon.com/bioicons/cc-0/Human_physiology/Pyramidal_Neuron.svg
+              - generic: SVG
+            - text: ·
+            - link "PNG":
+              - /url: https://assets.biocartoon.com/bioicons/cc-0/Human_physiology/Pyramidal_Neuron.png
+              - generic: PNG
+        - row "Simple pyramidal neuron Unverified image Load image CC BY 4.0 “Simple pyramidal neuron” by Jiyun Shin, SciDraw, CC BY 4.0. Source SVG · PNG":
+          - cell "Simple pyramidal neuron Unverified image Load image":
+            - generic: Simple pyramidal neuron
+            - generic: Unverified image
+            - button "Load image"
+          - cell "CC BY 4.0":
+            - link "CC BY 4.0":
+              - /url: https://creativecommons.org/licenses/by/4.0/
+              - generic: CC BY 4.0
+          - cell "“Simple pyramidal neuron” by Jiyun Shin, SciDraw, CC BY 4.0. Source":
+            - text: “Simple pyramidal neuron” by Jiyun Shin, SciDraw, CC BY 4.0.
+            - link "Source":
+              - /url: https://scidraw.io/drawing/simple-pyramidal-neuron-a2bb0b1f
+              - generic: Source
+          - cell "SVG · PNG":
+            - link "SVG":
+              - /url: https://assets.biocartoon.com/scidraw/e094495b-84d9-4474-b90a-1e0411d38c65.svg
+              - generic: SVG
+            - text: ·
+            - link "PNG":
+              - /url: https://assets.biocartoon.com/scidraw/e094495b-84d9-4474-b90a-1e0411d38c65.png
+              - generic: PNG
+    - button "Copy table":
+    - button "Expand table":
+    - button "Copy":
+    - button "Read aloud":
+    - button "Share":
+    - button "More actions":
+    - button "Scroll to bottom":
+    - heading "Latest response" [level=4]
+    - status
+    - textbox "Work with ChatGPT":
+      - paragraph: Work with ChatGPT
+    - button "Add files and more":
+    - button "Select ChatGPT model":
+      - generic: GPT-6.2 Sol
+      - generic: Light
+      - generic: None
+      - generic: Minimal
+      - generic: Light
+      - generic: Medium
+      - generic: High
+      - generic: Extra High
+      - generic: Max
+      - generic: Ultra
+      - generic: Persistent
+    - button "Dictate":
+    - button "Start Voice":
+    - status
+- status
+- status
+- status
+- status: Response complete

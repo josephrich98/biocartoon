@@ -89,6 +89,9 @@ export function createMcpHandler(gallery: string): ExportedHandler<McpEnv> {
       const path = new URL(request.url).pathname;
       if (request.method === "OPTIONS") return new Response(null, { status: 204, headers });
       if (path === "/health" && request.method === "GET") return new Response("ok\n", { headers: { "Content-Type": "text/plain" } });
+      // OpenAI app domain verification: serve the token from the submission form (a Worker secret).
+      if (path === "/.well-known/openai-apps-challenge" && request.method === "GET")
+        return env.OPENAI_APPS_CHALLENGE ? new Response(env.OPENAI_APPS_CHALLENGE, { headers: { "Content-Type": "text/plain" } }) : json({ error: "Not found" }, 404);
       if (path === "/" && request.method === "GET") return new Response("BioCartoon MCP App\nConnect to https://mcp.biocartoon.com/mcp (Streamable HTTP, no sign-in).\n", { headers: { "Content-Type": "text/plain" } });
       if (!["/", "/mcp"].includes(path)) return json({ error: "Not found" }, 404);
       if (request.method !== "POST") return new Response(JSON.stringify({ error: "POST JSON-RPC requests; no event stream" }), { status: 405, headers: { ...headers, Allow: "POST, OPTIONS" } });

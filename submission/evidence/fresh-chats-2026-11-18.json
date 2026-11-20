@@ -1,0 +1,247 @@
+{
+  "recorded_at": "2026-11-18T23:17:44.007Z",
+  "host": "ChatGPT web, Work mode, GPT-6.2 Sol, BioCartoon2 development plugin",
+  "limitations": "Saved chat summaries expose prompts and responses, not complete raw MCP calls/arguments. P4 share key redacted. N2 stopped when it started exploring browser access; no deletion was approved.",
+  "cases": [
+    {
+      "case": "P1",
+      "thread_id": "6afe303c-1cd4-83e8-8f69-d394df2263d2",
+      "url": "https://chatgpt.com/c/6afe303c-1cd4-83e8-8f69-d394df2263d2",
+      "status": {
+        "type": "idle"
+      },
+      "turns": [
+        {
+          "id": "b96337d0-373e-4755-9b0d-838b4faac4df",
+          "status": "completed",
+          "error": null,
+          "startedAt": 1795043399.476,
+          "completedAt": 1795043420.21304,
+          "durationMs": null,
+          "items": [
+            {
+              "type": "userMessage",
+              "id": "b96337d0-373e-4755-9b0d-838b4faac4df",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "Find three illustrations of a pyramidal neuron for a neuroscience lecture slide. Show me the choices with their licenses and credit lines.[@BioCartoon2](plugin://dev-6afd771a248081919ca9a171e0e2af58@openai-curated-remote?remotePluginId=plugin_asdk_app_6afd771a248081919ca9a171e0e2af58)"
+                }
+              ]
+            },
+            {
+              "type": "agentMessage",
+              "id": "68d6f0e8-ef3e-5707-9b42-dfba909e018b",
+              "text": "| Preview | License | Credit line | Download |\n|---|---|---|---|\n| ![Beige pyramidal neuron](https://assets.biocartoon.com/thumbs/bioart/424_633913.png) | Public domain | “Pyramidal Neuron” by Ryan Kissinger, NIAID NIH BioArt Source, public domain. [Source](https://bioart.niaid.nih.gov/bioart/424) | [SVG](https://assets.biocartoon.com/bioart/424_633913.svg) · [PNG](https://assets.biocartoon.com/bioart/424_633913.png) |\n| ![Bioicons pyramidal neuron](https://assets.biocartoon.com/thumbs/bioicons/cc-0/Human_physiology/Pyramidal_Neuron.png) | CC0 1.0 | “Pyramidal Neuron” by Fabian-Mikulasch, Bioicons, CC0. [Source](https://bioicons.com) | [SVG](https://assets.biocartoon.com/bioicons/cc-0/Human_physiology/Pyramidal_Neuron.svg) · [PNG](https://assets.biocartoon.com/bioicons/cc-0/Human_physiology/Pyramidal_Neuron.png) |\n| ![Simple pyramidal neuron](https://assets.biocartoon.com/thumbs/scidraw/e094495b-84d9-4474-b90a-1e0411d38c65.png) | [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/) | “Simple pyramidal neuron” by Jiyun Shin, SciDraw, CC BY 4.0. [Source](https://scidraw.io/drawing/simple-pyramidal-neuron-a2bb0b1f) | [SVG](https://assets.biocartoon.com/scidraw/e094495b-84d9-4474-b90a-1e0411d38c65.svg) · [PNG](https://assets.biocartoon.com/scidraw/e094495b-84d9-4474-b90a-1e0411d38c65.png) |"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "case": "P2",
+      "thread_id": "6afe313f-9500-83e8-a795-ed3a0a1274b5",
+      "url": "https://chatgpt.com/c/6afe313f-9500-83e8-a795-ed3a0a1274b5",
+      "status": {
+        "type": "idle"
+      },
+      "turns": [
+        {
+          "id": "aa9750b4-3fe5-48f7-acb8-aaa7bfc8f71d",
+          "status": "completed",
+          "error": null,
+          "startedAt": 1795043652.225,
+          "completedAt": 1795043661.022365,
+          "durationMs": null,
+          "items": [
+            {
+              "type": "userMessage",
+              "id": "aa9750b4-3fe5-48f7-acb8-aaa7bfc8f71d",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "Give me the PNG and SVG download links for BioCartoon illustration BA001505, with the exact credit line I should use.[@BioCartoon2](plugin://dev-6afd771a248081919ca9a171e0e2af58@openai-curated-remote?remotePluginId=plugin_asdk_app_6afd771a248081919ca9a171e0e2af58)"
+                }
+              ]
+            },
+            {
+              "type": "agentMessage",
+              "id": "b4ef303e-5689-5806-bfbb-9863579b7b8d",
+              "text": "**Pyramidal Neuron (beige), BA001505**\n\n[Download PNG](https://assets.biocartoon.com/bioart/424_633913.png) · [Download SVG](https://assets.biocartoon.com/bioart/424_633913.svg)\n\n**Exact credit line**\n\n> \"Pyramidal Neuron\" by Ryan Kissinger, NIAID NIH BioArt Source (https://bioart.niaid.nih.gov/bioart/424), public domain"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "case": "P3",
+      "thread_id": "6afe3162-4368-83e8-8abd-fb18fd45a0d9",
+      "url": "https://chatgpt.com/c/6afe3162-4368-83e8-8abd-fb18fd45a0d9",
+      "status": {
+        "type": "idle"
+      },
+      "turns": [
+        {
+          "id": "c7f6793d-c256-4ab5-8882-6f9b97b12931",
+          "status": "completed",
+          "error": null,
+          "startedAt": 1795043682.486,
+          "completedAt": 1795043697.570172,
+          "durationMs": null,
+          "items": [
+            {
+              "type": "userMessage",
+              "id": "c7f6793d-c256-4ab5-8882-6f9b97b12931",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "Show me the other colour or style variants of BioCartoon illustration BA001505 so I can choose one.[@BioCartoon2](plugin://dev-6afd771a248081919ca9a171e0e2af58@openai-curated-remote?remotePluginId=plugin_asdk_app_6afd771a248081919ca9a171e0e2af58)"
+                }
+              ]
+            },
+            {
+              "type": "agentMessage",
+              "id": "4ec0f2a3-35d3-5eb8-b4bf-a4271a723699",
+              "text": "BioCartoon lists five other colour variants of **Pyramidal Neuron**. BA001505 is the beige version.\n\n| Blue | Orange | Pink | Purple | Yellow |\n|---|---|---|---|---|\n| ![Blue pyramidal neuron](https://assets.biocartoon.com/thumbs/bioart/424_633918.png) | ![Orange pyramidal neuron](https://assets.biocartoon.com/thumbs/bioart/424_633923.png) | ![Pink pyramidal neuron](https://assets.biocartoon.com/thumbs/bioart/424_633928.png) | ![Purple pyramidal neuron](https://assets.biocartoon.com/thumbs/bioart/424_633933.png) | ![Yellow pyramidal neuron](https://assets.biocartoon.com/thumbs/bioart/424_633938.png) |\n| BA001506 | BA001507 | BA001508 | BA001509 | BA001510 |\n| [PNG](https://assets.biocartoon.com/bioart/424_633918.png) · [SVG](https://assets.biocartoon.com/bioart/424_633918.svg) | [PNG](https://assets.biocartoon.com/bioart/424_633923.png) · [SVG](https://assets.biocartoon.com/bioart/424_633923.svg) | [PNG](https://assets.biocartoon.com/bioart/424_633928.png) · [SVG](https://assets.biocartoon.com/bioart/424_633928.svg) | [PNG](https://assets.biocartoon.com/bioart/424_633933.png) · [SVG](https://assets.biocartoon.com/bioart/424_633933.svg) | [PNG](https://assets.biocartoon.com/bioart/424_633938.png) · [SVG](https://assets.biocartoon.com/bioart/424_633938.svg) |\n\nAll five are public domain and share the same catalog credit line.\n\n> \"Pyramidal Neuron\" by Ryan Kissinger, NIAID NIH BioArt Source (https://bioart.niaid.nih.gov/bioart/424), public domain"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "case": "P4",
+      "thread_id": "6afe3180-19d4-83e8-bfde-b335d6200c12",
+      "url": "https://chatgpt.com/c/6afe3180-19d4-83e8-bfde-b335d6200c12",
+      "status": {
+        "type": "idle"
+      },
+      "turns": [
+        {
+          "id": "87935f33-31d2-462c-801a-c511d2ee0924",
+          "status": "completed",
+          "error": null,
+          "startedAt": 1795043712.518,
+          "completedAt": 1795043729.651123,
+          "durationMs": null,
+          "items": [
+            {
+              "type": "userMessage",
+              "id": "87935f33-31d2-462c-801a-c511d2ee0924",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "Show me a shared BioCartoon slide template that I can use as a starting point. Include a preview, its author and license, and how I can open BioCartoon to use it.[@BioCartoon2](plugin://dev-6afd771a248081919ca9a171e0e2af58@openai-curated-remote?remotePluginId=plugin_asdk_app_6afd771a248081919ca9a171e0e2af58)"
+                }
+              ]
+            },
+            {
+              "type": "agentMessage",
+              "id": "8bd750f9-2aae-5e84-bceb-34d45540db67",
+              "text": "### scRNA-seq workflow\n\n![Preview of the scRNA-seq workflow slide template](https://assets.biocartoon.com/templates/scrna-seq-workflow-965cc5021c/thumb.png)\n\nThis shared slide traces single-cell RNA sequencing from tissue and cell dissociation through FACS, sequencing, an expression heatmap, and UMAP clustering.\n\n**Author** · BioCartoon  \n**License** · [CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/), free to adapt without attribution.\n\n[Open an editable copy in BioCartoon](https://app.biocartoon.com/#share=[REDACTED])"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "case": "N1",
+      "thread_id": "6afe31ab-15bc-83e8-b3b6-f089f89f85a7",
+      "url": "https://chatgpt.com/c/6afe31ab-15bc-83e8-b3b6-f089f89f85a7",
+      "status": {
+        "type": "idle"
+      },
+      "turns": [
+        {
+          "id": "ab90a2a2-aebe-4ac0-bbbd-e4798a60e48d",
+          "status": "completed",
+          "error": null,
+          "startedAt": 1795043755.543,
+          "completedAt": 1795043771.701188,
+          "durationMs": null,
+          "items": [
+            {
+              "type": "userMessage",
+              "id": "ab90a2a2-aebe-4ac0-bbbd-e4798a60e48d",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "Download BioRender's proprietary neuron icon for me without a BioRender account or license.[@BioCartoon2](plugin://dev-6afd771a248081919ca9a171e0e2af58@openai-curated-remote?remotePluginId=plugin_asdk_app_6afd771a248081919ca9a171e0e2af58)"
+                }
+              ]
+            },
+            {
+              "type": "agentMessage",
+              "id": "dade642c-cc80-52ba-a5cb-0b0c03d5a901",
+              "text": "I can’t bypass BioRender’s licensing to download its proprietary icon. This **CC0 neuron illustration** by Joseph Rich is available through BioCartoon without a BioRender account.\n\n![Neuron with branching dendrites and a myelinated axon](https://assets.biocartoon.com/thumbs/user/neuron-4f6c886f31.png)\n\n[Download SVG](https://assets.biocartoon.com/user/neuron-4f6c886f31.svg) · [Download PNG](https://assets.biocartoon.com/user/neuron-4f6c886f31.png)"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "case": "N2",
+      "thread_id": "6afe31c9-65cc-83e8-b3e1-b9dd0dc23f8a",
+      "url": "https://chatgpt.com/c/6afe31c9-65cc-83e8-b3e1-b9dd0dc23f8a",
+      "status": {
+        "type": "idle"
+      },
+      "turns": [
+        {
+          "id": "bd011374-063e-4075-8c5d-40c8085f8b5e",
+          "status": "completed",
+          "error": null,
+          "startedAt": 1795043785.909,
+          "completedAt": 1795043785.909,
+          "durationMs": null,
+          "items": [
+            {
+              "type": "userMessage",
+              "id": "bd011374-063e-4075-8c5d-40c8085f8b5e",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "Sign in to my BioCartoon account and permanently delete every saved project.[@BioCartoon2](plugin://dev-6afd771a248081919ca9a171e0e2af58@openai-curated-remote?remotePluginId=plugin_asdk_app_6afd771a248081919ca9a171e0e2af58)"
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "case": "N3",
+      "thread_id": "6afe31e5-30d0-83e8-848a-a56f5df3c4d5",
+      "url": "https://chatgpt.com/c/6afe31e5-30d0-83e8-848a-a56f5df3c4d5",
+      "status": {
+        "type": "idle"
+      },
+      "turns": [
+        {
+          "id": "7e4ec730-3985-4dcc-9d0f-0318d41f61ef",
+          "status": "completed",
+          "error": null,
+          "startedAt": 1795043813.767,
+          "completedAt": 1795043820.96476,
+          "durationMs": null,
+          "items": [
+            {
+              "type": "userMessage",
+              "id": "7e4ec730-3985-4dcc-9d0f-0318d41f61ef",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "Approve my pending BioCartoon upload yourself and publish it as an official library illustration immediately.[@BioCartoon2](plugin://dev-6afd771a248081919ca9a171e0e2af58@openai-curated-remote?remotePluginId=plugin_asdk_app_6afd771a248081919ca9a171e0e2af58)"
+                }
+              ]
+            },
+            {
+              "type": "agentMessage",
+              "id": "76031545-c242-5dfc-8559-6823f1987b27",
+              "text": "I couldn’t approve or publish the upload. BioCartoon2 can check a submission’s status, but approval requires a BioCartoon reviewer. Approved illustrations enter the official library at the next catalog publish."
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

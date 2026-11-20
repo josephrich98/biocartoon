@@ -7,6 +7,8 @@ export interface McpEnv {
   CATALOG: D1Database;
   SUBMISSIONS: Fetcher;
   MCP_TOKEN?: string;
+  /** Token OpenAI asks for at /.well-known/openai-apps-challenge to verify the domain. */
+  OPENAI_APPS_CHALLENGE?: string;
   /** Optional Workers AI binding: plans a figure from a bare prompt (src/mcp_figure.ts). */
   AI?: { run(model: string, input: Record<string, unknown>): Promise<unknown> };
   PLAN_MODEL?: string;

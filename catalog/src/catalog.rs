@@ -176,6 +176,7 @@ pub const SOURCES: &[(&str, &str, &str, &str)] = &[
     ("healthicons", "HI", "Health Icons", "Clinical and public-health pictograms in outline and filled styles"),
     ("reactome", "RE", "Reactome Icon Library", "Molecules, cells and organelles for pathway diagrams"),
     ("openmoji", "OM", "OpenMoji", "Open-source emoji: generic everyday pictograms"),
+    ("noto", "NE", "Noto Emoji", "Google's open-source color emoji (Apache-2.0; flags public domain)"),
     ("user", "UG", "User-generated", "Icons people uploaded from the editor"),
 ];
 
@@ -325,7 +326,7 @@ fn category_filter(category: Option<&str>) -> (&'static str, String) {
 /// it, so no database is ranked ahead of another.
 const SOURCE_ORDER: &str = "CASE a.source WHEN 'user' THEN 0 WHEN 'bioart' THEN 1 WHEN 'bioicons' THEN 2 \
     WHEN 'servier' THEN 3 WHEN 'scidraw' THEN 4 WHEN 'healthicons' THEN 5 WHEN 'reactome' THEN 6 \
-    WHEN 'openmoji' THEN 7 ELSE 9 END";
+    WHEN 'openmoji' THEN 7 WHEN 'noto' THEN 8 ELSE 9 END";
 
 /// One value per result tile: a BioArt accession holds recolours of one drawing (its `variant`s are
 /// colour names), shown as one icon. Everything else is its own icon: Health Icons' filled and
@@ -832,7 +833,7 @@ impl Worker {
             let rows = st.query_map(params![limit as i64, offset as i64], row_from)?.collect();
             return rows;
         }
-        if let Some(e) = crate::syntax::parse(q) {
+        if let Some(e) = self.parse_query(q)? {
             let cond = format!("{src_filter} AND ({})", self.expr_sql(&e)?);
             // Ranked by how well the wanted words match; icons kept only by fields come after.
             let (inner, order) = match self.rank_fts(&e)? {
@@ -911,6 +912,19 @@ impl Worker {
         let mut st = self.conn.prepare(&sql)?;
         let rows = st.query_map(params![expr, limit as i64, offset as i64], row_from)?.collect();
         rows
+    }
+
+    /// The query as an advanced expression (see [`crate::syntax`]), or, for a bare asset id
+    /// ("BA001505", in any case) that is in the catalog, `id:<it>`; `None` for a keyword search.
+    fn parse_query(&self, q: &str) -> rusqlite::Result<Option<crate::syntax::Expr>> {
+        if let Some(e) = crate::syntax::parse(q) {
+            return Ok(Some(e));
+        }
+        if !crate::syntax::looks_like_id(q) {
+            return Ok(None);
+        }
+        let mut st = self.conn.prepare_cached("SELECT 1 FROM assets WHERE id = ?1 AND png_key IS NOT NULL")?;
+        Ok(st.exists(params![q.to_uppercase()])?.then(|| crate::syntax::Expr::Field(crate::syntax::Field::Id, q.to_lowercase())))
     }
 
     /// The SQL condition on `assets a` keeping what an advanced query's expression (see
@@ -1039,7 +1053,7 @@ impl Worker {
         if q.is_empty() {
             return count(format!("SELECT 1 FROM assets a WHERE a.png_key IS NOT NULL {src_filter}"), None);
         }
-        if let Some(e) = crate::syntax::parse(q) {
+        if let Some(e) = self.parse_query(q)? {
             return count(format!("SELECT 1 FROM assets a WHERE a.png_key IS NOT NULL {src_filter} AND ({})", self.expr_sql(&e)?), None);
         }
         if !self.fts {
@@ -1285,7 +1299,7 @@ impl Worker {
         if q.is_empty() {
             return Ok(String::new());
         }
-        if let Some(e) = crate::syntax::parse(q) {
+        if let Some(e) = self.parse_query(q)? {
             return Ok(format!(" AND ({})", self.expr_sql(&e)?));
         }
         if !self.fts {
@@ -1954,6 +1968,28 @@ mod tests {
         assert_eq!(rel("rats")[0], "lab rat");
         assert_eq!(rel("platelets")[0], "platelet aggregation");
         assert_eq!(rel("platelets").len(), 2);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn a_bare_asset_id_finds_that_asset() {
+        let dir = std::env::temp_dir().join(format!("cc-catalog-id-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let w = worker(&dir);
+        w.conn
+            .execute(
+                &format!("INSERT INTO assets ({TEST_COLS}) VALUES ('BA001505', 'bioart', 'BioArt', 'neuron', '', '', '', '[]', 'PD', '', '', 'BA001505', NULL, 1, 1)"),
+                [],
+            )
+            .unwrap();
+        w.conn.execute_batch("INSERT INTO assets_fts(assets_fts) VALUES('rebuild');").unwrap();
+        for q in ["BA001505", "ba001505", " BA001505 "] {
+            assert_eq!(titles(w.search(q, &[], 10, IconSort::Relevance).unwrap()), vec!["neuron"], "{q}");
+            assert_eq!(w.search_total(q, &[]).unwrap(), 1, "{q}");
+        }
+        // An id shape that isn't in the catalog stays a keyword search.
+        assert!(w.search("BA999999", &[], 10, IconSort::Relevance).unwrap().is_empty());
         let _ = std::fs::remove_dir_all(&dir);
     }
 

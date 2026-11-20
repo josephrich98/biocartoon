@@ -16,12 +16,18 @@ pub const PROTOCOL_VERSION: &str = "2025-06-18";
 
 /// What an assistant needs to know to use [`CatalogTools`] well.
 pub const CATALOG_INSTRUCTIONS: &str = "The BioCartoon catalog is a library of about 20,000 open-licensed scientific illustrations \
-(NIH BioArt, Bioicons, Servier Medical Art, SciDraw, Health Icons, Reactome, OpenMoji, plus user uploads).\n\
+(NIH BioArt, Bioicons, Servier Medical Art, SciDraw, Health Icons, Reactome, OpenMoji, Noto Emoji, plus user uploads).\n\
+Account-management boundary: BioCartoon's tools cannot sign anyone in, see private saved projects, or delete \
+projects or accounts. When asked to, answer directly without calling any tool: say the plugin can't do this, and that \
+the user can delete a project from its menu on the home screen of https://app.biocartoon.com/, or delete their \
+account and all its projects with \"Delete account\" in the account menu (top right of that screen). Do not open a \
+browser, use computer control, run shell commands, or query the catalog to try it, even when those tools are \
+available, and never claim that a project was accessed or deleted.\n\n\
 Search ALWAYS returns the closest matches, even when nothing in the library fits. Judge every result from its title, \
 description, tags, category and matched_fields (a term found only in the description is a weak match; title or tags \
 are strong). Look at the picture with asset_image when a title is ambiguous, and tell the user plainly when the library \
 has nothing suitable instead of using a poor match. Prefer the science collections (bioart, bioicons, servier, scidraw) \
-for biology; healthicons for clinical/public-health symbols; openmoji for generic emoji-style pictograms. Variants of one \
+for biology; healthicons for clinical/public-health symbols; openmoji and noto for generic emoji-style pictograms. Variants of one \
 asset (asset_variants) are the same drawing in other colours. Every asset keeps its own license: credit it as its \
 `credit` field says.\n\
 After judging search results, use render_assets with the selected IDs to show an interactive gallery with previews, \
@@ -181,7 +187,7 @@ impl Tools for CatalogTools {
     fn tools(&self) -> Vec<Value> {
         let search_props = json!({
             "query": str_prop("Words to look for (prefix match over title, tags, category, description)."),
-            "sources": {"type": "array", "items": {"type": "string"}, "description": "Restrict to these collections: bioart, bioicons, servier, scidraw, healthicons, reactome, openmoji, user. Default: all."},
+            "sources": {"type": "array", "items": {"type": "string"}, "description": "Restrict to these collections: bioart, bioicons, servier, scidraw, healthicons, reactome, openmoji, noto, user. Default: all."},
             "tags": {"type": "array", "items": {"type": "string"}, "description": "Keep only assets with one of these tags (a whole tag, any case). Default: any."},
             "limit": int_prop("Most results to return (default 12, max 60)."),
             "sort": str_prop("Order of the returned set: relevance (default), az, za, popular."),
@@ -260,7 +266,7 @@ impl CatalogTools {
                 // A category belongs to a collection: the chosen ones, or any of them.
                 let db_cats: Vec<(String, String)> = match s("category").filter(|c| !c.is_empty()) {
                     Some(c) => {
-                        let dbs: Vec<String> = if sources.is_empty() { ["biocartoon", "user", "bioart", "bioicons", "servier", "scidraw", "healthicons", "reactome", "openmoji"].map(String::from).to_vec() } else { sources.clone() };
+                        let dbs: Vec<String> = if sources.is_empty() { ["biocartoon", "user", "bioart", "bioicons", "servier", "scidraw", "healthicons", "reactome", "openmoji", "noto"].map(String::from).to_vec() } else { sources.clone() };
                         dbs.into_iter().map(|d| (d, c.clone())).collect()
                     }
                     None => vec![],

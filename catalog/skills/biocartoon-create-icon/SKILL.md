@@ -1,9 +1,18 @@
 ---
 name: biocartoon-create-icon
-description: Make an original scientific illustration (a cell, organelle, protein, organ, organism, lab tool or process) when the BioCartoon library has nothing that fits, in a clean style that matches it, and, if the user wants, submit it to the shared BioCartoon library for review, all from the chat. Use when asked to "draw/make/create an icon of X", "make a BioCartoon-style illustration", "there's no icon for X, make one", "make something like icon BA001505 but with ...", "change the colours / add a nucleus to this icon", "upload/submit/contribute this image to BioCartoon", or "add my drawing to the library".
+description: Make an original scientific illustration (a cell, organelle, protein, organ, organism, lab tool or process) when the BioCartoon library has nothing that fits, in a clean style that matches it, and, if the user wants, submit it to the shared BioCartoon library for review, all from the chat. Use when asked to "draw/make/create an icon of X", "make a BioCartoon-style illustration", "there's no icon for X, make one", "make something like icon BA001505 but with ...", "change the colours / add a nucleus to this icon", "upload/submit/contribute this image to BioCartoon", or "add my drawing to the library". Not for account sign-in, private saved projects, or project/account deletion.
 ---
 
 # Create a BioCartoon icon and contribute it
+
+## Account-management boundary
+
+BioCartoon's tools cannot sign anyone in, see private saved projects, or delete projects or accounts.
+When asked to, answer directly without calling any tool: say the plugin can't do this, and that the user
+can delete a project from its menu on the home screen of https://app.biocartoon.com/, or delete their
+account and all its projects with "Delete account" in the account menu (top right of that screen).
+Do not open a browser, use computer control, run shell commands, or query the catalog to try it, even
+when those tools are available, and never claim that a project was accessed or deleted.
 
 The user gets a new illustration for their figure, and everyone else gets it too once a reviewer
 approves it. Work in this order: check the library, make the image, confirm the details with the user,

@@ -1,9 +1,18 @@
 ---
 name: biocartoon-find-icons
-description: Find open-licensed scientific illustrations (cells, organelles, proteins, organs, animals, lab equipment, pathogens, people) in the BioCartoon library of about 20,000 icons from NIH BioArt, Bioicons, Servier Medical Art, SciDraw, Health Icons, Reactome and OpenMoji, show the best candidates, and download them with the correct credit line. Use when asked to "find an icon/illustration/clipart of X", "get a picture of a mitochondrion for my figure", "what BioCartoon icons are there for X", "download a mouse icon", "browse BioCartoon", or when building a biology figure, slide or poster that needs pictures.
+description: Find open-licensed scientific illustrations (cells, organelles, proteins, organs, animals, lab equipment, pathogens, people) in the BioCartoon library of about 20,000 icons from NIH BioArt, Bioicons, Servier Medical Art, SciDraw, Health Icons, Reactome and OpenMoji, show the best candidates, and download them with the correct credit line. Use when asked to "find an icon/illustration/clipart of X", "get a picture of a mitochondrion for my figure", "what BioCartoon icons are there for X", "download a mouse icon", "browse BioCartoon", or when building a biology figure, slide or poster that needs pictures. Not for account sign-in, private saved projects, or project/account deletion.
 ---
 
 # Find BioCartoon icons
+
+## Account-management boundary
+
+BioCartoon's tools cannot sign anyone in, see private saved projects, or delete projects or accounts.
+When asked to, answer directly without calling any tool: say the plugin can't do this, and that the user
+can delete a project from its menu on the home screen of https://app.biocartoon.com/, or delete their
+account and all its projects with "Delete account" in the account menu (top right of that screen).
+Do not open a browser, use computer control, run shell commands, or query the catalog to try it, even
+when those tools are available, and never claim that a project was accessed or deleted.
 
 BioCartoon is a free catalog of about 20,000 scientific illustrations. Every icon keeps the license of
 the collection it came from, so each one used must be credited as its `credit` field says.
@@ -35,7 +44,7 @@ the collection it came from, so each one used must be credited as its `credit` f
      `bioicons` and `scidraw` (flat line art) suit biology.
    - `healthicons` has clinical and public-health pictograms.
    - `reactome` has molecules and pathway icons.
-   - `openmoji` has emoji-style pictograms.
+   - `openmoji` and `noto` have emoji-style pictograms.
    - To avoid credit requirements, filter by license: `--license CC0-1.0 --license PD`.
 
 2. **Judge the results.** Search always returns its closest matches, even when nothing fits.

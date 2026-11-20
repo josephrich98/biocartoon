@@ -1,9 +1,18 @@
 ---
 name: biocartoon-make-figure
-description: Make a whole scientific figure (a process, pathway, life cycle, experiment workflow, cell-cell interaction or comparison) from BioCartoon's open-licensed icons, laid out with labels, arrows and a title, then hand it over as an editable BioCartoon project with PNG/SVG downloads and credits. Use when asked to "make a figure / diagram / schematic / graphical abstract of X", "illustrate how X works", "draw the pathway from A to B", "a figure for my slide or paper showing ...", or to change such a figure ("swap the virus icon", "add a step", "make the arrow an inhibitor"). Not for data charts.
+description: Make a whole scientific figure (a process, pathway, life cycle, experiment workflow, cell-cell interaction or comparison) from BioCartoon's open-licensed icons, laid out with labels, arrows and a title, then hand it over as an editable BioCartoon project with PNG/SVG downloads and credits. Use when asked to "make a figure / diagram / schematic / graphical abstract of X", "illustrate how X works", "draw the pathway from A to B", "a figure for my slide or paper showing ...", or to change such a figure ("swap the virus icon", "add a step", "make the arrow an inhibitor"). Not for data charts. Not for account sign-in, private saved projects, or project/account deletion.
 ---
 
 # Make a BioCartoon figure
+
+## Account-management boundary
+
+BioCartoon's tools cannot sign anyone in, see private saved projects, or delete projects or accounts.
+When asked to, answer directly without calling any tool: say the plugin can't do this, and that the user
+can delete a project from its menu on the home screen of https://app.biocartoon.com/, or delete their
+account and all its projects with "Delete account" in the account menu (top right of that screen).
+Do not open a browser, use computer control, run shell commands, or query the catalog to try it, even
+when those tools are available, and never claim that a project was accessed or deleted.
 
 `compose_figure` builds the figure on the BioCartoon server. It finds a catalog icon for each element, lays
 the figure out, draws the arrows and labels, shows the result in the BioCartoon gallery, and returns a link

@@ -143,6 +143,28 @@ test('search row with sort and filters searches icons and templates', async () =
   } finally { await page.close(); }
 });
 
+test('an empty search with no filters brings back the gallery it opened with', async () => {
+  const { page, frame, calls } = await open();
+  try {
+    await expect(frame.locator('.card')).toHaveCount(3);
+    const box = frame.getByRole('searchbox', { name: 'Search illustrations' });
+    await page.evaluate(() => { window.nextAssets = [{ id: 'BA9', title: 'Kidney', source: 'servier', license: 'CC-BY-4.0', credit: 'Servier Medical Art, CC BY 4.0', url: 'https://assets.biocartoon.com/kidney.png' }]; });
+    await box.fill('kidney'); await box.press('Enter');
+    await expect(frame.getByRole('heading', { name: 'Icon results for “kidney”' })).toBeVisible();
+    await expect(frame.locator('.card')).toHaveCount(2);
+    const searches = (await calls('tools/call', 'search_assets')).length;
+    await box.fill(''); await box.press('Enter');
+    await expect(frame.getByRole('heading', { name: 'Selected illustrations' })).toBeVisible();
+    await expect(frame.locator('.card')).toHaveCount(3);
+    assert.equal((await calls('tools/call', 'search_assets')).length, searches);
+    // With a filter set, an empty search still searches.
+    await frame.getByRole('button', { name: 'Filters' }).click();
+    await frame.getByLabel('File type').selectOption('svg');
+    await box.press('Enter');
+    await expect.poll(async () => (await calls('tools/call', 'search_assets')).length).toBe(searches + 1);
+  } finally { await page.close(); }
+});
+
 test('a composed figure: sanitized preview, Edit with its spec, SVG and PNG downloads, editor link', async () => {
   const { page, frame, pageErrors, calls } = await open({ initial: { figure } });
   try {

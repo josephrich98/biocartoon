@@ -1,0 +1,116 @@
+{
+  "recorded_at": "2026-11-18T23:10:07.479Z",
+  "endpoint": "https://mcp.biocartoon.com/mcp",
+  "status": "passed",
+  "checks": [
+    {
+      "method": "initialize",
+      "milliseconds": 241
+    },
+    {
+      "method": "tools/list",
+      "milliseconds": 55
+    },
+    {
+      "method": "resources/list",
+      "milliseconds": 60
+    },
+    {
+      "method": "resources/read",
+      "milliseconds": 158
+    },
+    {
+      "method": "tools/call",
+      "tool": "search_assets",
+      "milliseconds": 625
+    },
+    {
+      "method": "tools/call",
+      "tool": "render_assets",
+      "milliseconds": 73
+    },
+    {
+      "method": "tools/call",
+      "tool": "get_asset",
+      "milliseconds": 98
+    },
+    {
+      "method": "tools/call",
+      "tool": "asset_variants",
+      "milliseconds": 140
+    },
+    {
+      "method": "tools/call",
+      "tool": "browse_assets",
+      "milliseconds": 82
+    },
+    {
+      "method": "tools/call",
+      "tool": "list_sources",
+      "milliseconds": 163
+    },
+    {
+      "method": "tools/call",
+      "tool": "list_categories",
+      "milliseconds": 97
+    },
+    {
+      "method": "tools/call",
+      "tool": "db_schema",
+      "milliseconds": 70
+    },
+    {
+      "method": "tools/call",
+      "tool": "sql_query",
+      "milliseconds": 76
+    },
+    {
+      "method": "tools/call",
+      "tool": "asset_image",
+      "milliseconds": 83
+    },
+    {
+      "method": "tools/call",
+      "tool": "preview_assets",
+      "milliseconds": 123
+    },
+    {
+      "method": "tools/call",
+      "tool": "asset_svg",
+      "milliseconds": 106
+    },
+    {
+      "method": "tools/call",
+      "tool": "list_templates",
+      "milliseconds": 78
+    },
+    {
+      "method": "tools/call",
+      "tool": "template_image",
+      "milliseconds": 220
+    },
+    {
+      "method": "tools/call",
+      "tool": "submission_status",
+      "milliseconds": 188
+    },
+    {
+      "method": "tools/call",
+      "tool": "submit_artwork",
+      "milliseconds": 28
+    }
+  ],
+  "version": "0.4.10",
+  "tools": 19,
+  "catalogRecords": 21183,
+  "selectedIds": [
+    "SD016288",
+    "BI005029",
+    "SD016427",
+    "SD016456",
+    "SD016523",
+    "SD016585"
+  ],
+  "galleryBytes": 708460,
+  "checksPassed": 20
+}

@@ -1,38 +1,16 @@
 # BioCartoon review recording
 
-Status: script and tool rehearsal prepared; no video has been recorded or hosted.
-Joseph Rich will record the walkthrough. Target about 5–7 minutes; let real responses
-finish and leave text readable. A longer honest walkthrough is preferable to
-editing out a failure. This demonstrates the deployed 0.4.10 catalog app, not the
-separate figure-composition work in progress.
-
-## Before recording
-
-1. Use the existing BioCartoon development installation in ChatGPT with its app
-   connection enabled. It should contain all three skills and connect to
-   `https://mcp.biocartoon.com/mcp` without BioCartoon credentials. Do not create a
-   submission-portal draft just to make a video.
-2. Open a fresh chat and check that the interactive gallery works. Keep a second
-   fresh chat available for the negative examples. Hide unrelated chats,
-   notifications, account details, tokens and personal files.
-3. On the Mac, press Shift–Command–5, choose the relevant window/portion of screen,
-   and start recording. If narrating, select the microphone in Options. Keep the
-   full app/gallery and prompts in frame, with readable text.
-4. Have `submission/assets/review-cell.svg` ready only if you will demonstrate the
-   contribution preview. It is a synthetic AI-created example; never substitute
-   private or unlicensed artwork.
-
 ## Walkthrough
 
 | Approximate time | Say / send | Show in the real app |
 | --- | --- | --- |
-| 0:00–0:20 | “BioCartoon finds open-licensed scientific illustrations, provides credits and download links, and includes an interactive gallery. It is free. This is the catalog app submitted with the find, create and upload skills.” | BioCartoon selected in the host; app connection available. Do not claim it is already publicly approved. |
+| 0:00–0:20 | “BioCartoon finds open-licensed scientific illustrations, provides credits and download links, and includes an interactive gallery. It is free. This is the catalog app submitted with the find, create, make-figure and upload skills.” | BioCartoon selected in the host; app connection available. Do not claim it is already publicly approved. |
 | 0:20–1:40 | **P1:** “Find three illustrations of a pyramidal neuron for a neuroscience lecture slide. Show me the choices with their licenses and credit lines.” | Actual search and preview calls, then the selected gallery. Open a credit line and PNG/SVG link controls. Show distinct returned artwork and its actual license; do not describe the entire library as CC0. |
 | 1:40–2:20 | **P2:** “Give me the PNG and SVG download links for BioCartoon illustration BA001505, with the exact credit line I should use.” | `get_asset` output and response. Rehearsed fixture: Pyramidal Neuron, Ryan Kissinger, NIAID NIH BioArt Source, public domain. Open at least one returned image link. |
-| 2:20–3:00 | **P3:** “Show me the other colour or style variants of BioCartoon illustration BA001505 so I can choose one.” | Real `asset_variants` response and gallery. Rehearsal returned six variants: beige, blue, orange, pink, purple, yellow. The live catalog can change. |
-| 3:00–3:45 | **P4:** “Show me a shared BioCartoon slide template that I can use as a starting point. Include a preview, its author and license, and how I can open BioCartoon to use it.” | Actual template preview and attribution. Rehearsal used “Electron transport chain”, by BioCartoon, CC0-1.0. Open `https://app.biocartoon.com/` if useful; do not invent a template deep link. |
+| 2:20–3:00 | **P3:** “Show me the other color or style variants of BioCartoon illustration BA001505 so I can choose one.” | Real `asset_variants` response and gallery. Rehearsal returned six variants: beige, blue, orange, pink, purple, yellow. The live catalog can change. |
+| 3:00–3:45 | **P4:** “Show me a shared BioCartoon slide template that I can use as a starting point. Include a preview, its author and license, and how I can open BioCartoon to use it.” | Actual template preview and attribution. Rehearsal used “Electron transport chain”, by BioCartoon, CC0-1.0. Open `https://app.biocartoon.com/` or an editable-copy URL actually returned by `open_in_biocartoon`; never invent a deep link. |
 | 3:45–4:45 | **P5, preview only:** attach `review-cell.svg`, then send the exact first prompt from `review-cases.json`. | Image preview and all proposed metadata, including AI use and CC0, followed by a request for approval. There must be no `submit_artwork` call before approval. This segment demonstrates the confirmation boundary; it does not prove a successful write. |
-| 4:45–5:45 | In separate fresh chats send N1, N2 and N3 from `review-cases.json` (or show one here and supply the others as a supplemental clip). | The assistant explains BioCartoon cannot obtain proprietary BioRender artwork, delete cloud projects, or bypass human moderation. No tool call should pretend to do those actions. |
+| 4:45–5:45 | In separate fresh chats send N1, N2 and N3 from `review-cases.json` (or show one here and supply the others as a supplemental clip). | The assistant explains BioCartoon cannot obtain or unwatermark artwork someone else sells, sign in to or delete cloud projects (it points to the home screen and account menu at app.biocartoon.com instead), or bypass human moderation. No tool call should pretend to do those actions. |
 
 If the gallery does not appear, stop and fix the development installation before
 recording. A JSON response or staged mockup does not demonstrate the interactive app.
@@ -73,3 +51,7 @@ Run all eight cases against the final saved version and update
 `review-results.md` with Passed, Failed, Blocked or Not run plus the observed calls
 and outcomes. The current tool-level rehearsal does not establish conversational
 tool selection, confirmation behavior, or portal acceptance.
+
+## November 18 execution notes
+
+P1–P4 and N1–N3 were executed in separate ChatGPT Work chats; see `review-results.md`. P5 remains Not run. N2 was stopped after it began browser exploration instead of the expected unsupported-action explanation; fix or resolve that boundary before recording a successful review demo. The live read-only suite passed 20 checks on the 19-tool server. There is still no verified recording URL; `review.demo_recording_url` contains only the explicit placeholder requested by the user.

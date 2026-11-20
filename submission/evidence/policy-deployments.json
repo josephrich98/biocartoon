@@ -1,0 +1,20 @@
+{
+  "verified_at": "2026-11-18T23:30:17.618821+00:00",
+  "worker": "biocartoon-site",
+  "final_version_id": "a74f8b60-4bcd-468a-b9e5-f3ec7e241c7e",
+  "deployments": [
+    "6e777899-2091-4a72-ab9a-adbb7572059a",
+    "5fd256ad-a573-4207-85b2-7a4328921c34",
+    "45fe2750-73cb-4c4b-b430-90ad8aa2ebc3",
+    "a74f8b60-4bcd-468a-b9e5-f3ec7e241c7e"
+  ],
+  "urls": [
+    "https://www.biocartoon.com/privacy",
+    "https://www.biocartoon.com/terms"
+  ],
+  "source_sha256": {
+    "privacy.html": "9b981903609a8f9442947f6a1dc92b61bd5a2fce4fc931f3db14ded369e2fd9a",
+    "terms.html": "9d2e19dc2af95c2a02700ca92d495a92a1d1fc15638c66462f7158bb27033d91",
+    "index.html": "132d20db58cf720724b38a23859dcd0cc5d9f9147f88d61104d2edb9e4d42e26"
+  }
+}

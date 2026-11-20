@@ -29,9 +29,9 @@
     ],
     "websiteURL": "https://www.biocartoon.com",
     "defaultPrompt": [
-      "Find an illustration of a pyramidal neuron for my figure.",
-      "Draw a BioCartoon-style icon of a ribosome and submit it.",
-      "Which CC0 icons of mitochondria are there?"
+      "Search BioCartoon for CC0 illustrations of mitochondria and show their credits.",
+      "Make a figure of CAR-T cells killing a tumor cell, drawing any icons the library lacks.",
+      "Draw a ribosome icon in BioCartoon style and submit it to the shared library."
     ]
   },
   "mcpServers": "./.mcp.json"

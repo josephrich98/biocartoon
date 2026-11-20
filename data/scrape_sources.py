@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Download open scientific-illustration collections into a common layout.
 
-    python data/scrape_sources.py <source> [...]     sources: bioicons healthicons openmoji
+    python data/scrape_sources.py <source> [...]     sources: bioicons healthicons noto openmoji
                                                      reactome scidraw servier all
 
 Each source lands in data/sources/<source>/ with
@@ -16,6 +16,7 @@ what is on disk at the end of each run.
 Licenses (recorded per item where the source provides it):
   bioicons     per-icon: CC0 / CC-BY 3.0,4.0 / CC-BY-SA / MIT / BSD  (static/icons/icons.json)
   healthicons  CC0 / MIT
+  noto         Apache-2.0 (Noto's own emoji); public domain (its flags, from Wikipedia)
   openmoji     CC BY-SA 4.0
   reactome     CC BY 4.0
   scidraw      per-drawing: CC-BY 4.0 or CC0 (API `license` field); each has a Zenodo DOI
@@ -197,6 +198,90 @@ def openmoji_item(m: dict, svg, png):
     return item("openmoji", hx, m["annotation"], tags=tags, category=f"{m['group']} / {m.get('subgroups', '')}", license="CC BY-SA 4.0",
                 author=m.get("openmoji_author", "OpenMoji"), url=f"https://openmoji.org/library/emoji-{hx}/",
                 svg=svg, png=png, description="skin tone variant" if m.get("skintone") else "")
+
+
+NOTO_REPO = "googlefonts/noto-emoji"
+# Noto's own color SVGs are Apache-2.0; its flags come from Wikipedia and are public domain.
+NOTO_DIRS = {"2D/svg": "Apache-2.0", "third_party/region-flags/waved-svg": "Public Domain"}
+
+
+def noto_release() -> str:
+    """The newest dated release tag (`v2026-09-24-unicode18_0`)."""
+    tags = [ln.split("refs/tags/", 1)[1] for ln in _git("ls-remote", "--tags", f"https://github.com/{NOTO_REPO}").splitlines()
+            if "refs/tags/" in ln and not ln.endswith("^{}")]
+    return max(t for t in tags if re.fullmatch(r"v\d{4}-\d\d-\d\d.*", t))
+
+
+def noto_listing(tag: str, work: Path) -> tuple[str, list[tuple[dict, str, str]]]:
+    """(emojibase version, [(emojibase record, path in the repo, license, path of the file it is
+    (the path, or a symlink's target))]) for every Noto emoji
+    SVG at `tag`. Noto has no names or keywords, so they come from emojibase-data (MIT; the Unicode
+    CLDR names and keywords, with the same group / subgroup names OpenMoji uses). The few SVGs
+    emojibase doesn't list (bare keycap digits the font composes from) are left out."""
+    # A blob-less clone lists the files without downloading them (the GitHub API's 60 requests an
+    # hour without a token run out); the SVGs are then fetched one by one from raw.githubusercontent.
+    repo = work / "noto-repo"
+    _git("clone", "-q", "--filter=blob:none", "--no-checkout", "--depth", "1", "--branch", tag,
+         f"https://github.com/{NOTO_REPO}", str(repo))
+    files = {}
+    for line in _git("-C", str(repo), "ls-tree", "-r", "HEAD").splitlines():
+        mode, _, sha_path = line.split(" ", 2)
+        sha, path = sha_path.split("\t", 1)
+        m = re.fullmatch(r"(.+)/emoji_u([0-9a-f_]+)\.svg", path)
+        if m and m.group(1) in NOTO_DIRS:
+            # Some flags are symlinks to another (Bouvet Island -> Norway); raw.githubusercontent
+            # serves a symlink's target name, not the file, so download the target.
+            target = path
+            if mode == "120000":
+                target = str(Path(path).parent / _git("-C", str(repo), "cat-file", "-p", sha).strip())
+            files[m.group(2)] = (path, NOTO_DIRS[m.group(1)], target)
+    r = get("https://data.jsdelivr.com/v1/package/npm/emojibase-data", allow_404=False)
+    if r is None or r.status_code != 200:
+        raise RuntimeError("emojibase-data: no version")
+    ver = r.json()["tags"]["latest"]
+    base = f"https://cdn.jsdelivr.net/npm/emojibase-data@{ver}"
+    data, groups = (get(f"{base}/{p}", allow_404=False) for p in ("en/data.json", "meta/groups.json"))
+    if data is None or groups is None or data.status_code != 200 or groups.status_code != 200:
+        raise RuntimeError(f"emojibase-data {ver}: no data")
+    groups = groups.json()
+
+    def key(hexcode):  # Noto's file names drop the FE0F variation selector
+        return "_".join(c for c in hexcode.lower().split("-") if c != "fe0f")
+
+    out = []
+    for e in data.json():
+        for rec in [e] + [dict(s, tags=e.get("tags") or []) for s in e.get("skins") or []]:
+            if f := files.pop(key(rec["hexcode"]), None):
+                cat = [groups[k].get(str(rec.get(k[:-1])), "") for k in ("groups", "subgroups")]
+                # emojibase files the regional indicator letters under no group; OpenMoji's name for them
+                rec["category"] = " / ".join(c for c in cat if c) or ("symbols / regional-indicator" if rec["label"].startswith("regional indicator") else "")
+                out.append((rec, *f))
+    return ver, out
+
+
+def noto_item(rec: dict, path: str, lic: str, tag: str, svg):
+    """`path` is the emoji's own path in the repo (for its page); `svg` the file to fetch."""
+    return item("noto", rec["hexcode"], rec["label"], tags=rec.get("tags") or [], category=rec["category"], license=lic,
+                author="Google" if lic != "Public Domain" else "", url=f"https://github.com/{NOTO_REPO}/blob/{tag}/{path}",
+                svg=svg, description="skin tone variant" if rec.get("tone") else "")
+
+
+def noto():
+    src = "noto"
+    tag = noto_release()
+    import tempfile
+
+    with tempfile.TemporaryDirectory() as work:
+        _, listing = noto_listing(tag, Path(work))
+    raw = f"https://raw.githubusercontent.com/{NOTO_REPO}/{tag}"
+
+    def one(entry):
+        rec, path, lic, target = entry
+        rel = Path("files") / Path(path).name
+        return noto_item(rec, path, lic, tag, str(rel)) if download(f"{raw}/{target}", ROOT / src / rel) else None
+
+    with cf.ThreadPoolExecutor(8) as ex:
+        write_items(src, [it for it in ex.map(one, listing) if it])
 
 
 def reactome():
@@ -437,6 +522,16 @@ def discover_openmoji(known, prev, work):
     return tag, len(meta), new
 
 
+def discover_noto(known, prev, work):
+    tag = noto_release()
+    if prev and prev.split("+", 1)[0] == tag:
+        return prev, None, []
+    ver, listing = noto_listing(tag, work)
+    raw = f"https://raw.githubusercontent.com/{NOTO_REPO}/{tag}"
+    new = [noto_item(rec, path, lic, tag, f"{raw}/{target}") for rec, path, lic, target in listing if rec["hexcode"] not in known]
+    return f"{tag}+{ver}", len(listing), new
+
+
 def reactome_listing() -> dict:
     """{icon id: search-API entry}, or {icon id: {}} if the search API is down (it answered 500
     for Icon queries in 2026-10) and the ids had to come from the icon-lib category pages.
@@ -499,11 +594,11 @@ def discover_servier(known, prev, work):
     return sig, len(pages), new
 
 
-DISCOVER = dict(bioicons=discover_bioicons, healthicons=discover_healthicons, openmoji=discover_openmoji,
+DISCOVER = dict(bioicons=discover_bioicons, healthicons=discover_healthicons, noto=discover_noto, openmoji=discover_openmoji,
                 reactome=discover_reactome, scidraw=discover_scidraw, servier=discover_servier)
 
 
-SOURCES = dict(bioicons=bioicons, healthicons=healthicons, openmoji=openmoji, reactome=reactome,
+SOURCES = dict(bioicons=bioicons, healthicons=healthicons, noto=noto, openmoji=openmoji, reactome=reactome,
                scidraw=scidraw, servier=servier)
 
 if __name__ == "__main__":

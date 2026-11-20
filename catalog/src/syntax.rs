@@ -208,6 +208,13 @@ fn tokenize(q: &str) -> Vec<Token> {
     out
 }
 
+/// Whether a plain query is shaped like a catalog asset id: two letters and six digits
+/// ("BA001505"), in any case, so the search can look it up as `id:<it>`.
+pub fn looks_like_id(q: &str) -> bool {
+    let b = q.trim().as_bytes();
+    b.len() == 8 && b[..2].iter().all(u8::is_ascii_alphabetic) && b[2..].iter().all(u8::is_ascii_digit)
+}
+
 /// The query as an expression, or `None` for a plain keyword search (no field, operator or
 /// parenthesis) or one with no terms.
 pub fn parse(q: &str) -> Option<Expr> {

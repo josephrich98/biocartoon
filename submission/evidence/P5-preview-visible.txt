@@ -1,0 +1,109 @@
+- link "Skip to content":
+  - /url: "#_r_d_"
+- complementary:
+  - navigation "Show sidebar":
+    - button "Show sidebar"
+    - button "Show sidebar":
+    - button "New chat":
+      - generic: New chat
+    - button "Search":
+      - generic: Search
+    - button "Recents":
+      - generic: Recents
+    - button "Library":
+      - generic: Library
+    - button "Open profile menu"
+- main:
+  - button "Review submission metadata":
+    - generic: Review submission metadata
+  - button "Share":
+  - button "Toggle pinned summary":
+  - region "Conversation":
+    - heading "You said:" [level=4]
+    - button "review-cell.svg"
+    - generic "review-cell.svg"
+    - generic: Code
+    - paragraph:
+      - text: I used generative AI to make this simple cell icon. Help me contribute it to BioCartoon under CC0, titled Review demo cell and credited to Review demo. Show me the image and all submission metadata first, and wait for my approval before sending it.
+      - link "BioCartoon2":
+        - /url: /plugins/plugin_asdk_app_6afd771a248081919ca9a171e0e2af58
+        - text: BioCartoon2
+    - button "Copy message"
+    - button "Worked for 18s":
+      - generic: Worked for 18s
+    - heading "ChatGPT said:" [level=4]
+    - button "Open preview of review-cell-preview.png":
+      - text: review-cell-preview.png
+    - table:
+      - rowgroup:
+        - row "Submission field Proposed value":
+          - columnheader "Submission field"
+          - columnheader "Proposed value"
+      - rowgroup:
+        - row "Artwork Original review-cell.svg, 256 × 256":
+          - cell "Artwork"
+          - cell "Original review-cell.svg, 256 × 256"
+        - row "Title Review demo cell":
+          - cell "Title"
+          - cell "Review demo cell"
+        - row "Credit Review demo":
+          - cell "Credit"
+          - cell "Review demo"
+        - row "License CC0 1.0":
+          - cell "License"
+          - cell "CC0 1.0"
+        - row "Description Stylized cell icon with a purple nucleus and simplified organelles.":
+          - cell "Description"
+          - cell "Stylized cell icon with a purple nucleus and simplified organelles."
+        - row "Category cells":
+          - cell "Category"
+          - cell "cells"
+        - row "Tags cell, nucleus, organelles, cell icon":
+          - cell "Tags"
+          - cell "cell, nucleus, organelles, cell icon"
+        - row "Generative AI used Yes":
+          - cell "Generative AI used"
+          - cell "Yes"
+        - row "Generative AI details Created with generative AI.":
+          - cell "Generative AI details"
+          - cell "Created with generative AI."
+        - row "Adapted from a BioCartoon asset None specified":
+          - cell "Adapted from a BioCartoon asset"
+          - cell "None specified"
+        - row "Contact email Omitted":
+          - cell "Contact email"
+          - cell "Omitted"
+        - row "Rights confirmation Awaiting your confirmation":
+          - cell "Rights confirmation"
+          - cell "Awaiting your confirmation"
+    - button "Copy table":
+    - button "Expand table":
+    - paragraph: The submission will go to BioCartoon’s moderation queue. Please confirm that you have the right to share the SVG under CC0 and approve sending it with the metadata above.
+    - button "Copy":
+    - button "Read aloud":
+    - button "Share":
+    - button "More actions":
+    - button [active]:
+    - heading "Latest response" [level=4]
+    - status
+    - textbox "Work with ChatGPT":
+      - paragraph: Work with ChatGPT
+    - button "Add files and more":
+    - button "Select ChatGPT model":
+      - generic: GPT-6.2 Sol
+      - generic: Light
+      - generic: None
+      - generic: Minimal
+      - generic: Light
+      - generic: Medium
+      - generic: High
+      - generic: Extra High
+      - generic: Max
+      - generic: Ultra
+      - generic: Persistent
+    - button "Dictate":
+    - button "Start Voice":
+    - status
+- status
+- status
+- status: Response complete

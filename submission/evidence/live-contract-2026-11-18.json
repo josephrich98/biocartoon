@@ -1,0 +1,146 @@
+{
+  "recorded_at": "2026-11-18T23:19:32.101Z",
+  "version": "0.4.10",
+  "tool_count": 19,
+  "tool_definitions_match_local": true,
+  "local_gallery_sha256": "64680cd5dfca698b1320c1e92bf11cd534e3331576e01f0c08c23f9c51ac158f",
+  "deployed_gallery_sha256": "d0c8522b1372bdd73f85a8cbc177e8d7ae6a5863c80f75955d07f27e092f2b5f",
+  "annotations": [
+    {
+      "name": "search_assets",
+      "destructiveHint": false,
+      "openWorldHint": false,
+      "readOnlyHint": true,
+      "title": "Search illustrations"
+    },
+    {
+      "name": "get_asset",
+      "destructiveHint": false,
+      "openWorldHint": false,
+      "readOnlyHint": true,
+      "title": "Get illustration details"
+    },
+    {
+      "name": "asset_variants",
+      "destructiveHint": false,
+      "openWorldHint": false,
+      "readOnlyHint": true,
+      "title": "Find colour variants"
+    },
+    {
+      "name": "asset_image",
+      "destructiveHint": false,
+      "openWorldHint": false,
+      "readOnlyHint": true,
+      "title": "View illustration"
+    },
+    {
+      "name": "asset_svg",
+      "destructiveHint": false,
+      "openWorldHint": false,
+      "readOnlyHint": true,
+      "title": "Get illustration SVG"
+    },
+    {
+      "name": "preview_assets",
+      "destructiveHint": false,
+      "openWorldHint": false,
+      "readOnlyHint": true,
+      "title": "Preview illustrations"
+    },
+    {
+      "name": "render_assets",
+      "destructiveHint": false,
+      "openWorldHint": false,
+      "readOnlyHint": true,
+      "title": "Show illustration gallery"
+    },
+    {
+      "name": "browse_assets",
+      "destructiveHint": false,
+      "openWorldHint": false,
+      "readOnlyHint": true,
+      "title": "Browse a collection"
+    },
+    {
+      "name": "list_sources",
+      "destructiveHint": false,
+      "openWorldHint": false,
+      "readOnlyHint": true,
+      "title": "List collections"
+    },
+    {
+      "name": "list_categories",
+      "destructiveHint": false,
+      "openWorldHint": false,
+      "readOnlyHint": true,
+      "title": "List categories"
+    },
+    {
+      "name": "sql_query",
+      "destructiveHint": false,
+      "openWorldHint": false,
+      "readOnlyHint": true,
+      "title": "Query the catalog"
+    },
+    {
+      "name": "db_schema",
+      "destructiveHint": false,
+      "openWorldHint": false,
+      "readOnlyHint": true,
+      "title": "Describe catalog database"
+    },
+    {
+      "name": "list_templates",
+      "destructiveHint": false,
+      "openWorldHint": false,
+      "readOnlyHint": true,
+      "title": "List slide templates"
+    },
+    {
+      "name": "template_image",
+      "destructiveHint": false,
+      "openWorldHint": false,
+      "readOnlyHint": true,
+      "title": "View slide template"
+    },
+    {
+      "name": "submit_artwork",
+      "destructiveHint": false,
+      "idempotentHint": false,
+      "openWorldHint": true,
+      "readOnlyHint": false,
+      "title": "Submit artwork"
+    },
+    {
+      "name": "submission_status",
+      "destructiveHint": false,
+      "openWorldHint": false,
+      "readOnlyHint": true,
+      "title": "Check submission status"
+    },
+    {
+      "name": "compose_figure",
+      "destructiveHint": false,
+      "idempotentHint": false,
+      "openWorldHint": false,
+      "readOnlyHint": false,
+      "title": "Compose figure"
+    },
+    {
+      "name": "open_in_biocartoon",
+      "destructiveHint": false,
+      "idempotentHint": false,
+      "openWorldHint": false,
+      "readOnlyHint": false,
+      "title": "Open in BioCartoon"
+    },
+    {
+      "name": "export_figure",
+      "destructiveHint": false,
+      "openWorldHint": false,
+      "readOnlyHint": true,
+      "title": "Export figure"
+    }
+  ]
+}

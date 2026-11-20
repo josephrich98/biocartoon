@@ -184,7 +184,7 @@ const HEALTHICONS: Rules = &[
     ("zoonoses", Some(PUBLIC_HEALTH)),
 ];
 
-/// OpenMoji categories are "group / subgroup".
+/// OpenMoji categories are "group / subgroup" (emojibase's names; Noto Emoji's use them too).
 const OPENMOJI: Rules = &[
     ("smileys-emotion", Some(FACES)),
     ("body-parts", Some(BODY_PARTS)),
@@ -373,7 +373,7 @@ fn rules(source: &str) -> Rules {
         "bioart" => BIOART,
         "bioicons" => BIOICONS,
         "healthicons" => HEALTHICONS,
-        "openmoji" => OPENMOJI,
+        "openmoji" | "noto" => OPENMOJI,
         "reactome" => REACTOME,
         "scidraw" => SCIDRAW,
         "servier" => SERVIER,

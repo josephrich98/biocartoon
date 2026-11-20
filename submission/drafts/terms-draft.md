@@ -1,22 +1,17 @@
-# BioCartoon service terms — working draft
+# BioCartoon service terms
 
-**Unpublished draft for Joseph Rich's review. Not adopted service terms.**
-Before publishing, settle the decisions in `terms-outline.md`, supply an
-effective date, and decide any additional provisions needed for operating the
-service. This document does not establish a completed submission URL.
+Effective November 18, 2026
 
 ## Operator and service
 
 BioCartoon is operated by Joseph Rich. The plugin helps users search a public
 library of scientific illustrations, inspect previews and attribution, obtain
-available download links, discover shared slide templates, and prepare artwork
+available download links, discover shared slide templates, compose figures from catalog artwork, create encrypted editor links, export SVGs, and prepare artwork
 contributions for human review. BioCartoon is free to use. Some host features,
 such as image generation, may have separate availability or account requirements
 set by that host.
 
-For help, use https://github.com/josephrich98/biocartoon-app/issues. For a request
-containing private information, use the contact method on the privacy page
-instead of posting that information in a public issue.
+For help, use https://github.com/josephrich98/biocartoon-app/issues. For private requests, rights complaints or requests to correct or remove a contribution, email josephrich98@gmail.com and include the relevant asset or submission ID. Do not put private information in a public issue.
 
 ## Illustration licenses
 
@@ -64,13 +59,10 @@ contributions, bypass another provider's licenses, or delete a user's cloud proj
 ## Privacy and third-party services
 
 The BioCartoon privacy policy is available at
-https://www.biocartoon.com/privacy. It must be updated to cover the hosted MCP
-data flow before these terms are adopted for the plugin. ChatGPT and any other
+https://www.biocartoon.com/privacy, including the hosted MCP data flow and contribution retention. Editor links can be opened by anyone who has the complete link; share them accordingly. Accounts are not intended for children under 13, as described in that policy. ChatGPT and any other
 host, AI provider or linked third-party service applies its own terms and policies.
 
-## Open decisions before adoption
 
-Publisher review still needs to settle eligibility/age, rights complaints and
-removal handling, retention/deletion, service suspension or discontinuation,
-changes to these terms, warranties/liability and any dispute or governing-law
-provisions. No location or legal commitment has been invented for these sections.
+## Service availability and updates
+
+The service and its catalog may change, and free-service quotas can make a feature temporarily unavailable. Check the result of a tool call before relying on it. Updated terms will be posted here with an effective date. Questions about these terms can be sent to Joseph Rich at josephrich98@gmail.com.

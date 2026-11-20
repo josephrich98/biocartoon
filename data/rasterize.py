@@ -22,7 +22,7 @@ MIN_PNG_SIDE = 384   # a shipped PNG smaller than this loses to rasterizing the 
 RENDER_TIMEOUT = 15  # seconds per SVG (a 1024px icon renders in <1 s; slow ones are pathological)
 
 # BioArt ships PNGs only, so it never needs rasterizing
-SOURCES = ["bioicons", "healthicons", "openmoji", "reactome", "scidraw", "servier"]
+SOURCES = ["bioicons", "healthicons", "noto", "openmoji", "reactome", "scidraw", "servier"]
 
 
 # ----------------------------------------------------------------------------

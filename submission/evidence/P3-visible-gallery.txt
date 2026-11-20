@@ -1,0 +1,211 @@
+
+  - button "Show Color Variants":
+    - generic: Show Color Variants
+  - button "Share":
+  - button "Toggle summary":
+  - region "Conversation":
+    - heading "You said:" [level=4]
+    - paragraph:
+      - text: Show me the other colour or style variants of BioCartoon illustration BA001505 so I can choose one.
+      - link "BioCartoon2":
+        - /url: /plugins/plugin_asdk_app_6afd771a248081919ca9a171e0e2af58
+        - text: BioCartoon2
+    - button "Copy message"
+    - button "Worked for 11s":
+      - generic: Worked for 11s
+    - status: Opened app
+    - button "Open app in tab":
+    - iframe:
+      - iframe [id="root"]:
+        - main:
+          - heading "BioCartoon" [level=1]
+          - link "Open BioCartoon":
+            - /url: https://app.biocartoon.com
+            - text: Open BioCartoon
+          - search "Search artwork":
+            - generic: Search illustrations
+            - searchbox "Search illustrations"
+            - button "Filters":
+              - text: Filters
+            - button "Search"
+          - status: Selected illustrations · 5 illustrations
+          - region "Selected illustrations":
+            - heading "Selected illustrations" [level=2]
+            - article:
+              - img "Pyramidal Neuron"
+              - button "Edit":
+                - text: Edit
+              - button "Download":
+                - text: Download
+              - button "Open in BioCartoon":
+                - text: Open in BioCartoon
+              - heading "Pyramidal Neuron" [level=3]
+              - generic: NIH BioArt · BA001506
+              - generic "Credit & license"
+            - article:
+              - img "Pyramidal Neuron"
+              - button "Edit":
+                - text: Edit
+              - button "Download":
+                - text: Download
+              - button "Open in BioCartoon":
+                - text: Open in BioCartoon
+              - heading "Pyramidal Neuron" [level=3]
+              - generic: NIH BioArt · BA001507
+              - generic "Credit & license"
+            - article:
+              - img "Pyramidal Neuron"
+              - button "Edit":
+                - text: Edit
+              - button "Download":
+                - text: Download
+              - button "Open in BioCartoon":
+                - text: Open in BioCartoon
+              - heading "Pyramidal Neuron" [level=3]
+              - generic: NIH BioArt · BA001508
+              - generic "Credit & license"
+            - article:
+              - img "Pyramidal Neuron"
+              - button "Edit":
+                - text: Edit
+              - button "Download":
+                - text: Download
+              - button "Open in BioCartoon":
+                - text: Open in BioCartoon
+              - heading "Pyramidal Neuron" [level=3]
+              - generic: NIH BioArt · BA001509
+              - generic "Credit & license"
+            - article:
+              - img "Pyramidal Neuron"
+              - button "Edit":
+                - text: Edit
+              - button "Download":
+                - text: Download
+              - button "Open in BioCartoon":
+                - text: Open in BioCartoon
+              - heading "Pyramidal Neuron" [level=3]
+              - generic: NIH BioArt · BA001510
+              - generic "Credit & license"
+            - button "More selected illustrations":
+          - generic: Each illustration keeps its original license. Include its credit line wherever required.
+    - heading "ChatGPT said:" [level=4]
+    - paragraph:
+      - text: BioCartoon lists five other colour variants of
+      - strong: Pyramidal Neuron
+      - text: . BA001505 is the beige version.
+    - table:
+      - rowgroup:
+        - row "Blue Orange Pink Purple Yellow":
+          - columnheader "Blue"
+          - columnheader "Orange"
+          - columnheader "Pink"
+          - columnheader "Purple"
+          - columnheader "Yellow"
+      - rowgroup:
+        - row "Blue pyramidal neuron Unverified image Load image Orange pyramidal neuron Unverified image Load image Pink pyramidal neuron Unverified image Load image Purple pyramidal neuron Unverified image Load image Yellow pyramidal neuron Unverified image Load image":
+          - cell "Blue pyramidal neuron Unverified image Load image":
+            - generic: Blue pyramidal neuron
+            - generic: Unverified image
+            - button "Load image"
+          - cell "Orange pyramidal neuron Unverified image Load image":
+            - generic: Orange pyramidal neuron
+            - generic: Unverified image
+            - button "Load image"
+          - cell "Pink pyramidal neuron Unverified image Load image":
+            - generic: Pink pyramidal neuron
+            - generic: Unverified image
+            - button "Load image"
+          - cell "Purple pyramidal neuron Unverified image Load image":
+            - generic: Purple pyramidal neuron
+            - generic: Unverified image
+            - button "Load image"
+          - cell "Yellow pyramidal neuron Unverified image Load image":
+            - generic: Yellow pyramidal neuron
+            - generic: Unverified image
+            - button "Load image"
+        - row "BA001506 BA001507 BA001508 BA001509 BA001510":
+          - cell "BA001506"
+          - cell "BA001507"
+          - cell "BA001508"
+          - cell "BA001509"
+          - cell "BA001510"
+        - row "PNG · SVG PNG · SVG PNG · SVG PNG · SVG PNG · SVG":
+          - cell "PNG · SVG":
+            - link "PNG":
+              - /url: https://assets.biocartoon.com/bioart/424_633918.png
+              - generic: PNG
+            - text: ·
+            - link "SVG":
+              - /url: https://assets.biocartoon.com/bioart/424_633918.svg
+              - generic: SVG
+          - cell "PNG · SVG":
+            - link "PNG":
+              - /url: https://assets.biocartoon.com/bioart/424_633923.png
+              - generic: PNG
+            - text: ·
+            - link "SVG":
+              - /url: https://assets.biocartoon.com/bioart/424_633923.svg
+              - generic: SVG
+          - cell "PNG · SVG":
+            - link "PNG":
+              - /url: https://assets.biocartoon.com/bioart/424_633928.png
+              - generic: PNG
+            - text: ·
+            - link "SVG":
+              - /url: https://assets.biocartoon.com/bioart/424_633928.svg
+              - generic: SVG
+          - cell "PNG · SVG":
+            - link "PNG":
+              - /url: https://assets.biocartoon.com/bioart/424_633933.png
+              - generic: PNG
+            - text: ·
+            - link "SVG":
+              - /url: https://assets.biocartoon.com/bioart/424_633933.svg
+              - generic: SVG
+          - cell "PNG · SVG":
+            - link "PNG":
+              - /url: https://assets.biocartoon.com/bioart/424_633938.png
+              - generic: PNG
+            - text: ·
+            - link "SVG":
+              - /url: https://assets.biocartoon.com/bioart/424_633938.svg
+              - generic: SVG
+    - button "Copy table":
+    - button "Expand table":
+    - paragraph: All five are public domain and share the same catalog credit line.
+    - blockquote:
+      - paragraph:
+        - text: "\"Pyramidal Neuron\" by Ryan Kissinger, NIAID NIH BioArt Source ("
+        - link "https://bioart.niaid.nih.gov/bioart/424":
+          - /url: https://bioart.niaid.nih.gov/bioart/424
+          - generic: https://bioart.niaid.nih.gov/bioart/424
+        - text: ), public domain
+    - button "Copy":
+    - button "Read aloud":
+    - button "Share":
+    - button "More actions":
+    - button "Scroll to bottom":
+    - heading "Latest response" [level=4]
+    - status
+    - textbox "Work with ChatGPT" [active]:
+      - paragraph: Work with ChatGPT
+    - button "Add files and more":
+    - button "Select ChatGPT model":
+      - generic: GPT-6.2 Sol
+      - generic: Light
+      - generic: None
+      - generic: Minimal
+      - generic: Light
+      - generic: Medium
+      - generic: High
+      - generic: Extra High
+      - generic: Max
+      - generic: Ultra
+      - generic: Persistent
+    - button "Dictate":
+    - button "Start Voice":
+    - status
+- status
+- status
+- status
+- status: Response complete

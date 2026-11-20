@@ -13,9 +13,11 @@ const query = $<HTMLInputElement>("query"), sort = $<HTMLSelectElement>("sort"),
 const filterButton = $<HTMLButtonElement>("filter-button"), filters = $("filters"), filterCount = $("filter-count");
 const fSource = $<HTMLSelectElement>("f-source"), fAuthor = $<HTMLInputElement>("f-author"), fCategory = $<HTMLSelectElement>("f-category");
 const fLicense = $<HTMLSelectElement>("f-license"), fType = $<HTMLSelectElement>("f-type"), fTags = $<HTMLInputElement>("f-tags"), fKind = $<HTMLSelectElement>("f-kind");
-const SOURCES: Record<string, string> = { biocartoon: "BioCartoon", user: "BioCartoon community", bioart: "NIH BioArt", bioicons: "Bioicons", servier: "Servier Medical Art", scidraw: "SciDraw", healthicons: "Health Icons", reactome: "Reactome", openmoji: "OpenMoji" };
+const SOURCES: Record<string, string> = { biocartoon: "BioCartoon", user: "BioCartoon community", bioart: "NIH BioArt", bioicons: "Bioicons", servier: "Servier Medical Art", scidraw: "SciDraw", healthicons: "Health Icons", reactome: "Reactome", openmoji: "OpenMoji", noto: "Noto Emoji" };
 const LICENSES: Record<string, string> = { PD: "Public domain", "CC0-1.0": "CC0", "CC-BY-4.0": "CC BY 4.0", "CC-BY-3.0": "CC BY 3.0", "CC-BY-SA-4.0": "CC BY-SA 4.0", MIT: "MIT", "BSD-3-Clause": "BSD" };
 let connected = false, revision = 0, editors = 0;
+// The result the gallery opened with; an empty search with no filters brings it back.
+let original: ToolResult | undefined;
 
 // ---------------------------------------------------------------------------------------------
 // Small DOM helpers
@@ -450,7 +452,12 @@ fSource.addEventListener("change", async () => {
 
 async function search() {
   if (!connected) return;
-  const request = ++revision; const q = query.value.trim();
+  const q = query.value.trim();
+  if (!q && original && !activeFilters() && !sort.value) {
+    ++revision; clearError(); searchButton.disabled = false;
+    render(show(original)); return;
+  }
+  const request = ++revision;
   searchButton.disabled = true; clearError(); results.setAttribute("aria-busy", "true");
   status.textContent = "Searching…";
   const kind = fKind.value;
@@ -485,7 +492,7 @@ $<HTMLAnchorElement>("open-app").addEventListener("click", e => { if (connected)
 
 app.ontoolresult = result => {
   ++revision; searchButton.disabled = !connected; clearError();
-  try { render(show(result as ToolResult)); }
+  try { render(show(result as ToolResult)); original = result as ToolResult; }
   catch (e) { results.setAttribute("aria-busy", "false"); showError(e instanceof Error ? e.message : "Could not show illustrations."); status.textContent = "Illustrations unavailable."; }
 };
 app.ontoolinput = () => { status.textContent = "Working…"; };

@@ -16,7 +16,8 @@ already have is ignored. Nothing is deleted.
 Per source (scrape_sources.DISCOVER, scrape_bioart.discover):
   1. discover   cheap upstream signal (commit, release tag, ETag, sitemap hash); unchanged -> skip
   2. diff       upstream ids minus ids in the catalog (and ids held in sync_held)
-  3. gate       license must be one this source already has in the catalog, else held for review;
+  3. gate       license must be one this source already has in the catalog (a new source: one in
+                NEW_SOURCE_LICENSES), else held for review;
                 more than --max-new new items, or upstream listing far fewer than we have,
                 -> the whole source is skipped this run and reported (scraper or upstream broke)
   4. fetch      download only the new files into a scratch dir
@@ -51,7 +52,10 @@ from backup_db import backup, local_backup
 from config import R2_BACKUP_BUCKET, R2_BUCKET
 
 DATA = Path(__file__).resolve().parent
-SOURCES = ["bioart", "bioicons", "healthicons", "openmoji", "reactome", "scidraw", "servier"]
+SOURCES = ["bioart", "bioicons", "healthicons", "noto", "openmoji", "reactome", "scidraw", "servier"]
+# The licenses a source may bring before the catalog has any of its assets (the gate otherwise only
+# lets in licenses the source already has there). A first sync of a source also needs --force <source>.
+NEW_SOURCE_LICENSES = {"noto": {"Apache-2.0", "PD"}}
 MIN_LISTED_FRACTION = 0.8  # upstream listing fewer than this share of what we have -> broken scraper
 
 STATE_SQL = """
@@ -216,7 +220,8 @@ def sync_source(con, source: str, a, s3, rep: Report, taken: set[str]):
             con.execute("SELECT source_id, reason, item FROM sync_held WHERE source = ?", (source,))}
     approved = [json.loads(item) for reason, item in held.values() if reason == "approved"]
     prev = (con.execute("SELECT signal FROM sync_state WHERE source = ?", (source,)).fetchone() or (None,))[0]
-    allowed = {lic for (lic,) in con.execute("SELECT DISTINCT license FROM assets WHERE source = ?", (source,))}
+    allowed = {lic for (lic,) in con.execute("SELECT DISTINCT license FROM assets WHERE source = ?", (source,))} \
+        or NEW_SOURCE_LICENSES.get(source, set())
     genai = B.load_generative_ai()
 
     work = Path(tempfile.mkdtemp(prefix=f"sync-{source}-", dir=a.work))

@@ -1,9 +1,18 @@
 ---
 name: biocartoon-upload
-description: Upload image files (SVG, PNG, JPEG, WebP, GIF, BMP, TIFF), one or a whole folder, to the shared BioCartoon library with the `biocartoon upload` command, with a good title, description, tags, category, credit and license for each, after a dry run the user approves. Also submits a new version of an earlier upload (--update) or changes its details. Use when asked to "upload this to BioCartoon", "submit my drawings/icons to BioCartoon", "contribute this folder of illustrations", "publish my SVG to the BioCartoon library", "update my BioCartoon upload", or "fix the title/tags of my upload".
+description: Upload image files (SVG, PNG, JPEG, WebP, GIF, BMP, TIFF), one or a whole folder, to the shared BioCartoon library with the `biocartoon upload` command, with a good title, description, tags, category, credit and license for each, after a dry run the user approves. Also submits a new version of an earlier upload (--update) or changes its details. Use when asked to "upload this to BioCartoon", "submit my drawings/icons to BioCartoon", "contribute this folder of illustrations", "publish my SVG to the BioCartoon library", "update my BioCartoon upload", or "fix the title/tags of my upload". Not for account sign-in, private saved projects, or project/account deletion.
 ---
 
 # Upload artwork to BioCartoon
+
+## Account-management boundary
+
+BioCartoon's tools cannot sign anyone in, see private saved projects, or delete projects or accounts.
+When asked to, answer directly without calling any tool: say the plugin can't do this, and that the user
+can delete a project from its menu on the home screen of https://app.biocartoon.com/, or delete their
+account and all its projects with "Delete account" in the account menu (top right of that screen).
+Do not open a browser, use computer control, run shell commands, or query the catalog to try it, even
+when those tools are available, and never claim that a project was accessed or deleted.
 
 `biocartoon upload` sends image files to the shared library. Each one waits for a human reviewer and
 joins the catalog (and the BioCartoon app) after the next publish once approved, usually within a few

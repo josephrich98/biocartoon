@@ -1,0 +1,28 @@
+Browser tab: 1043935312, Title: "biocartoon-review | Workers & Pages | Josephrich98@gmail.com's Account | Cloudflare", URL: "https://dash.cloudflare.com/d98d006cb66fcdd39168ef413262b426/workers/services/view/biocartoon-review/production/settings".
+1 AXWebArea biocartoon-review | Workers & Pages | Josephrich98@gmail.com's Account | Cloudflare, URL: dash.cloudflare.com/d98d006cb66fcdd39168ef413262b426/workers/services/view/biocartoon-review/production/settings
+					224 text biocartoon-review
+				242 link Description: Edit code, Value: dash.cloudflare.com/d98d006cb66fcdd39168ef413262b426/workers/services/edit/biocartoon-review/production
+							272 button Description: ACCESS_AUD, ID: base-ui-:rc2:
+							285 button Description: ACCESS_TEAM, ID: base-ui-:rc8:
+					362 text Logs
+					365 switch Description: Logs, Value: 0, ID: base-ui-:rdm:
+					367 text Traces
+					370 switch Description: Traces, Value: 0, ID: base-ui-:re1:
+					375 switch Description: Issues, Value: 0, ID: base-ui-:re9:
+					380 text No destinations available. 
+						388 text Logs
+						389 text field (disabled) Logs %, Value: 100, ID: :ref:
+						392 text Traces
+						393 text field (disabled) Traces %, Value: 100, ID: :reh:
+					449 text Cron triggers
+						456 text Next
+						457 link Description: Thu, 19 Nov 2026 04:17:00, Value: dash.cloudflare.com/d98d006cb66fcdd39168ef413262b426/workers/services/cron-events/biocartoon-review/production
+					484 text field (settable) Description: Name, Value: biocartoon-review, ID: base-ui-:rg0:
+				495 link Description: Variables and secrets, Value: dash.cloudflare.com/d98d006cb66fcdd39168ef413262b426/workers/services/view/biocartoon-review/production/settings#variables
+				496 link Description: Bindings, Value: dash.cloudflare.com/d98d006cb66fcdd39168ef413262b426/workers/services/view/biocartoon-review/production/settings#bindings
+				497 link Description: Observability, Value: dash.cloudflare.com/d98d006cb66fcdd39168ef413262b426/workers/services/view/biocartoon-review/production/settings#observability
+				498 link Description: Runtime, Value: dash.cloudflare.com/d98d006cb66fcdd39168ef413262b426/workers/services/view/biocartoon-review/production/settings#runtime-section
+				499 link Description: Builds, Value: dash.cloudflare.com/d98d006cb66fcdd39168ef413262b426/workers/services/view/biocartoon-review/production/settings#builds
+				500 link Description: Trigger events, Value: dash.cloudflare.com/d98d006cb66fcdd39168ef413262b426/workers/services/view/biocartoon-review/production/settings#trigger-events
+				501 link Description: General, Value: dash.cloudflare.com/d98d006cb66fcdd39168ef413262b426/workers/services/view/biocartoon-review/production/settings#general
+				502 link Description: Danger zone, Value: dash.cloudflare.com/d98d006cb66fcdd39168ef413262b426/workers/services/view/biocartoon-review/production/settings#danger-zone

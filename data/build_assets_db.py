@@ -31,6 +31,7 @@ SOURCE_NAMES = {
     "bioart": "NIAID NIH BioArt Source",
     "bioicons": "Bioicons",
     "healthicons": "Health Icons",
+    "noto": "Noto Emoji",
     "openmoji": "OpenMoji",
     "reactome": "Reactome Icon Library",
     "scidraw": "SciDraw",
@@ -53,6 +54,8 @@ LICENSES = {
     # MIT/BSD: keep the copyright + license notice with copies
     "mit": ("MIT", "https://opensource.org/license/mit", True, False),
     "bsd": ("BSD", "https://opensource.org/license/bsd-3-clause", True, False),
+    # Apache: keep the license notice with copies, like MIT/BSD (Noto Emoji)
+    "apache-2.0": ("Apache-2.0", "https://www.apache.org/licenses/LICENSE-2.0", True, False),
 }
 
 SCHEMA = """
@@ -105,7 +108,7 @@ COLS = [c.split()[0] for c in SCHEMA.split("(", 1)[1].split(");")[0].strip().spl
 # Asset ids: two letters for the source the asset came from, then a number unique across the
 # whole catalog (BA000123). A number is given once and never again, even after its asset is gone,
 # so an id always means one asset; the master's `id_seq` keeps the highest one given.
-ID_PREFIX = {"bioart": "BA", "bioicons": "BI", "healthicons": "HI", "openmoji": "OM",
+ID_PREFIX = {"bioart": "BA", "bioicons": "BI", "healthicons": "HI", "noto": "NE", "openmoji": "OM",
              "reactome": "RE", "scidraw": "SD", "servier": "SV", "user": "UG"}
 # An upload in the official BioCartoon library (BioCartoon's own, or one a reviewer accepted to it).
 OFFICIAL_PREFIX = "BC"

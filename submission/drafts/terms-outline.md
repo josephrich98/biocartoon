@@ -1,3 +1,7 @@
+# Historical terms outline — superseded November 18, 2026
+
+Operational terms were reviewed and published at https://www.biocartoon.com/terms. The adopted text is in `terms-draft.md`. Optional jurisdiction, dispute and liability provisions from this historical outline were not invented or adopted. The notes below describe the earlier preparation state, not current publication status.
+
 # BioCartoon plugin terms — outline for publisher review
 
 No published terms page was found in the website source. This outline is not

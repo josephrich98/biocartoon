@@ -1,53 +1,14 @@
-# Proposed addition to the BioCartoon privacy page
+# BioCartoon MCP privacy addendum
 
-Draft only. This is not published policy. The existing page is
-https://www.biocartoon.com/privacy; these additions need the publisher's review before deployment.
+Reviewed November 18, 2026 against source and the Cloudflare dashboard. Publication status is recorded in `../policy-verification.md`. Canonical page: https://www.biocartoon.com/privacy#mcp
 
-## ChatGPT and other MCP clients
+ChatGPT and other MCP clients
+    When you use BioCartoon through ChatGPT or another MCP client, the client sends inputs needed for the requested tool call to our Cloudflare-hosted MCP server. These can include search words, collection or tag filters, illustration or template IDs, read-only catalog queries, figure prompts, labels, connections and layout specifications. The client controls what it sends; BioCartoon tools do not request your entire conversation. The host applies its own terms and privacy policy.
+    Public catalog responses can be cached for up to five minutes. A cached response can include search words and public illustration metadata. The application does not intentionally log tool arguments and does not put contributions, contact details, submission-status requests or figure tool results in that catalog cache. Cloudflare also processes request and security information to operate and protect the service; this policy does not promise that all provider logs are disabled or that queries are never retained.
+    Figure tools process the supplied prompt or structured figure on the server, select catalog artwork, and return a composed layout or SVG. If a Workers AI binding is configured, a plain-language figure prompt can also be sent to Cloudflare Workers AI for layout planning. Structured figure inputs do not use that planning step. This differs from the editor's direct-to-provider AI features.
+    Choosing to open an illustration or template in the editor, or composing a figure with the default editor-link option, creates an encrypted online project. For these MCP-created links, the MCP server sees the unencrypted project while building it and encrypts it before storage. Its encryption key is returned in the link fragment; anyone with that complete link can open a copy. The stored share includes encrypted project bytes, sizes, dates, secret fingerprints and an abuse-prevention identifier. Links expire after 90 days without use. Creating an editor link does not submit artwork to the public library.
+    If you ask to contribute artwork and confirm submission, the client sends the image or a public HTTPS URL from which it can be fetched, plus its title, description, tags, category, credit name, license and AI-use disclosure. An optional email is for reviewers and is not public attribution. Contributions enter human review; approved artwork and public metadata are published under the selected license. Abuse prevention uses a salted request-IP hash or a shared MCP service identifier, depending on the request path. BioCartoon sign-in is not required for these public catalog and contribution tools.
 
-When you use BioCartoon through ChatGPT or another MCP client, that client sends
-the information needed for the requested tool call to our hosted MCP server.
-This can include search words, collection or tag filters, selected illustration
-IDs, template IDs, or a read-only catalog query. The client controls what it sends;
-using the BioCartoon tools does not itself request a copy of your entire chat.
-Your use of ChatGPT is also subject to OpenAI's own terms and privacy policy.
+## Retention and removal
 
-The server runs on Cloudflare. Public catalog tool responses can be cached for
-up to five minutes; a cached search response can contain the search words as well
-as public illustration metadata. The MCP code does not intentionally log tool
-arguments or cache submitted artwork, optional contact details, or submission-status requests.
-
-If you ask to contribute artwork, the client sends the image or a URL from which
-it can be downloaded, plus the title, description, tags, category, credit name,
-license and whether generative AI was used. An email address is optional and is
-for reviewers, not for public attribution. Contributions are held for human review.
-Approved artwork and its public metadata are published under the selected license.
-The submission service uses a salted hash of the IP address available on the
-request for abuse prevention. The existing Contributions and Contact sections
-also apply to these submissions.
-
-The public catalog and contribution tools do not require signing into a
-BioCartoon account. Opening the BioCartoon editor or choosing to sign in there
-uses the separate web-app features already described in this policy.
-
-## Decisions and checks still needed
-
-- Confirm the actual Cloudflare request/security-log retention and backup settings.
-  The statements above describe the application code, not a verified host-wide
-  retention guarantee.
-- Specify retention/deletion handling for pending and rejected contributions,
-  credit names, optional reviewer emails and abuse-prevention hashes. The current
-  public policy describes their collection but does not give these categories a
-  specific retention period.
-- Confirm the support contact and how contributors request correction or removal
-  of a submitted item and its private contact information.
-- Replace the current broad summary about projects never leaving a device with
-  wording that clearly distinguishes the editor from MCP tool calls and uploaded
-  contributions.
-- Recheck this draft if the separate, in-progress figure-composition or
-  server-side AI work is included in the submitted release. That code is outside
-  this preparation's currently deployed 16-tool baseline.
-
-Do not add a promise that queries are never retained, that all server logs are
-disabled, or that submitted data is automatically deleted on a particular date
-without confirming the actual deployment and the publisher's policy.
+Pending contributions have no automatic expiry. Rejected files are eligible for daily cleanup after 30 days; metadata, credit names, optional emails and abuse identifiers remain until manually removed. Contact Joseph Rich at josephrich98@gmail.com with the submission ID for access, correction or deletion requests. The submissions D1 dashboard shows a seven-day recovery window. See the canonical policy for full details.

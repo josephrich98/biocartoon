@@ -91,6 +91,7 @@ test("MCP keeps all tools and gallery resources in the plugin contract, with val
     assert.equal(init.result.capabilities.resources.subscribe, false);
     const tools = await (await call({ jsonrpc: "2.0", id: 2, method: "tools/list" })).json() as any;
     assert.equal(tools.result.tools.length, 19);
+    for (const t of tools.result.tools) for (const hint of ["readOnlyHint", "destructiveHint", "openWorldHint"]) assert.equal(typeof t.annotations?.[hint], "boolean", `${t.name} ${hint}`);
     for (const name of ["compose_figure", "open_in_biocartoon", "export_figure"]) assert.ok(tools.result.tools.some((t: any) => t.name === name), name);
     assert.equal(tools.result.tools.find((t: any) => t.name === "compose_figure")._meta.ui.resourceUri, tools.result.tools.find((t: any) => t.name === "render_assets")._meta.ui.resourceUri);
     assert.equal('file_path' in tools.result.tools.find((t: any) => t.name === 'submit_artwork').inputSchema.properties, false);
@@ -106,6 +107,10 @@ test("MCP keeps all tools and gallery resources in the plugin contract, with val
     const tooLarge = new Request("https://mcp.biocartoon.com/mcp", { method: "POST", body: "x", headers: { "Content-Length": "4000000" } });
     assert.equal((await handler.fetch!(tooLarge, env, {} as ExecutionContext)).status, 413);
     assert.equal((await handler.fetch!(new Request("https://mcp.biocartoon.com/mcp"), env, {} as ExecutionContext)).status, 405);
+    const challenge = (e: McpEnv) => handler.fetch!(new Request("https://mcp.biocartoon.com/.well-known/openai-apps-challenge"), e, {} as ExecutionContext);
+    assert.equal((await challenge(env)).status, 404);
+    const verified = await challenge({ ...env, OPENAI_APPS_CHALLENGE: "tok-123" });
+    assert.equal(verified.status, 200); assert.equal(await verified.text(), "tok-123");
     const batch = await (await call([{ jsonrpc: "2.0", method: "notifications/initialized" }, { jsonrpc: "2.0", id: "p", method: "ping" }])).json() as any[]; assert.equal(batch.length, 1); assert.equal(batch[0].id, "p");
   } finally { db.close(); }
 });
