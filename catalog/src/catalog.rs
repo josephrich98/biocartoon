@@ -430,6 +430,8 @@ const FTS_SQL: &str = "DROP TABLE IF EXISTS assets_fts; \
 
 /// One query word's FTS5 term (see [`Worker::fts_term`]).
 struct Term {
+    /// The query word, as [`Worker::query_words`] gives it.
+    word: String,
     expr: String,
     /// The part of `expr` for the word as typed, when `expr` adds related words to it.
     typed: Option<String>,
@@ -656,7 +658,7 @@ impl Worker {
             }
         };
         let expr = any_of(typed.iter().cloned().chain(related.iter().cloned()).collect());
-        Ok(Some(Term { expr, typed: typed.filter(|_| !related.is_empty()) }))
+        Ok(Some(Term { word: w.to_string(), expr, typed: typed.filter(|_| !related.is_empty()) }))
     }
 
     /// Catalog words containing `w`, or within a typo or two of it (or of their start, so a
@@ -895,6 +897,13 @@ impl Worker {
                 typed.replace('\'', "''")
             )
         };
+        // Icons with the words whole in their title or tags ("bee", "bees") come before those
+        // that only have words starting with them ("beetle"). Kept below the related tier's 1000.
+        let whole: Vec<String> = query_terms.iter().map(|t| format!("{{title tags}} : \"{}\"", t.word)).collect();
+        let whole = format!(
+            " + CASE WHEN a.rowid IN (SELECT rowid FROM assets_fts WHERE assets_fts MATCH '{}') THEN 0 ELSE 500 END",
+            whole.join(if any { " OR " } else { " AND " }).replace('\'', "''")
+        );
         let order = sort.sql(self);
         // Bare `a.rowid` next to MIN() takes the row with the minimum: the best match, and among
         // equal ones the plain variant (unless only a coloured one matches, as for "red flask"),
@@ -902,7 +911,7 @@ impl Worker {
         let dup = self.dup;
         let sql = wrap(
             format!(
-                "SELECT a.rowid AS rid, MIN(f.r + CASE WHEN coalesce(a.variant,'')='' THEN 0 ELSE 0.001 END + 0.002 * {dup}{related}) AS score \
+                "SELECT a.rowid AS rid, MIN(f.r + CASE WHEN coalesce(a.variant,'')='' THEN 0 ELSE 0.001 END + 0.002 * {dup}{related}{whole}) AS score \
                  FROM {} GROUP BY {gk}",
                 matched("?1")
             ),
@@ -1940,6 +1949,34 @@ mod tests {
         // A word nothing resembles is ignored.
         assert_eq!(az("red blood cell diagram"), vec!["red blood cell"]);
         assert!(az("qqqqzz").is_empty());
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn search_puts_whole_words_before_longer_ones() {
+        let dir = std::env::temp_dir().join(format!("cc-catalog-whole-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let w = worker(&dir);
+        let c = &w.conn;
+        // The beetle comes first in the table and is named "beetle" in its description too, so
+        // bm25 alone would rank it ahead of the bees.
+        for (i, (t, d, tags)) in [("beetle", "a beetle", "[]"), ("bee", "", "[]"), ("beehive", "", "[]"), ("honey bee", "", "[]"), ("pollinator", "", "[\"bee\"]")].iter().enumerate() {
+            c.execute(
+                &format!("INSERT INTO assets ({TEST_COLS}) VALUES (?1, 'servier', 'Servier', ?2, '', ?3, '', ?4, 'CC', '', '', ?1, NULL, 1, 1)"),
+                params![format!("s{i}"), t, d, tags],
+            )
+            .unwrap();
+        }
+        c.execute_batch("INSERT INTO assets_fts(assets_fts) VALUES('rebuild');").unwrap();
+        let rel = |q: &str| titles(w.search(q, &[], 10, IconSort::Relevance).unwrap());
+        for q in ["bee", "bees"] {
+            let r = rel(q);
+            assert_eq!(r.len(), 5, "{q}");
+            let mut whole = r[..3].to_vec();
+            whole.sort();
+            assert_eq!(whole, ["bee", "honey bee", "pollinator"], "{q}");
+        }
         let _ = std::fs::remove_dir_all(&dir);
     }
 
