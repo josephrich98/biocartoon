@@ -1,6 +1,6 @@
 {
   "name": "biocartoon",
-  "version": "0.4.10",
+  "version": "0.4.11",
   "description": "Search open-licensed scientific illustrations, compose whole figures with labels and arrows that open in the BioCartoon editor, download PNG/SVG files with credit lines, and contribute new artwork to BioCartoon.",
   "author": {
     "name": "Joseph Rich",
