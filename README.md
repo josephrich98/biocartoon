@@ -122,10 +122,12 @@ use developer mode (under Apps / Connectors > Advanced):
 - In a chat, turn on BioCartoon from the tools (+) menu.
 - ChatGPT passes images it generated, or that you attached, straight to `submit_artwork`.
 
-**Claude** (claude.ai, desktop and mobile apps):
+**Claude** (claude.ai, desktop and mobile apps): install the BioCartoon plugin, which bundles the
+skills and the hosted MCP connection. Without the plugin:
 - Settings > Connectors > Add custom connector, with the URL `https://mcp.biocartoon.com/mcp`.
-- Optional: add the skills too. Zip each folder in [`catalog/skills/`](catalog/skills), then upload
-  the zips under Settings > Capabilities > Skills.
+- Optional: add the skills too. Upload each skill's zip (built by `scripts/package_claude_plugin.py`
+  into `dist/claude-skills/`, or zip each folder in [`catalog/skills/`](catalog/skills)) under
+  Settings > Capabilities > Skills.
 
 **Claude Code**: install the plugin, which includes the skills and hosted MCP connection.
 The skills can also run the `biocartoon` command (`pip install biocartoon`), including
@@ -226,8 +228,18 @@ can embed them. Build a portable private package containing both the skills and 
 
 ```bash
 python3 scripts/package_plugin.py
-# dist/biocartoon-0.4.10.zip (one plugin, no account upload or publication)
+# dist/biocartoon-VERSION.zip (the ChatGPT/Codex plugin, no account upload or publication)
+python3 scripts/package_claude_plugin.py
+# dist/biocartoon-claude-VERSION.zip (the Claude plugin) and dist/claude-skills/NAME.zip (one per skill)
 ```
+
+Each channel updates differently. The hosted server's tools, instructions and gallery reach every
+assistant as soon as `npm run deploy:mcp` runs. The skills and manifests reach Claude Code plugin
+and `biocartoon install-skills` users with the next `v*` release, and ChatGPT and Claude app users
+only when a new package is uploaded. `biocartoon-app/deploy.sh plugin` (part of `deploy.sh all`)
+builds both packages and warns what needs a release or an upload, by comparing with the
+`plugin-portal` (ChatGPT) and `claude-plugin-portal` (Claude) tags; `deploy.sh plugin --uploaded
+[chatgpt|claude]` moves them after an upload.
 
 The gallery uses the standard MCP Apps bridge and ships as an embedded, self-contained
 HTML resource (`ui://biocartoon/icon-gallery-v2.html`). `search_assets` remains a data tool;
@@ -508,7 +520,7 @@ worker/                   Cloudflare Workers (TypeScript) for community contribu
   migrations/             D1 database schema
   test/                   unit tests (`npm test`)
 .github/workflows/        CI tests and the PyPI release
-.claude-plugin/           Claude Code plugin and marketplace (the skills)
+.claude-plugin/           Claude plugin and marketplace (the skills)
 .codex-plugin/, .agents/  the same for Codex
 ```
 
