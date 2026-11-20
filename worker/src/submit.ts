@@ -41,9 +41,12 @@ const ID = /^[a-z0-9][a-z0-9-]{0,100}$/;
 export default {
   async fetch(req: Request, env: Env): Promise<Response> {
     const url = new URL(req.url);
-    if (url.pathname === "/submit" && req.method === "POST") return guarded(() => submit(req, env));
-    if (url.pathname === "/suggest" && req.method === "POST") return guarded(() => suggest(req, env));
-    if (url.pathname === "/removal" && req.method === "POST") return guarded(() => removal(req, env));
+    // The web app sends submissions, ideas and removal requests from its own origin.
+    const post: Record<string, () => Promise<Response>> = { "/submit": () => submit(req, env), "/suggest": () => suggest(req, env), "/removal": () => removal(req, env) };
+    if (url.pathname in post) {
+      if (req.method === "OPTIONS") return accounts.cors(req, new Response(null, { status: 204 }), env);
+      if (req.method === "POST") return accounts.cors(req, await guarded(post[url.pathname]), env);
+    }
     if (url.pathname === "/status" && req.method === "GET") return guarded(() => status(url, env));
     if (url.pathname === "/keys" || url.pathname.startsWith("/keys/")) {
       return guarded(async () => (await uploadKeys.route(req, url, env)) ?? json({ error: "Not found" }, 404));
