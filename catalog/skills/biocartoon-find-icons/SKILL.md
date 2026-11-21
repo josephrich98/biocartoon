@@ -1,6 +1,6 @@
 ---
 name: biocartoon-find-icons
-description: Find open-licensed scientific illustrations (cells, organelles, proteins, organs, animals, lab equipment, pathogens, people) in the BioCartoon library of about 20,000 icons from NIH BioArt, Bioicons, Servier Medical Art, SciDraw, Health Icons, Reactome and OpenMoji, show the best candidates, and download them with the correct credit line. Use when asked to "find an icon/illustration/clipart of X", "get a picture of a mitochondrion for my figure", "what BioCartoon icons are there for X", "download a mouse icon", "browse BioCartoon", or when building a biology figure, slide or poster that needs pictures. Not for account sign-in, private saved projects, or project/account deletion.
+description: Find open-licensed scientific illustrations (cells, organelles, proteins, organs, animals, lab equipment, pathogens, people) in the BioCartoon library of about 20,000 icons from NIH BioArt, Bioicons, Servier Medical Art, SciDraw, Health Icons, Reactome, OpenMoji and Noto Emoji, show the best candidates, and download them with the correct credit line. Use when asked to "find an icon/illustration/clipart of X", "get a picture of a mitochondrion for my figure", "what BioCartoon icons are there for X", "download a mouse icon", "browse BioCartoon", or when building a biology figure, slide or poster that needs pictures. Not for account sign-in, private saved projects, or project/account deletion.
 ---
 
 # Find BioCartoon icons

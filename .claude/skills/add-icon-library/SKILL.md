@@ -1,6 +1,6 @@
 ---
 name: add-icon-library
-description: Add a new upstream icon or illustration collection (a "source", like Noto Emoji or OpenMoji) to the BioCartoon catalog end to end. Covers vetting its license, the scraper and the weekly auto-update, the catalog crate (the editor's left Library panel, badges, categories), the MCP server and Worker, the published catalog in R2, the README icon-count tables (the repo's and the app's download page), the biocartoon.com resources table, and NOTICE files. Needs the biocartoon and biocartoon-app repositories checked out side by side. Use when asked to "add <collection> as an icon library", "add a new icon source", "import <repo> icons into BioCartoon", or "support <collection> in the catalog".
+description: Add a new upstream icon or illustration collection (a "source", like Noto Emoji or OpenMoji) to the BioCartoon catalog end to end. Covers vetting its license, the scraper and the weekly auto-update, the catalog crate (the editor's left Library panel, badges, categories), the MCP server and Worker, the published catalog in R2, the README icon-count tables (the repo's, the PyPI page's and the app's download page), the biocartoon.com resources table, and NOTICE files. Needs the biocartoon and biocartoon-app repositories checked out side by side. Use when asked to "add <collection> as an icon library", "add a new icon source", "import <repo> icons into BioCartoon", or "support <collection> in the catalog".
 ---
 
 # Add an icon library to BioCartoon
@@ -84,7 +84,10 @@ with `sync.stage_item(B.source_item(...), Path(scratch))`, render the PNGs into 
 - `catalog/src/figure_tools.json`: every "Draw icons only from these collections" list.
 - `worker/src/mcp_figure.ts`: `SOURCE_BONUS` (science collections near 1; emoji and pictograms 0).
 - `catalog/ui/src/gallery.ts`: `SOURCES` display name.
-- `catalog/skills/biocartoon-find-icons/SKILL.md`: the per-collection hint.
+- `catalog/skills/biocartoon-find-icons/SKILL.md`: the per-collection hint, and the collection list in
+  its `description`.
+- `catalog/README.md` (the PyPI page): nothing by hand. Its resources table is generated between the
+  `pypi-stats` markers by the publish step; confirm the new source appears there after it.
 - `README.md`: the `id` prefix list, the `source` values, `license` values if new, and the `scrape_sources.py` line.
 - `NOTICE.md`: a row in the third-party table.
 
@@ -116,8 +119,9 @@ DYLD_FALLBACK_LIBRARY_PATH=/opt/homebrew/lib python sync.py --sources <source> -
 
 `--force` gets past `--max-new` (300), which exists to catch renamed ids in existing sources.
 Expect several thousand uploads to take a while, so run it in the background. The run then publishes the catalog
-(`publish_catalog.py`). That regenerates the resources table in both `biocartoon/README.md` and the app's
-`README.md` (the download page), and syncs the hosted MCP catalog in D1. It also backs up the master
+(`publish_catalog.py`). That regenerates the resources table in `biocartoon/README.md`,
+`biocartoon/catalog/README.md` (the PyPI page, which only updates on PyPI with the next release) and the
+app's `README.md` (the download page), and syncs the hosted MCP catalog in D1. It also backs up the master
 DB. Read the report in `data/sync-reports/`. Items listed as held need `--held`, then `--approve`.
 
 Check that the examples resolve: `curl -sI https://assets.biocartoon.com/<source>/<id>.png`.
