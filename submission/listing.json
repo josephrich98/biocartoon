@@ -14,13 +14,13 @@
   "review": {
     "commerce": false,
     "prompts": [
-      "Find three illustrations of a pyramidal neuron and show their licenses and credit lines.",
-      "Give me the PNG and SVG download links for BioCartoon illustration BA001505, with its credit line.",
-      "Show me the other colour or style variants of BioCartoon illustration BA001505.",
-      "Show me a shared BioCartoon slide template that I can use as a starting point.",
-      "Help me prepare this AI-generated cell icon for contribution under CC0. Show me the image and metadata before submitting it."
+      "Find some illustrations of pyramidal neurons for a neuroscience lecture slide.",
+      "Show me the other color or style variants of BioCartoon illustration BA001505.",
+      "Make an SVG icon in the style of BioCartoon illustration BA001505, but make the axon even longer, make the cell blue, and make the nucleus pink.",
+      "Submit the generated image above to the BioCartoon library.",
+      "Make a figure in BioCartoon with the blue-pink neuron generated above, as well as some glial cells (astrocytes, microglia, oligodendrocyte)."
     ],
-    "demo_recording_url": "https://www.youtube.com/watch?v=REPLACE_WITH_VERIFIED_DEMO_ID"
+    "demo_recording_url": "https://youtu.be/xc4h_K87agA"
   },
   "publication": {
     "countries": [],
