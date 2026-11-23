@@ -45,7 +45,7 @@ const search = await tool('search_assets', { query: 'pyramidal neuron', limit: 6
 const ids = search.structuredContent.assets.map(a => a.id); assert.ok(ids.length);
 const shown = await tool('render_assets', { ids: ids.slice(0, 4) });
 assert.deepEqual(shown.structuredContent.assets.map(a => a.id), ids.slice(0, 4));
-assert.deepEqual(JSON.parse(shown.content.at(-1).text), shown.structuredContent.assets);
+assert.match(shown.content[0].text, /Do not repeat the list/); assert.match(shown.content.at(-1).text, new RegExp(`^1\\. ${ids[0]} `));
 await tool('get_asset', { id: ids[0] }); await tool('asset_variants', { id: 'BA001505' });
 await tool('browse_assets', { source: 'bioart', limit: 2 });
 await tool('list_sources'); await tool('list_categories', { source: 'bioart' }); await tool('db_schema');

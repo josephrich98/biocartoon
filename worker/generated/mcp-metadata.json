@@ -8,7 +8,7 @@
       "listChanged": false
     }
   },
-  "instructions": "The BioCartoon catalog is a library of about 20,000 open-licensed scientific illustrations (NIH BioArt, Bioicons, Servier Medical Art, SciDraw, Health Icons, Reactome, OpenMoji, Noto Emoji, plus user uploads).\nAccount-management boundary: BioCartoon's tools cannot sign anyone in, see private saved projects, or delete projects or accounts. When asked to, answer directly without calling any tool: say the plugin can't do this, and that the user can delete a project from its menu on the home screen of https://app.biocartoon.com/, or delete their account and all its projects with \"Delete account\" in the account menu (top right of that screen). Do not open a browser, use computer control, run shell commands, or query the catalog to try it, even when those tools are available, and never claim that a project was accessed or deleted.\n\nSearch ALWAYS returns the closest matches, even when nothing in the library fits. Judge every result from its title, description, tags, category and matched_fields (a term found only in the description is a weak match; title or tags are strong). Look at the picture with asset_image when a title is ambiguous, and tell the user plainly when the library has nothing suitable instead of using a poor match. Prefer the science collections (bioart, bioicons, servier, scidraw) for biology; healthicons for clinical/public-health symbols; openmoji and noto for generic emoji-style pictograms. Variants of one asset (asset_variants) are the same drawing in other colours. Every asset keeps its own license: credit it as its `credit` field says.\nAfter judging search results, use render_assets with the selected IDs to show an interactive gallery with previews, licenses, credits and download links. It also returns text for clients without UI support.\nlist_templates finds shared slide templates (whole slide layouts, not icons); they open in the BioCartoon editor, so point the user to a template by its title rather than rebuilding it.\nWhole figures (a process, pathway, experiment or comparison): plan the elements (each a depictable thing, with a 1-3 word query) and the arrows between them, and call compose_figure. It picks catalog icons, lays them out with labels and arrows, shows the figure in the gallery and returns an editor link (open_in_biocartoon makes one for any figure, icon or template). Judge its match report as you would search results; for changes, pass figure.spec back edited. Gaps stay as labelled boxes: say so rather than hiding them. Not for data charts.\n\nContributing artwork: when the library has nothing that fits, you may help the user make their own illustration (draw it as a clean, self-contained SVG, or generate an image if you can) and, if they want, submit it to the shared library with submit_artwork. Before submitting, show the user the image and the details you will send (title, description, tags, credit name, license, whether generative AI was used) and get their explicit go-ahead: they are licensing it to everyone. Generated images must be submitted with generative_ai_used=true and license CC0-1.0. Submissions wait for a human reviewer and join the catalog after the next publish; submission_status reports where they are.\nAdapting a library icon (\"like BA001505 but ...\"): read its markup with asset_svg and edit it, keeping its style. An adaptation must keep the original's license terms, so it may be submitted only when that license allows (asset_svg says): public-domain and CC0 originals, any way; CC BY, MIT and BSD originals only as CC-BY-4.0 by a person, without generative AI; ShareAlike originals not at all. Pass the original's id as derived_from; the user can always keep an adaptation for their own figure, crediting the original.",
+  "instructions": "The BioCartoon catalog is a library of about 20,000 open-licensed scientific illustrations (NIH BioArt, Bioicons, Servier Medical Art, SciDraw, Health Icons, Reactome, OpenMoji, Noto Emoji, plus user uploads).\nAccount-management boundary: BioCartoon's tools cannot sign anyone in, see private saved projects, or delete projects or accounts. When asked to, answer directly without calling any tool: say the plugin can't do this, and that the user can delete a project from its menu on the home screen of https://app.biocartoon.com/, or delete their account and all its projects with \"Delete account\" in the account menu (top right of that screen). Do not open a browser, use computer control, run shell commands, or query the catalog to try it, even when those tools are available, and never claim that a project was accessed or deleted.\n\nSearch ALWAYS returns the closest matches, even when nothing in the library fits. Judge every result from its title, description, tags, category and matched_fields (a term found only in the description is a weak match; title or tags are strong). Look at the picture with asset_image when a title is ambiguous, and tell the user plainly when the library has nothing suitable instead of using a poor match. Prefer the science collections (bioart, bioicons, servier, scidraw) for biology; healthicons for clinical/public-health symbols; openmoji and noto for generic emoji-style pictograms. Variants of one asset (asset_variants) are the same drawing in other colours. Every asset keeps its own license: credit it as its `credit` field says.\nAfter judging search results, use render_assets with the selected IDs to show an interactive gallery with previews, licenses, credits and download links. It also returns text for clients without UI support. Once the gallery is shown, reply briefly without repeating its list, and never add images of your own (web or image-search pictures are not the catalog's files).\nlist_templates finds shared slide templates (whole slide layouts, not icons); they open in the BioCartoon editor, so point the user to a template by its title rather than rebuilding it.\nWhole figures (a process, pathway, experiment or comparison): plan the elements (each a depictable thing, with a 1-3 word query) and the arrows between them, and call compose_figure. It picks catalog icons, lays them out with labels and arrows, shows the figure in the gallery and returns an editor link (open_in_biocartoon makes one for any figure, icon or template). Judge its match report as you would search results; for changes, pass figure.spec back edited. Gaps stay as labelled boxes: say so rather than hiding them. Not for data charts.\nThe user's own pictures go in figures too: an element may carry artwork you drew (svg), an image the user uploaded or generated in the conversation (pass the file in compose_figure's image argument and set image_file: \"image\" on the element), an image_url, or image_base64. When the user wants a figure \"in BioCartoon\" or one they can open and edit, always deliver it through compose_figure's editor link, with their pictures as elements; never hand over an SVG or image you assembled yourself instead.\n\nContributing artwork: when the library has nothing that fits, you may help the user make their own illustration (draw it as a clean, self-contained SVG, or generate an image if you can) and, if they want, submit it to the shared library with submit_artwork. Before submitting, show the user the image and the details you will send (title, description, tags, credit name, license, whether generative AI was used) and get their explicit go-ahead: they are licensing it to everyone. Generated images must be submitted with generative_ai_used=true and license CC0-1.0. Submissions wait for a human reviewer and join the catalog after the next publish; submission_status reports where they are. Submitting is optional: to use the artwork in a figure now, pass it to compose_figure as an element's svg (or its file as image_file), with no review needed.\nAdapting a library icon (\"like BA001505 but ...\"): read its markup with asset_svg and edit it, keeping its style. An adaptation must keep the original's license terms, so it may be submitted only when that license allows (asset_svg says): public-domain and CC0 originals, any way; CC BY, MIT and BSD originals only as CC-BY-4.0 by a person, without generative AI; ShareAlike originals not at all. Pass the original's id as derived_from; the user can always keep an adaptation for their own figure, crediting the original.",
   "protocolVersion": "2025-06-18",
   "serverInfo": {
     "name": "biocartoon",
@@ -555,6 +555,11 @@
     },
     {
       "_meta": {
+        "openai/fileParams": [
+          "image",
+          "image2",
+          "image3"
+        ],
         "openai/outputTemplate": "ui://biocartoon/icon-gallery-v2.html",
         "openai/toolInvocation/invoked": "Figure ready",
         "openai/toolInvocation/invoking": "Composing figure…",
@@ -569,7 +574,7 @@
         "readOnlyHint": false,
         "title": "Compose figure"
       },
-      "description": "Make a whole scientific figure on the server: catalog icons for each element, laid out with labels, arrows and a title, shown in the BioCartoon gallery with an editor link, PNG/SVG downloads and credits. Prefer passing elements and connections you planned (each element's query is the plain name of the thing to depict); a bare prompt is planned on the server. Read the returned match report: replace weak matches with a better query or an asset_id from search_assets, and treat placeholder boxes as gaps the library cannot fill. To edit a figure, pass its figure.spec back as `figure` with your changes (keep asset_id on elements that should stay). Credit every icon used. Not for charts of data.",
+      "description": "Make a whole scientific figure on the server: a picture for each element, laid out with labels, arrows and a title, shown in the BioCartoon gallery with an editor link (an editable BioCartoon project), PNG/SVG downloads and credits. Pictures are catalog icons (each element's query is the plain name of the thing to depict) or the user's own: artwork you drew (svg), an image the user uploaded or generated in the conversation (image_file, with the file in the top-level image argument), or one at a URL. Use this, not a hand-made SVG, whenever the user wants a figure in BioCartoon. Prefer passing elements and connections you planned; a bare prompt is planned on the server. Read the returned match report: replace weak matches with a better query or an asset_id from search_assets, and treat placeholder boxes as gaps the library cannot fill. To edit a figure, pass its figure.spec back as `figure` with your changes (keep asset_id and image_ref on elements that should stay). Credit every catalog icon used. Not for charts of data.",
       "inputSchema": {
         "additionalProperties": false,
         "properties": {
@@ -623,6 +628,27 @@
                   "description": "Short id used by connections (e1, e2, ...). Default: e1, e2, ... in order.",
                   "type": "string"
                 },
+                "image_base64": {
+                  "description": "This element's picture, base64-encoded (a data: URL works too): SVG, PNG, JPEG, GIF or WebP, up to 2 MB.",
+                  "type": "string"
+                },
+                "image_file": {
+                  "description": "Use the conversation file (an image the user uploaded, or one generated in the chat) passed in that top-level argument as this element's picture.",
+                  "enum": [
+                    "image",
+                    "image2",
+                    "image3"
+                  ],
+                  "type": "string"
+                },
+                "image_ref": {
+                  "description": "The user's own picture from a previous figure's spec (compose_figure stores each one and returns this). Keep it when editing.",
+                  "type": "string"
+                },
+                "image_url": {
+                  "description": "An https URL of this element's picture (SVG, PNG, JPEG, GIF or WebP, up to 2 MB).",
+                  "type": "string"
+                },
                 "label": {
                   "description": "Label printed under the picture (at most 60 characters).",
                   "type": "string"
@@ -633,6 +659,10 @@
                 },
                 "query": {
                   "description": "1–3 words naming the thing to find an icon for (\"T cell\", \"mitochondrion\", \"lab mouse\"). Default: the label.",
+                  "type": "string"
+                },
+                "svg": {
+                  "description": "This element's picture as SVG markup you drew in this conversation (one complete <svg> with a viewBox; no scripts, external links or web fonts; up to 2 MB). Use instead of asset_id or query.",
                   "type": "string"
                 }
               },
@@ -696,6 +726,27 @@
                       "description": "Short id used by connections (e1, e2, ...). Default: e1, e2, ... in order.",
                       "type": "string"
                     },
+                    "image_base64": {
+                      "description": "This element's picture, base64-encoded (a data: URL works too): SVG, PNG, JPEG, GIF or WebP, up to 2 MB.",
+                      "type": "string"
+                    },
+                    "image_file": {
+                      "description": "Use the conversation file (an image the user uploaded, or one generated in the chat) passed in that top-level argument as this element's picture.",
+                      "enum": [
+                        "image",
+                        "image2",
+                        "image3"
+                      ],
+                      "type": "string"
+                    },
+                    "image_ref": {
+                      "description": "The user's own picture from a previous figure's spec (compose_figure stores each one and returns this). Keep it when editing.",
+                      "type": "string"
+                    },
+                    "image_url": {
+                      "description": "An https URL of this element's picture (SVG, PNG, JPEG, GIF or WebP, up to 2 MB).",
+                      "type": "string"
+                    },
                     "label": {
                       "description": "Label printed under the picture (at most 60 characters).",
                       "type": "string"
@@ -706,6 +757,10 @@
                     },
                     "query": {
                       "description": "1–3 words naming the thing to find an icon for (\"T cell\", \"mitochondrion\", \"lab mouse\"). Default: the label.",
+                      "type": "string"
+                    },
+                    "svg": {
+                      "description": "This element's picture as SVG markup you drew in this conversation (one complete <svg> with a viewBox; no scripts, external links or web fonts; up to 2 MB). Use instead of asset_id or query.",
                       "type": "string"
                     }
                   },
@@ -740,6 +795,51 @@
             },
             "required": [
               "elements"
+            ],
+            "type": "object"
+          },
+          "image": {
+            "description": "An image file from the conversation (uploaded by the user or generated in the chat). Place it with image_file: \"image\" on an element.",
+            "properties": {
+              "download_url": {
+                "type": "string"
+              },
+              "file_id": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "download_url"
+            ],
+            "type": "object"
+          },
+          "image2": {
+            "description": "An image file from the conversation (uploaded by the user or generated in the chat). Place it with image_file: \"image2\" on an element.",
+            "properties": {
+              "download_url": {
+                "type": "string"
+              },
+              "file_id": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "download_url"
+            ],
+            "type": "object"
+          },
+          "image3": {
+            "description": "An image file from the conversation (uploaded by the user or generated in the chat). Place it with image_file: \"image3\" on an element.",
+            "properties": {
+              "download_url": {
+                "type": "string"
+              },
+              "file_id": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "download_url"
             ],
             "type": "object"
           },
@@ -780,6 +880,13 @@
       "title": "Compose figure"
     },
     {
+      "_meta": {
+        "openai/fileParams": [
+          "image",
+          "image2",
+          "image3"
+        ]
+      },
       "annotations": {
         "destructiveHint": false,
         "idempotentHint": false,
@@ -787,7 +894,7 @@
         "readOnlyHint": false,
         "title": "Open in BioCartoon"
       },
-      "description": "A link that opens a figure (a compose_figure spec), one catalog icon, or a shared template in the BioCartoon web editor as the user's own editable copy. The link is private (its key is in the fragment) and lasts 90 days after its last use.",
+      "description": "A link that opens a figure (a compose_figure spec, which may include the user's own pictures), one catalog icon, or a shared template in the BioCartoon web editor as the user's own editable copy. The link is private (its key is in the fragment) and lasts 90 days after its last use.",
       "inputSchema": {
         "additionalProperties": false,
         "properties": {
@@ -849,6 +956,27 @@
                       "description": "Short id used by connections (e1, e2, ...). Default: e1, e2, ... in order.",
                       "type": "string"
                     },
+                    "image_base64": {
+                      "description": "This element's picture, base64-encoded (a data: URL works too): SVG, PNG, JPEG, GIF or WebP, up to 2 MB.",
+                      "type": "string"
+                    },
+                    "image_file": {
+                      "description": "Use the conversation file (an image the user uploaded, or one generated in the chat) passed in that top-level argument as this element's picture.",
+                      "enum": [
+                        "image",
+                        "image2",
+                        "image3"
+                      ],
+                      "type": "string"
+                    },
+                    "image_ref": {
+                      "description": "The user's own picture from a previous figure's spec (compose_figure stores each one and returns this). Keep it when editing.",
+                      "type": "string"
+                    },
+                    "image_url": {
+                      "description": "An https URL of this element's picture (SVG, PNG, JPEG, GIF or WebP, up to 2 MB).",
+                      "type": "string"
+                    },
                     "label": {
                       "description": "Label printed under the picture (at most 60 characters).",
                       "type": "string"
@@ -859,6 +987,10 @@
                     },
                     "query": {
                       "description": "1–3 words naming the thing to find an icon for (\"T cell\", \"mitochondrion\", \"lab mouse\"). Default: the label.",
+                      "type": "string"
+                    },
+                    "svg": {
+                      "description": "This element's picture as SVG markup you drew in this conversation (one complete <svg> with a viewBox; no scripts, external links or web fonts; up to 2 MB). Use instead of asset_id or query.",
                       "type": "string"
                     }
                   },
@@ -896,6 +1028,51 @@
             ],
             "type": "object"
           },
+          "image": {
+            "description": "An image file from the conversation (uploaded by the user or generated in the chat). Place it with image_file: \"image\" on an element.",
+            "properties": {
+              "download_url": {
+                "type": "string"
+              },
+              "file_id": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "download_url"
+            ],
+            "type": "object"
+          },
+          "image2": {
+            "description": "An image file from the conversation (uploaded by the user or generated in the chat). Place it with image_file: \"image2\" on an element.",
+            "properties": {
+              "download_url": {
+                "type": "string"
+              },
+              "file_id": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "download_url"
+            ],
+            "type": "object"
+          },
+          "image3": {
+            "description": "An image file from the conversation (uploaded by the user or generated in the chat). Place it with image_file: \"image3\" on an element.",
+            "properties": {
+              "download_url": {
+                "type": "string"
+              },
+              "file_id": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "download_url"
+            ],
+            "type": "object"
+          },
           "template_id": {
             "description": "A template id from list_templates.",
             "type": "string"
@@ -913,7 +1090,7 @@
         "readOnlyHint": true,
         "title": "Export figure"
       },
-      "description": "A composed figure as one self-contained SVG file with its pictures embedded, for downloading. Pass the figure.spec from compose_figure.",
+      "description": "A composed figure as one self-contained SVG file with its pictures embedded, for downloading only when the user asks for a file. Pass the figure.spec from compose_figure. To give the user a figure they can open and edit in BioCartoon, use compose_figure's editor link (or open_in_biocartoon) instead.",
       "inputSchema": {
         "additionalProperties": false,
         "properties": {
@@ -971,6 +1148,27 @@
                       "description": "Short id used by connections (e1, e2, ...). Default: e1, e2, ... in order.",
                       "type": "string"
                     },
+                    "image_base64": {
+                      "description": "This element's picture, base64-encoded (a data: URL works too): SVG, PNG, JPEG, GIF or WebP, up to 2 MB.",
+                      "type": "string"
+                    },
+                    "image_file": {
+                      "description": "Use the conversation file (an image the user uploaded, or one generated in the chat) passed in that top-level argument as this element's picture.",
+                      "enum": [
+                        "image",
+                        "image2",
+                        "image3"
+                      ],
+                      "type": "string"
+                    },
+                    "image_ref": {
+                      "description": "The user's own picture from a previous figure's spec (compose_figure stores each one and returns this). Keep it when editing.",
+                      "type": "string"
+                    },
+                    "image_url": {
+                      "description": "An https URL of this element's picture (SVG, PNG, JPEG, GIF or WebP, up to 2 MB).",
+                      "type": "string"
+                    },
                     "label": {
                       "description": "Label printed under the picture (at most 60 characters).",
                       "type": "string"
@@ -981,6 +1179,10 @@
                     },
                     "query": {
                       "description": "1–3 words naming the thing to find an icon for (\"T cell\", \"mitochondrion\", \"lab mouse\"). Default: the label.",
+                      "type": "string"
+                    },
+                    "svg": {
+                      "description": "This element's picture as SVG markup you drew in this conversation (one complete <svg> with a viewBox; no scripts, external links or web fonts; up to 2 MB). Use instead of asset_id or query.",
                       "type": "string"
                     }
                   },

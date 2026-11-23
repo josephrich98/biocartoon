@@ -63,7 +63,10 @@ test("gallery, variants, browsing, source/category counts, templates and SQL use
     const assets = rendered.structuredContent!.assets as Record<string, unknown>[];
     assert.deepEqual(assets.map(a => a.id), ["BA4", "BA1"]);
     assert.match(String(assets[0].svg_url), /^https:\/\/assets.biocartoon.com\//);
-    assert.deepEqual(JSON.parse(String(rendered.content.at(-1)!.text)), assets);
+    // The model gets a short note and a plain fallback list: no thumbnails to re-embed, no duplicate JSON.
+    assert.match(String(rendered.content[0].text), /Do not repeat the list/);
+    const listing = String(rendered.content.at(-1)!.text);
+    assert.match(listing, /^1\. BA4 /); assert.match(listing, /PNG: https:\/\/assets.biocartoon.com\//); assert.doesNotMatch(listing, /thumb/);
     assert.equal((await catalogTool(env.CATALOG, "asset_variants", { id: "BA1" })).structuredContent!.assets.length, 2);
     assert.equal((await catalogTool(env.CATALOG, "browse_assets", { source: "user", category: "cells" })).structuredContent!.assets.length, 1);
     for (const name of ["list_sources", "list_categories", "db_schema", "list_templates"]) assert.ok((await catalogTool(env.CATALOG, name, { source: "bioart" })).content.length);

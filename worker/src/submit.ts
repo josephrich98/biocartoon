@@ -8,6 +8,7 @@
 //   POST /suggest  application/json {kind: "icon" | "template" | "other", title, description?, name?, email?}
 //   POST /removal  application/json {asset_id, title?, reason, name?, email?}: ask to take an icon out of the library
 //   GET  /status?ids=<id>,<id>   -> {"<id>": "pending" | "approved" | "rejected"}
+//   GET  /status?ids=...&detail=1 -> {"<id>": {"status": ..., "reason"?: "<why it was rejected>"}}
 //   POST /star, GET /stars, GET /stars/all: star counts on catalog assets (src/stars.ts)
 //   /auth/*, /me, /cloud/projects/*, /cloud/library/*: optional accounts that keep projects and
 //     Your library online (src/accounts.ts)
@@ -316,8 +317,10 @@ async function removal(req: Request, env: Env): Promise<Response> {
 async function status(url: URL, env: Env): Promise<Response> {
   const ids = (url.searchParams.get("ids") ?? "").split(",").filter((s) => ID.test(s)).slice(0, 100);
   if (ids.length === 0) return json({});
-  const { results } = await env.DB.prepare(`SELECT id, status FROM submissions WHERE id IN (${ids.map(() => "?").join(",")})`)
+  const { results } = await env.DB.prepare(`SELECT id, status, reject_reason FROM submissions WHERE id IN (${ids.map(() => "?").join(",")})`)
     .bind(...ids)
-    .all<{ id: string; status: string }>();
-  return json(Object.fromEntries(results.map((r) => [r.id, r.status])));
+    .all<{ id: string; status: string; reject_reason: string | null }>();
+  // The plain form stays a map of strings, for older clients.
+  if (url.searchParams.get("detail") !== "1") return json(Object.fromEntries(results.map((r) => [r.id, r.status])));
+  return json(Object.fromEntries(results.map((r) => [r.id, { status: r.status, ...(r.status === "rejected" && r.reject_reason && { reason: r.reject_reason }) }])));
 }

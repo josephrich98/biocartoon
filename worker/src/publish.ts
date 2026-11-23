@@ -57,6 +57,8 @@ export interface Row {
   replaced_by: string | null;
   /** The upload key it was submitted with ('master', a shared key's id, or null). */
   key_id: string | null;
+  /** Why a reviewer rejected it ('' when none was given, or it isn't rejected). Shown to the contributor. */
+  reject_reason?: string;
 }
 
 const IMMUTABLE = "public, max-age=31536000, immutable";
@@ -162,8 +164,16 @@ export function rowLayers(row: Pick<Row, "layers">): Layer[] {
   }
 }
 
-export async function reject(env: Env, row: Row, reviewer: string): Promise<void> {
-  await setStatus(env, row.id, "rejected", reviewer);
+/** The longest rejection reason kept. */
+export const MAX_REJECT_REASON = 200;
+
+/** A reviewer's rejection reason as stored: one line, trimmed, at most MAX_REJECT_REASON characters. */
+export function cleanReason(v: unknown): string {
+  return typeof v === "string" ? [...v.replace(/\s+/g, " ").trim()].slice(0, MAX_REJECT_REASON).join("").trim() : "";
+}
+
+export async function reject(env: Env, row: Row, reviewer: string, reason = ""): Promise<void> {
+  await setStatus(env, row.id, "rejected", reviewer, false, cleanReason(reason));
 }
 
 /** Where approve() puts a pending file in the public bucket. */
@@ -200,7 +210,7 @@ export async function undo(env: Env, row: Row): Promise<void> {
   }
   // The version it replaced is the newest again (its sidecar never left the bucket).
   if (row.status === "approved" && row.replaces) await env.DB.prepare("UPDATE submissions SET replaced_by = NULL WHERE replaced_by = ?1").bind(row.id).run();
-  await env.DB.prepare("UPDATE submissions SET status = 'pending', reviewed_at = NULL, reviewed_by = NULL, official = 0 WHERE id = ?1").bind(row.id).run();
+  await env.DB.prepare("UPDATE submissions SET status = 'pending', reviewed_at = NULL, reviewed_by = NULL, official = 0, reject_reason = '' WHERE id = ?1").bind(row.id).run();
 }
 
 /** Deletes the files of rejections older than REJECTED_KEEP_DAYS (run daily by the review Worker's cron). */
@@ -216,9 +226,9 @@ export async function purgeRejected(env: Env, now = new Date()): Promise<number>
   return rows.results.length;
 }
 
-async function setStatus(env: Env, id: string, status: string, reviewer: string, official = false): Promise<void> {
-  await env.DB.prepare("UPDATE submissions SET status = ?2, reviewed_at = ?3, reviewed_by = ?4, official = ?5 WHERE id = ?1")
-    .bind(id, status, new Date().toISOString().replace(/\.\d+Z$/, "Z"), reviewer, official ? 1 : 0)
+async function setStatus(env: Env, id: string, status: string, reviewer: string, official = false, reason = ""): Promise<void> {
+  await env.DB.prepare("UPDATE submissions SET status = ?2, reviewed_at = ?3, reviewed_by = ?4, official = ?5, reject_reason = ?6 WHERE id = ?1")
+    .bind(id, status, new Date().toISOString().replace(/\.\d+Z$/, "Z"), reviewer, official ? 1 : 0, reason)
     .run();
 }
 

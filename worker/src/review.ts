@@ -10,7 +10,8 @@
 //   POST /approve/<id>     copy into the public bucket (see src/publish.ts)
 //   POST /approve-page     approve every card on the page, each as its "official" box says
 //   POST /approve-all      approve the whole queue (as submitted) in batches, continuing itself
-//   POST /reject/<id>      mark it rejected (its files are deleted REJECTED_KEEP_DAYS later)
+//   POST /reject/<id>      mark it rejected (its files are deleted REJECTED_KEEP_DAYS later), with the
+//                          optional reason from the form's reason-<id> field (shown to the contributor)
 //   POST /undo/<id>        put an approved or rejected submission back in the queue
 //   POST /done/<id>        mark a suggestion (icon or template requests from the app) handled
 //   POST /resolved/<id>    mark a removal request handled (take the icon down first, if agreed)
@@ -22,7 +23,7 @@ import { reviewer } from "./access.ts";
 import type { Env } from "./env.ts";
 import { attachment, templateToBiocartoon } from "./biocartoon_file.ts";
 import { guarded } from "./http.ts";
-import { REJECTED_KEEP_DAYS, type Row, approve, latestVersion, purgeRejected, reject, rowLayers, rowTags, undo } from "./publish.ts";
+import { MAX_REJECT_REASON, REJECTED_KEEP_DAYS, type Row, approve, latestVersion, purgeRejected, reject, rowLayers, rowTags, undo } from "./publish.ts";
 import { type PublishRequest, STALE_RUN_MINUTES, latest as latestPublish, request as requestPublish } from "./publish_requests.ts";
 import { Rejected } from "./text.ts";
 
@@ -129,7 +130,8 @@ async function route(req: Request, env: Env, who: string): Promise<Response> {
     // the version it replaces is.
     const target = action === "approve" ? await updateTarget(env, row) : null;
     const official = action === "approve" && mayBeOfficial(row, target) && form.get(`official-${row.id}`) === "1";
-    await (action === "approve" ? approve(env, row, who, official) : reject(env, row, who));
+    const reason = action === "reject" ? String(form.get(`reason-${row.id}`) ?? "") : "";
+    await (action === "approve" ? approve(env, row, who, official) : reject(env, row, who, reason));
     return back(`${action === "approve" ? "Approved" : "Rejected"} “${row.title}”${official ? " as an official BioCartoon asset" : ""}`, true);
   }
   return new Response("Not found", { status: 404 });
@@ -304,8 +306,9 @@ function card(r: Row, target: Target | null, keyLabel: string | null): string {
     ${textList}
     ${downloads(r, svg)}
     <input type="hidden" name="id" value="${esc(r.id)}">${officialBoxes(r, target)}
-    <button formaction="/approve/${esc(r.id)}" class="ok">Approve</button>
-    <button formaction="/reject/${esc(r.id)}" class="no">Reject</button>
+    <div class="decide"><button formaction="/approve/${esc(r.id)}" class="ok">Approve</button>
+    <button formaction="/reject/${esc(r.id)}" class="no" id="reject-${esc(r.id)}">Reject</button>
+    <input type="text" name="reason-${esc(r.id)}" class="reason" maxlength="${MAX_REJECT_REASON}" placeholder="Reject reason (optional)" title="Shown to the submitter" aria-label="Reject reason (optional, shown to the submitter)" data-reject="reject-${esc(r.id)}"></div>
   </div>
 </section>`;
 }
@@ -326,7 +329,13 @@ function downloads(r: Row, svg: boolean): string {
 const pngName = (title: string) => decodeURIComponent(attachment(title, ".png").split("filename*=UTF-8''")[1]);
 
 /** Renders an SVG icon to a PNG download, 1024 px on its long side like data/rasterize.py. */
-const RENDER_SCRIPT = `document.addEventListener("click", async (e) => {
+const RENDER_SCRIPT = `document.addEventListener("keydown", (e) => {
+  const box = e.target.closest && e.target.closest("input[data-reject]");
+  if (!box || e.key !== "Enter" || e.isComposing) return;
+  e.preventDefault();
+  document.getElementById(box.dataset.reject).click();
+});
+document.addEventListener("click", async (e) => {
   const a = e.target.closest("a[data-render]");
   if (!a) return;
   e.preventDefault();
@@ -486,8 +495,13 @@ button[disabled]{opacity:.5;cursor:default}.publish{background:#fff;border:1px s
 .publish pre{white-space:pre-wrap;overflow-wrap:anywhere;font-size:12px;max-height:300px;overflow:auto;background:#f6f6f8;padding:8px;border-radius:6px}
 table{border-collapse:collapse;font-size:13px;width:100%}td{border-top:1px solid #ddd;padding:4px 6px}
 .dl{font-size:13px;margin:0 0 10px;color:#777}.dl a{margin-right:8px}
+.decide{display:flex;flex-wrap:wrap;align-items:center;gap:6px}.decide button{margin-right:0}
+.reason{flex:1;min-width:180px;font:inherit;font-size:14px;padding:6px 10px;border:1px solid #c8c8d0;border-radius:6px}.reason::placeholder{color:#999}
+td.why{color:#555;overflow-wrap:anywhere}
 </style><script nonce="${nonce}">${RENDER_SCRIPT}</script></head><body>
 <h1>Review queue: ${total?.n ?? 0} pending</h1>
+<!-- The queue form's first submit button (its default), and disabled: Enter in a reason box must never press "Accept all on page" or an Approve. -->
+<button form="queue" type="submit" disabled hidden aria-hidden="true"></button>
 ${done ? `<div class="done"><span>${esc(done)}</span>${undoId ? undoForm(undoId) : ""}</div>` : ""}
 ${publishBox(publish, pending.results.length, total?.n ?? 0, cutoff)}
 ${pager(pg, pages, total?.n ?? 0)}
@@ -500,7 +514,7 @@ ${removals.results.length ? `<table>${removals.results.map(removalRow).join("")}
 <h3>Suggestions (${suggestions.results.length})</h3>
 ${suggestions.results.length ? `<table>${suggestions.results.map(suggestionRow).join("")}</table>` : "<p>No open suggestions.</p>"}
 <h3>Recent decisions</h3><table>${recent.results
-    .map((r) => `<tr><td>${esc(r.status)}${r.official ? " (official)" : ""}${r.replaces ? " update" : ""}${r.replaced_by ? " (since updated)" : ""}</td><td>${esc(kindLabel(r.kind))}</td><td>${esc(r.title)}</td><td>${esc(r.author)}</td><td>${esc(r.reviewed_by)}</td><td>${esc(r.reviewed_at)}</td><td>${r.status === "approved" || r.files !== "[]" ? undoForm(r.id) : ""}</td></tr>`)
+    .map((r) => `<tr><td>${esc(r.status)}${r.official ? " (official)" : ""}${r.replaces ? " update" : ""}${r.replaced_by ? " (since updated)" : ""}</td><td>${esc(kindLabel(r.kind))}</td><td>${esc(r.title)}</td><td>${esc(r.author)}</td><td>${esc(r.reviewed_by)}</td><td>${esc(r.reviewed_at)}</td><td class="why">${r.reject_reason ? esc(r.reject_reason) : ""}</td><td>${r.status === "approved" || r.files !== "[]" ? undoForm(r.id) : ""}</td></tr>`)
     .join("")}</table>
 <p style="color:#777;font-size:13px">Approved items reach the app the next time <code>data/publish_catalog.py</code> runs (Publish catalog now above, or the weekly sync), and an undone approval leaves it then too.
 Rejections can be undone for ${REJECTED_KEEP_DAYS} days.</p>

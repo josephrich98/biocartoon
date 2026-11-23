@@ -89,10 +89,11 @@ Give the user each submission id and say what happens next: a reviewer looks at 
 library after the next publish. Check on it with:
 
 ```bash
-curl "https://api.biocartoon.com/status?ids=ID1,ID2"
+curl "https://api.biocartoon.com/status?ids=ID1,ID2&detail=1"
 ```
 
-Each id reports pending, approved or rejected. With MCP, `submission_status` does the same.
+Each id reports pending, approved or rejected, and a rejection may carry the reviewer's `reason`: pass it on
+to the user, since it usually says what to fix before submitting again. With MCP, `submission_status` does the same.
 
 ## 5. Update an earlier upload
 

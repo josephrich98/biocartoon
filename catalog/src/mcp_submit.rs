@@ -19,7 +19,9 @@ illustration (draw it as a clean, self-contained SVG, or generate an image if yo
 shared library with submit_artwork. Before submitting, show the user the image and the details you will send (title, \
 description, tags, credit name, license, whether generative AI was used) and get their explicit go-ahead: they are \
 licensing it to everyone. Generated images must be submitted with generative_ai_used=true and license CC0-1.0. Submissions \
-wait for a human reviewer and join the catalog after the next publish; submission_status reports where they are.\n\
+wait for a human reviewer and join the catalog after the next publish; submission_status reports where they are. \
+Submitting is optional: to use the artwork in a figure now, pass it to compose_figure as an element's svg (or its file \
+as image_file), with no review needed.\n\
 Adapting a library icon (\"like BA001505 but ...\"): read its markup with asset_svg and edit it, keeping its style. An \
 adaptation must keep the original's license terms, so it may be submitted only when that license allows (asset_svg says): \
 public-domain and CC0 originals, any way; CC BY, MIT and BSD originals only as CC-BY-4.0 by a person, without generative AI; \
@@ -312,16 +314,37 @@ fn status(args: &Value) -> Result<Vec<Value>, String> {
     if ids.is_empty() {
         return Err("ids is required".into());
     }
-    let url = format!("{}/status?ids={}", upload::submit_url().trim_end_matches('/'), ids.iter().take(100).copied().collect::<Vec<_>>().join(","));
+    let url = format!("{}/status?ids={}&detail=1", upload::submit_url().trim_end_matches('/'), ids.iter().take(100).copied().collect::<Vec<_>>().join(","));
     let body = crate::query::fetch_url(&url)?;
     let found: Value = serde_json::from_slice(&body).map_err(|e| format!("unexpected reply from the submission server: {e}"))?;
-    let v: Vec<Value> = ids.iter().map(|id| json!({"id": id, "status": found.get(*id).and_then(Value::as_str).unwrap_or("unknown id")})).collect();
-    Ok(vec![crate::mcp::pretty(&v)])
+    Ok(vec![crate::mcp::pretty(&status_rows(&ids, &found))])
+}
+
+/// One `{id, status, reason?}` per id from a `/status?detail=1` reply (a plain `{"<id>": "<status>"}`
+/// reply, from an older server, also works).
+fn status_rows(ids: &[&str], found: &Value) -> Vec<Value> {
+    ids.iter()
+        .map(|id| {
+            let f = found.get(*id);
+            let status = f.and_then(|f| f.get("status").or(Some(f))).and_then(Value::as_str).unwrap_or("unknown id");
+            match f.and_then(|f| f.get("reason")).and_then(Value::as_str).filter(|r| !r.is_empty()) {
+                Some(reason) => json!({"id": id, "status": status, "reason": reason}),
+                None => json!({"id": id, "status": status}),
+            }
+        })
+        .collect()
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn status_rows_read_both_reply_forms() {
+        let detail = json!({"a": {"status": "rejected", "reason": "Too blurry"}, "b": {"status": "pending"}});
+        assert_eq!(status_rows(&["a", "b", "c"], &detail), vec![json!({"id": "a", "status": "rejected", "reason": "Too blurry"}), json!({"id": "b", "status": "pending"}), json!({"id": "c", "status": "unknown id"})]);
+        assert_eq!(status_rows(&["a"], &json!({"a": "approved"})), vec![json!({"id": "a", "status": "approved"})]);
+    }
 
     #[test]
     fn schemas_and_file_params() {

@@ -156,10 +156,14 @@ export async function artworkTool(env: McpEnv, name: string, args: Args, request
     case "submit_artwork": return submitArtwork(env, args, request);
     case "submission_status": {
       const ids = strings(args, "ids", 100); if (!ids.length) throw new Error("ids is required");
-      const response = await env.SUBMISSIONS.fetch(`https://api.biocartoon.com/status?ids=${encodeURIComponent(ids.join(","))}`);
+      const response = await env.SUBMISSIONS.fetch(`https://api.biocartoon.com/status?ids=${encodeURIComponent(ids.join(","))}&detail=1`);
       if (!response.ok) throw new Error(`could not retrieve submission status: HTTP ${response.status}`);
-      const found = await response.json() as Record<string, string>;
-      return { content: [pretty(ids.map(id => ({ id, status: found[id] ?? "unknown id" })))] };
+      // {"<id>": {status, reason?}}, or {"<id>": "<status>"} from a server without detail=1.
+      const found = await response.json() as Record<string, string | { status: string; reason?: string }>;
+      return { content: [pretty(ids.map(id => {
+        const f = found[id], status = typeof f === "string" ? f : f?.status, reason = typeof f === "object" ? f?.reason : undefined;
+        return { id, status: status ?? "unknown id", ...(reason && { reason }) };
+      }))] };
     }
     default: throw new Error(`unknown tool ${name}`);
   }

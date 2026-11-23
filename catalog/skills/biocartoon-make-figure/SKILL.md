@@ -43,6 +43,30 @@ Turn the request into elements and connections:
 
 A bare `prompt` also works (the server plans it), but your own plan is better.
 
+### The user's own pictures
+
+An element can use a picture that isn't in the library instead of a `query`: something you drew earlier
+in the conversation, an image the user uploaded or generated, or a file on their computer. Give it
+as exactly one of:
+
+- `svg`: the complete SVG markup you drew.
+- `image_file`: `"image"`, `"image2"` or `"image3"`, naming the top-level argument that holds a
+  conversation file (ChatGPT passes uploaded and generated images this way).
+- `file_path`: a file on this computer (local `biocartoon mcp` server only; any common image format).
+- `image_url` (https) or `image_base64`: SVG, PNG, JPEG, GIF or WebP, up to 2 MB each.
+
+```json
+{"title": "Neurons and glia",
+ "elements": [{"id": "n", "label": "Neuron", "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 200 200\">…</svg>"},
+              {"id": "a", "label": "Astrocyte"}, {"id": "m", "label": "Microglia"},
+              {"id": "o", "label": "Oligodendrocyte"}]}
+```
+
+The picture goes into the editable project, so the user can move and resize it like any other.
+The returned `figure.spec` replaces it with an `image_ref`. Keep that `image_ref` when you edit the
+figure later, so you don't have to send the picture again. When the user asks for a figure "in
+BioCartoon", always hand it over this way. Never give them an SVG you put together yourself instead.
+
 ## 2. Check what it picked
 
 The reply lists each element with the icon chosen and how well it matched:
@@ -53,8 +77,9 @@ The reply lists each element with the icon chosen and how well it matched:
 Fix weak or wrong picks by calling `compose_figure` again with `figure` set to the returned `figure.spec`,
 edited: change that element's `query`, or set its `asset_id` to an icon you found with `search_assets`.
 Keep `asset_id` on the elements that are fine, so they stay the same. Tell the user plainly about
-placeholder boxes. Offer to draw the missing icon (the `biocartoon-create-icon` skill), then use it by its
-`asset_id` once it is in the library, or let the user fill the box in the editor.
+placeholder boxes. Offer to draw the missing icon and put it straight into the figure as that element's
+`svg` (see above). Submitting it to the library (the `biocartoon-create-icon` skill) is optional. The user
+can also fill the box in the editor.
 
 ## 3. Hand it over
 
@@ -68,5 +93,6 @@ placeholder boxes. Offer to draw the missing icon (the `biocartoon-create-icon` 
 ## Edits
 
 For "swap X", "add a step", "make it an inhibitor" or "change the title": take the last `figure.spec`,
-change only what was asked, and call `compose_figure` with it as `figure`. For finer work (moving things,
+change only what was asked, and call `compose_figure` with it as `figure` (`asset_id` and `image_ref` keep
+the pictures that stay). For finer work (moving things,
 fonts, colours), point the user to Open in BioCartoon.

@@ -70,6 +70,10 @@ Choose by what you can do:
 - **The user's own artwork:** they can attach an image, or (with the local server or the command line)
   name a file.
 
+To use the new picture in a figure right away, you don't need to submit it. Pass it to `compose_figure`
+as an element's `svg`, `image_file` or `file_path` (see the `biocartoon-make-figure` skill). Submitting
+shares it with everyone, after review.
+
 ## 3. Confirm the submission details
 
 Collect these, propose sensible values, and **show them to the user together with the final image**:

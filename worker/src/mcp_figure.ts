@@ -2,11 +2,13 @@
 // of catalog icons, labels and arrows, a preview scene for the gallery, a self-contained SVG for
 // downloads, and a `.biocartoon` project the editor opens from an encrypted share link.
 //
-// Nothing here draws new artwork: every picture is a catalog asset (or, when the library has
-// nothing that fits, a labelled placeholder box the user can replace in the editor). The layout
-// is deterministic, so a figure's resolved spec reproduces it exactly for edits and exports.
+// Nothing here draws new artwork: every picture is a catalog asset, the user's own picture (one the
+// assistant drew or the user uploaded, see mcp_images.ts), or, when nothing fits, a labelled
+// placeholder box the user can replace in the editor. The layout is deterministic, so a figure's
+// resolved spec reproduces it exactly for edits and exports.
 import { asset, assetUrl, getAsset, rows, searchRows, str, strings, text, words, type Args, type Row, type ToolResult } from "./mcp_catalog.ts";
 import { fetchImage, type McpEnv } from "./mcp_artwork.ts";
+import { MAX_FIGURE_UPLOADS, dataUrl, elementInput, loadInput, postShare, seal, storeUpload, unusedFiles, type ImageInput, type Upload } from "./mcp_images.ts";
 
 export const WEB_APP = "https://app.biocartoon.com/";
 const MAX_ELEMENTS = 16, MAX_CONNECTIONS = 32;
@@ -15,17 +17,19 @@ const LAYOUTS = ["auto", "flow", "cycle", "hub", "grid"] as const;
 export type Kind = typeof KINDS[number];
 type Layout = typeof LAYOUTS[number];
 
-export interface Element { id: string; label: string; query: string; asset_id?: string; placeholder?: boolean }
+/** `input`: the element's own picture as given in this call (never part of a returned spec, which has `image_ref`). */
+export interface Element { id: string; label: string; query: string; asset_id?: string; placeholder?: boolean; image_ref?: string; input?: ImageInput }
 export interface Connection { from: string; to: string; kind: Kind; label: string }
 export interface Spec { title: string; layout: Layout; elements: Element[]; connections: Connection[]; sources: string[] }
 
-export interface SImage { id: string; asset_id: string; x: number; y: number; w: number; h: number; href: string; svg_href?: string; thumb_href?: string }
+/** `own`: the user's own picture (asset_id is empty and href a data: URL), with its file extension and label. */
+export interface SImage { id: string; asset_id: string; x: number; y: number; w: number; h: number; href: string; svg_href?: string; thumb_href?: string; own?: { ext: string; label: string } }
 export interface SText { x: number; y: number; w: number; h: number; text: string; lines: string[]; size: number; bold: boolean; color: string; role: "title" | "label" | "connection"; owner?: string }
 export interface SLine { x1: number; y1: number; x2: number; y2: number; kind: Kind }
 export interface SBox { id: string; x: number; y: number; w: number; h: number }
 export interface Scene { width: number; height: number; images: SImage[]; texts: SText[]; lines: SLine[]; boxes: SBox[]; groups: Record<string, number> }
 
-type Resolved = Element & { row?: Row; match: "chosen" | "strong" | "weak" | "none" };
+type Resolved = Element & { row?: Row; upload?: Upload; match: "chosen" | "own" | "strong" | "weak" | "none" };
 
 // ---------------------------------------------------------------------------------------------
 // Spec parsing
@@ -46,7 +50,10 @@ export function parseSpec(raw: unknown): Spec {
     if (ids.has(id)) throw new Error(`element id ${JSON.stringify(id)} is used twice`);
     ids.add(id);
     const label = clean(x.label, 60), query = clean(x.query, 120), asset_id = clean(x.asset_id, 40);
-    if (!label && !query && !asset_id) throw new Error(`element ${id} needs a label, a query or an asset_id`);
+    const input = elementInput(x, id);
+    if (input && asset_id) throw new Error(`element ${id}: give either asset_id or its own picture, not both`);
+    if (!label && !query && !asset_id && !input) throw new Error(`element ${id} needs a label, a query, an asset_id or its own picture`);
+    if (input) return { id, label, query: query || label, input };
     return { id, label, query: query || label, ...(asset_id ? { asset_id } : {}), ...(x.placeholder === true && !asset_id ? { placeholder: true } : {}) };
   });
   const byLabel = new Map(elements.map(e => [e.label.toLowerCase(), e.id]));
@@ -148,9 +155,23 @@ export function scoreHit(row: Row, query: string, rank: number): { score: number
   return { score, strong: covered === n, any: covered > 0 };
 }
 
-async function resolve(env: McpEnv, spec: Spec): Promise<Resolved[]> {
+/** Every element's own picture, read and checked; with `store`, new ones are also stored so the
+ *  returned spec can name them by image_ref. */
+async function ownPictures(env: McpEnv, spec: Spec, args: Args, store: boolean, request?: Request): Promise<Map<string, Upload>> {
+  const out = new Map<string, Upload>();
+  const loaded = await Promise.all(spec.elements.map(async e => e.input ? [e.id, await loadInput(env, e.input, args).catch(err => { throw new Error(`element ${e.id} (${e.label || e.query || "picture"}): ${(err as Error).message}`); })] as const : undefined));
+  let total = 0;
+  for (const l of loaded) if (l) { out.set(l[0], l[1]); total += l[1].bytes.length; }
+  if (total > MAX_FIGURE_UPLOADS) throw new Error(`the figure's own pictures add up to ${(total / 1048576).toFixed(1)} MB; the most is ${MAX_FIGURE_UPLOADS >> 20} MB (use smaller images)`);
+  if (store) await Promise.all([...out.values()].filter(u => !u.ref).map(async u => { u.ref = await storeUpload(env, u, request); }));
+  return out;
+}
+
+async function resolve(env: McpEnv, spec: Spec, own: Map<string, Upload>): Promise<Resolved[]> {
   type Cand = { row: Row; score: number; strong: boolean };
   const found = await Promise.all(spec.elements.map(async (e): Promise<Resolved | Cand[]> => {
+    const upload = own.get(e.id);
+    if (upload) return { ...e, upload, match: "own" };
     if (e.asset_id) {
       const row = await getAsset(env.CATALOG, e.asset_id);
       return { ...e, label: e.label || String(row.title ?? ""), row, match: "chosen" };
@@ -293,7 +314,11 @@ export function layout(spec: Spec, resolved: Resolved[]): Scene & { layout: stri
   for (const e of resolved) {
     const [cx, cy] = centers.get(e.id)!;
     let w = icon, h = icon;
-    if (e.row) {
+    if (e.upload) {
+      const { width: aw, height: ah } = e.upload;
+      if (aw >= ah) h = icon * ah / aw; else w = icon * aw / ah;
+      scene.images.push({ id: e.id, asset_id: "", x: round(cx - w / 2), y: round(cy - h / 2), w: round(w), h: round(h), href: dataUrl(e.upload), own: { ext: e.upload.ext, label: e.label || e.query || "Picture" } });
+    } else if (e.row) {
       const aw = Number(e.row.png_width) || 1, ah = Number(e.row.png_height) || 1;
       if (aw >= ah) h = icon * ah / aw; else w = icon * aw / ah;
       const href = assetUrl(e.row.png_key)!;
@@ -419,7 +444,17 @@ export function sceneProject(scene: Scene, title: string, rowsById: Map<string, 
     item(l.kind === "inhibit" ? "Inhibitor" : "Arrow", { Line: { kind, color: [60, 72, 80, 255], width: 3, style } }, l.x1, l.y1, l.x2 - l.x1, l.y2 - l.y1);
   }
   for (const b of scene.boxes) item("Placeholder", { Shape: { shape: "RoundedRectangle", fill: [241, 245, 249, 255], stroke: [148, 163, 184, 255], stroke_width: 2 } }, b.x, b.y, b.w, b.h, groupOf(b.id));
+  // The user's own pictures travel inside the file, as the editor's portable projects carry uploads
+  // (`images`: file name -> base64; biocartoon-app app/src/projects.rs PortableFile).
+  const images: Record<string, string> = {};
   for (const img of scene.images) {
+    if (img.own) {
+      const slug = img.own.label.toLowerCase().replace(/[^\p{L}\p{N}]+/gu, "-").replace(/^-|-$/g, "").slice(0, 40) || "picture";
+      const name = `img-${Object.keys(images).length + 1}-${slug}.${img.own.ext}`;
+      images[name] = img.href.slice(img.href.indexOf(",") + 1);
+      item(img.own.label, { Image: { source: { File: { path: name } }, crop: [0, 0, 1, 1], overlay: [0, 0, 0, 0] } }, img.x, img.y, img.w, img.h, groupOf(img.id));
+      continue;
+    }
     const r = rowsById.get(img.asset_id)!;
     const source: Record<string, unknown> = { id: r.id, key: r.png_key, title: r.title ?? "", source: r.source, credit: r.credit ?? "", license: r.license ?? "" };
     if (r.svg_key) source.svg = r.svg_key;
@@ -431,61 +466,36 @@ export function sceneProject(scene: Scene, title: string, rowsById: Map<string, 
     item(isTitle ? "Title" : t.text, textKind(t, isTitle ? "Left" : "Center"), t.x, t.y, t.w, t.h + 6, t.owner && groups.has(t.owner) ? groupOf(t.owner) : null);
   }
   const DPI = 96;
-  return { title: title || "BioCartoon figure", slides: [{ name: title || "Figure", items }], width: scene.width, height: scene.height, unit: "Inch", background: [255, 255, 255, 255], next_id: next, guides: [], _dpi: DPI };
+  return { title: title || "BioCartoon figure", slides: [{ name: title || "Figure", items }], width: scene.width, height: scene.height, unit: "Inch", background: [255, 255, 255, 255], next_id: next, guides: [], ...(Object.keys(images).length ? { images } : {}), _dpi: DPI };
 }
 
 // ---------------------------------------------------------------------------------------------
-// Share links: the project, gzipped and AES-256-GCM encrypted here, kept by the submissions
+// Share links: the project, gzipped and AES-256-GCM encrypted (mcp_images.ts), kept by the submissions
 // Worker. The key exists only in the returned link's fragment (biocartoon-app app/src/share.rs).
-
-const b64url = (b: Uint8Array) => btoa(String.fromCharCode(...b)).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
-
-async function gzip(data: Uint8Array): Promise<Uint8Array> {
-  const stream = new Response(data).body!.pipeThrough(new CompressionStream("gzip"));
-  return new Uint8Array(await new Response(stream).arrayBuffer());
-}
-
-export async function seal(project: Record<string, unknown>): Promise<{ bytes: Uint8Array; key: string }> {
-  const { _dpi, ...doc } = project; void _dpi;
-  const plain = await gzip(new TextEncoder().encode(JSON.stringify(doc)));
-  const raw = crypto.getRandomValues(new Uint8Array(32)), nonce = crypto.getRandomValues(new Uint8Array(12));
-  const key = await crypto.subtle.importKey("raw", raw, "AES-GCM", false, ["encrypt"]);
-  const sealed = new Uint8Array(await crypto.subtle.encrypt({ name: "AES-GCM", iv: nonce }, key, plain));
-  const bytes = new Uint8Array(4 + 12 + sealed.length);
-  bytes.set([0x42, 0x43, 0x53, 0x31]); bytes.set(nonce, 4); bytes.set(sealed, 16);
-  return { bytes, key: b64url(raw) };
-}
 
 /** A view link: whoever opens it gets their own copy of the project in the editor. */
 export async function shareProject(env: McpEnv, project: Record<string, unknown>, original?: Request): Promise<string> {
-  const { bytes, key } = await seal(project);
-  const headers = new Headers({
-    "Content-Type": "application/octet-stream", "Content-Length": String(bytes.length),
-    "x-share-edit": b64url(crypto.getRandomValues(new Uint8Array(16))), "x-share-owner": b64url(crypto.getRandomValues(new Uint8Array(16))),
-  });
-  if (env.MCP_TOKEN) headers.set("X-MCP-Token", env.MCP_TOKEN);
-  const ip = original?.headers.get("CF-Connecting-IP"); if (ip) headers.set("CF-Connecting-IP", ip);
-  const response = await env.SUBMISSIONS.fetch(new Request("https://api.biocartoon.com/shares", { method: "POST", headers, body: bytes }));
-  const reply = await response.json().catch(() => ({})) as { id?: string; error?: string };
-  if (!response.ok || !reply.id) throw new Error(reply.error || `could not make an editor link: HTTP ${response.status}`);
-  return `${WEB_APP}#share=${reply.id}.${key}`;
+  const { _dpi, ...doc } = project; void _dpi;
+  const { bytes, key } = await seal(doc);
+  return `${WEB_APP}#share=${await postShare(env, bytes, original)}.${key}`;
 }
 
 // ---------------------------------------------------------------------------------------------
 // Tools
 
-async function build(env: McpEnv, spec: Spec) {
-  const resolved = await resolve(env, spec);
+async function build(env: McpEnv, spec: Spec, args: Args = {}, store = false, request?: Request) {
+  const resolved = await resolve(env, spec, await ownPictures(env, spec, args, store, request));
   const scene = layout(spec, resolved);
   const rowsById = new Map(resolved.filter(e => e.row).map(e => [String(e.row!.id), e.row!]));
   const elements = resolved.map(e => ({
     id: e.id, label: e.label || e.query, query: e.query, match: e.match,
     ...(e.row ? { asset: asset(e.row, e.match === "chosen" ? "" : e.query) } : {}),
+    ...(e.upload ? { own: { format: e.upload.ext, width: e.upload.width, height: e.upload.height } } : {}),
   }));
   // The spec with every choice pinned, so passing it back reproduces this figure exactly.
   const resolvedSpec: Spec = {
     ...spec, layout: spec.layout,
-    elements: resolved.map(e => ({ id: e.id, label: e.label || e.query, query: e.query, ...(e.row ? { asset_id: String(e.row.id) } : { placeholder: true }) })),
+    elements: resolved.map(e => ({ id: e.id, label: e.label || e.query, query: e.query, ...(e.upload ? (e.upload.ref ? { image_ref: e.upload.ref } : {}) : e.row ? { asset_id: String(e.row.id) } : { placeholder: true }) })),
   };
   return { scene, rowsById, elements, resolvedSpec, layoutUsed: scene.layout };
 }
@@ -508,7 +518,7 @@ async function compose(env: McpEnv, args: Args, request?: Request): Promise<Tool
   if (Array.isArray(args.sources) && !Array.isArray(raw.sources)) raw = { ...raw, sources: args.sources };
   if (str(args, "layout") && args.figure === undefined && !Array.isArray(args.elements)) raw = { ...raw, layout: str(args, "layout") };
   const spec = parseSpec(raw);
-  const { scene, rowsById, elements, resolvedSpec, layoutUsed } = await build(env, spec);
+  const { scene, rowsById, elements, resolvedSpec, layoutUsed } = await build(env, spec, args, true, request);
   let open_url = "", linkNote = "";
   if (args.open_link !== false) {
     try { open_url = await shareProject(env, sceneProject(scene, spec.title, rowsById), request); }
@@ -516,14 +526,20 @@ async function compose(env: McpEnv, args: Args, request?: Request): Promise<Tool
   }
   const weak = elements.filter(e => e.match === "weak").map(e => `${e.id} "${e.label}" → ${e.asset?.id} "${(e.asset as Record<string, unknown>)?.title}"`);
   const none = elements.filter(e => e.match === "none").map(e => `${e.id} "${e.label}"`);
-  const figure = { title: spec.title, layout: layoutUsed, width: scene.width, height: scene.height, spec: resolvedSpec, elements, scene, preview_svg: sceneSvg(scene, img => img.href), credits: credits(rowsById), ...(open_url ? { open_url } : {}) };
+  // The scene's own pictures are already in preview_svg; their data: URLs aren't repeated.
+  const sceneOut = { ...scene, images: scene.images.map(i => i.own ? { ...i, href: "" } : i) };
+  const own = elements.filter(e => e.match === "own").map(e => `${e.id} "${e.label}"`);
+  const unused = unusedFiles(args, new Set(spec.elements.flatMap(e => e.input?.kind === "image_file" ? [e.input.value] : [])));
+  const figure = { title: spec.title, layout: layoutUsed, width: scene.width, height: scene.height, spec: resolvedSpec, elements, scene: sceneOut, preview_svg: sceneSvg(scene, img => img.href), credits: credits(rowsById), ...(open_url ? { open_url } : {}) };
   const summary = [
     `Composed ${JSON.stringify(spec.title || "figure")} (${layoutUsed} layout, ${elements.length} pictures, ${spec.connections.length} connections).`,
-    ...elements.map(e => `- ${e.id} "${e.label}": ${e.asset ? `${e.asset.id} "${e.asset.title}" (${e.asset.source_name}, ${e.asset.license}) [${e.match}]` : "placeholder box: no suitable icon"}`),
+    ...elements.map(e => `- ${e.id} "${e.label}": ${e.asset ? `${e.asset.id} "${e.asset.title}" (${e.asset.source_name}, ${e.asset.license}) [${e.match}]` : e.match === "own" ? `the user's own picture (${e.own?.format.toUpperCase()}) [own]` : "placeholder box: no suitable icon"}`),
     weak.length ? `Weak matches (check them with asset_image; pass a better query or asset_id): ${weak.join("; ")}.` : "",
     none.length ? `No icon found for ${none.join(", ")}; they are placeholder boxes. Try another query, or offer to draw one (biocartoon-create-icon).` : "",
+    unused.length ? `Not used: the file${unused.length > 1 ? "s" : ""} in ${unused.join(", ")}. To place one, set an element's image_file to its argument name.` : "",
+    own.length ? `Own pictures (${own.join(", ")}) are inside the editor link; figure.spec names them by image_ref, which keeps them for later edits for 90 days.` : "",
     open_url ? `Open and edit in BioCartoon: ${open_url}` : linkNote,
-    "To change the figure, call compose_figure again with `figure` set to figure.spec below, edited (keep asset_id on elements that should stay).",
+    "To change the figure, call compose_figure again with `figure` set to figure.spec below, edited (keep asset_id and image_ref on elements that should stay).",
     `Credits to include: ${figure.credits.join(" | ")}`,
   ].filter(Boolean).join("\n");
   return { content: [text(summary), text(JSON.stringify({ spec: resolvedSpec }))], structuredContent: { figure }, isError: false };
@@ -531,12 +547,12 @@ async function compose(env: McpEnv, args: Args, request?: Request): Promise<Tool
 
 async function exportFigure(env: McpEnv, args: Args): Promise<ToolResult> {
   const spec = parseSpec(args.figure);
-  if (spec.elements.some(e => !e.asset_id && !e.placeholder)) throw new Error("export a figure from compose_figure: pass its figure.spec, with asset_id on each element");
-  const { scene } = await build(env, spec);
+  if (spec.elements.some(e => !e.asset_id && !e.placeholder && !e.input)) throw new Error("export a figure from compose_figure: pass its figure.spec, with asset_id or image_ref on each element");
+  const { scene } = await build(env, spec, args);
   const images = new Map<string, string>();
   let budget = 8 * 1024 * 1024;
   for (const img of scene.images) {
-    if (images.has(img.asset_id)) continue;
+    if (img.own || images.has(img.asset_id)) continue;
     const tries: [string | undefined, string][] = [[img.svg_href, "image/svg+xml"], [img.href, "image/png"], [img.thumb_href, "image/png"]];
     for (const [url, mime] of tries) {
       if (!url) continue;
@@ -552,7 +568,7 @@ async function exportFigure(env: McpEnv, args: Args): Promise<ToolResult> {
       } catch { /* Next, smaller, version of the picture. */ }
     }
   }
-  const svg = sceneSvg(scene, img => images.get(img.asset_id) ?? img.href);
+  const svg = sceneSvg(scene, img => (img.own ? img.href : images.get(img.asset_id)) ?? img.href);
   const name = (spec.title || "biocartoon-figure").replace(/[^\p{L}\p{N}]+/gu, "-").replace(/^-|-$/g, "").slice(0, 60).toLowerCase() || "biocartoon-figure";
   return { content: [text(`Standalone SVG of ${JSON.stringify(spec.title || "the figure")} (${Math.round(svg.length / 1024)} KB), pictures embedded.`)], structuredContent: { svg, filename: `${name}.svg`, width: scene.width, height: scene.height }, isError: false };
 }
@@ -587,7 +603,7 @@ async function openInBiocartoon(env: McpEnv, args: Args, request?: Request): Pro
   let project: Record<string, unknown>, what: string;
   if (args.figure !== undefined) {
     const spec = parseSpec(args.figure);
-    const { scene, rowsById } = await build(env, spec);
+    const { scene, rowsById } = await build(env, spec, args);
     project = sceneProject(scene, spec.title, rowsById); what = JSON.stringify(spec.title || "the figure");
   } else if (args.asset_id !== undefined) { project = await assetProject(env, str(args, "asset_id")); what = `illustration ${str(args, "asset_id")}`; }
   else { project = await templateProject(env, str(args, "template_id")); what = `template ${str(args, "template_id")}`; }

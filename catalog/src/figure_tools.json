@@ -2,7 +2,7 @@
   {
     "name": "compose_figure",
     "title": "Compose figure",
-    "description": "Make a whole scientific figure on the server: catalog icons for each element, laid out with labels, arrows and a title, shown in the BioCartoon gallery with an editor link, PNG/SVG downloads and credits. Prefer passing elements and connections you planned (each element's query is the plain name of the thing to depict); a bare prompt is planned on the server. Read the returned match report: replace weak matches with a better query or an asset_id from search_assets, and treat placeholder boxes as gaps the library cannot fill. To edit a figure, pass its figure.spec back as `figure` with your changes (keep asset_id on elements that should stay). Credit every icon used. Not for charts of data.",
+    "description": "Make a whole scientific figure on the server: a picture for each element, laid out with labels, arrows and a title, shown in the BioCartoon gallery with an editor link (an editable BioCartoon project), PNG/SVG downloads and credits. Pictures are catalog icons (each element's query is the plain name of the thing to depict) or the user's own: artwork you drew (svg), an image the user uploaded or generated in the conversation (image_file, with the file in the top-level image argument), or one at a URL. Use this, not a hand-made SVG, whenever the user wants a figure in BioCartoon. Prefer passing elements and connections you planned; a bare prompt is planned on the server. Read the returned match report: replace weak matches with a better query or an asset_id from search_assets, and treat placeholder boxes as gaps the library cannot fill. To edit a figure, pass its figure.spec back as `figure` with your changes (keep asset_id and image_ref on elements that should stay). Credit every catalog icon used. Not for charts of data.",
     "inputSchema": {
       "type": "object",
       "additionalProperties": false,
@@ -53,6 +53,31 @@
               "placeholder": {
                 "type": "boolean",
                 "description": "Keep an empty labelled box here (set by compose_figure when nothing fits)."
+              },
+              "svg": {
+                "type": "string",
+                "description": "This element's picture as SVG markup you drew in this conversation (one complete <svg> with a viewBox; no scripts, external links or web fonts; up to 2 MB). Use instead of asset_id or query."
+              },
+              "image_file": {
+                "type": "string",
+                "enum": [
+                  "image",
+                  "image2",
+                  "image3"
+                ],
+                "description": "Use the conversation file (an image the user uploaded, or one generated in the chat) passed in that top-level argument as this element's picture."
+              },
+              "image_url": {
+                "type": "string",
+                "description": "An https URL of this element's picture (SVG, PNG, JPEG, GIF or WebP, up to 2 MB)."
+              },
+              "image_base64": {
+                "type": "string",
+                "description": "This element's picture, base64-encoded (a data: URL works too): SVG, PNG, JPEG, GIF or WebP, up to 2 MB."
+              },
+              "image_ref": {
+                "type": "string",
+                "description": "The user's own picture from a previous figure's spec (compose_figure stores each one and returns this). Keep it when editing."
               }
             }
           }
@@ -152,6 +177,31 @@
                   "placeholder": {
                     "type": "boolean",
                     "description": "Keep an empty labelled box here (set by compose_figure when nothing fits)."
+                  },
+                  "svg": {
+                    "type": "string",
+                    "description": "This element's picture as SVG markup you drew in this conversation (one complete <svg> with a viewBox; no scripts, external links or web fonts; up to 2 MB). Use instead of asset_id or query."
+                  },
+                  "image_file": {
+                    "type": "string",
+                    "enum": [
+                      "image",
+                      "image2",
+                      "image3"
+                    ],
+                    "description": "Use the conversation file (an image the user uploaded, or one generated in the chat) passed in that top-level argument as this element's picture."
+                  },
+                  "image_url": {
+                    "type": "string",
+                    "description": "An https URL of this element's picture (SVG, PNG, JPEG, GIF or WebP, up to 2 MB)."
+                  },
+                  "image_base64": {
+                    "type": "string",
+                    "description": "This element's picture, base64-encoded (a data: URL works too): SVG, PNG, JPEG, GIF or WebP, up to 2 MB."
+                  },
+                  "image_ref": {
+                    "type": "string",
+                    "description": "The user's own picture from a previous figure's spec (compose_figure stores each one and returns this). Keep it when editing."
                   }
                 }
               }
@@ -206,6 +256,51 @@
         "open_link": {
           "type": "boolean",
           "description": "Also make an editor link (default true)."
+        },
+        "image": {
+          "type": "object",
+          "description": "An image file from the conversation (uploaded by the user or generated in the chat). Place it with image_file: \"image\" on an element.",
+          "properties": {
+            "download_url": {
+              "type": "string"
+            },
+            "file_id": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "download_url"
+          ]
+        },
+        "image2": {
+          "type": "object",
+          "description": "An image file from the conversation (uploaded by the user or generated in the chat). Place it with image_file: \"image2\" on an element.",
+          "properties": {
+            "download_url": {
+              "type": "string"
+            },
+            "file_id": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "download_url"
+          ]
+        },
+        "image3": {
+          "type": "object",
+          "description": "An image file from the conversation (uploaded by the user or generated in the chat). Place it with image_file: \"image3\" on an element.",
+          "properties": {
+            "download_url": {
+              "type": "string"
+            },
+            "file_id": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "download_url"
+          ]
         }
       }
     },
@@ -222,13 +317,18 @@
       },
       "openai/outputTemplate": "ui://biocartoon/icon-gallery-v2.html",
       "openai/toolInvocation/invoking": "Composing figure…",
-      "openai/toolInvocation/invoked": "Figure ready"
+      "openai/toolInvocation/invoked": "Figure ready",
+      "openai/fileParams": [
+        "image",
+        "image2",
+        "image3"
+      ]
     }
   },
   {
     "name": "open_in_biocartoon",
     "title": "Open in BioCartoon",
-    "description": "A link that opens a figure (a compose_figure spec), one catalog icon, or a shared template in the BioCartoon web editor as the user's own editable copy. The link is private (its key is in the fragment) and lasts 90 days after its last use.",
+    "description": "A link that opens a figure (a compose_figure spec, which may include the user's own pictures), one catalog icon, or a shared template in the BioCartoon web editor as the user's own editable copy. The link is private (its key is in the fragment) and lasts 90 days after its last use.",
     "inputSchema": {
       "type": "object",
       "additionalProperties": false,
@@ -283,6 +383,31 @@
                   "placeholder": {
                     "type": "boolean",
                     "description": "Keep an empty labelled box here (set by compose_figure when nothing fits)."
+                  },
+                  "svg": {
+                    "type": "string",
+                    "description": "This element's picture as SVG markup you drew in this conversation (one complete <svg> with a viewBox; no scripts, external links or web fonts; up to 2 MB). Use instead of asset_id or query."
+                  },
+                  "image_file": {
+                    "type": "string",
+                    "enum": [
+                      "image",
+                      "image2",
+                      "image3"
+                    ],
+                    "description": "Use the conversation file (an image the user uploaded, or one generated in the chat) passed in that top-level argument as this element's picture."
+                  },
+                  "image_url": {
+                    "type": "string",
+                    "description": "An https URL of this element's picture (SVG, PNG, JPEG, GIF or WebP, up to 2 MB)."
+                  },
+                  "image_base64": {
+                    "type": "string",
+                    "description": "This element's picture, base64-encoded (a data: URL works too): SVG, PNG, JPEG, GIF or WebP, up to 2 MB."
+                  },
+                  "image_ref": {
+                    "type": "string",
+                    "description": "The user's own picture from a previous figure's spec (compose_figure stores each one and returns this). Keep it when editing."
                   }
                 }
               }
@@ -341,6 +466,51 @@
         "template_id": {
           "type": "string",
           "description": "A template id from list_templates."
+        },
+        "image": {
+          "type": "object",
+          "description": "An image file from the conversation (uploaded by the user or generated in the chat). Place it with image_file: \"image\" on an element.",
+          "properties": {
+            "download_url": {
+              "type": "string"
+            },
+            "file_id": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "download_url"
+          ]
+        },
+        "image2": {
+          "type": "object",
+          "description": "An image file from the conversation (uploaded by the user or generated in the chat). Place it with image_file: \"image2\" on an element.",
+          "properties": {
+            "download_url": {
+              "type": "string"
+            },
+            "file_id": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "download_url"
+          ]
+        },
+        "image3": {
+          "type": "object",
+          "description": "An image file from the conversation (uploaded by the user or generated in the chat). Place it with image_file: \"image3\" on an element.",
+          "properties": {
+            "download_url": {
+              "type": "string"
+            },
+            "file_id": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "download_url"
+          ]
         }
       }
     },
@@ -350,12 +520,19 @@
       "destructiveHint": false,
       "idempotentHint": false,
       "openWorldHint": false
+    },
+    "_meta": {
+      "openai/fileParams": [
+        "image",
+        "image2",
+        "image3"
+      ]
     }
   },
   {
     "name": "export_figure",
     "title": "Export figure",
-    "description": "A composed figure as one self-contained SVG file with its pictures embedded, for downloading. Pass the figure.spec from compose_figure.",
+    "description": "A composed figure as one self-contained SVG file with its pictures embedded, for downloading only when the user asks for a file. Pass the figure.spec from compose_figure. To give the user a figure they can open and edit in BioCartoon, use compose_figure's editor link (or open_in_biocartoon) instead.",
     "inputSchema": {
       "type": "object",
       "additionalProperties": false,
@@ -413,6 +590,31 @@
                   "placeholder": {
                     "type": "boolean",
                     "description": "Keep an empty labelled box here (set by compose_figure when nothing fits)."
+                  },
+                  "svg": {
+                    "type": "string",
+                    "description": "This element's picture as SVG markup you drew in this conversation (one complete <svg> with a viewBox; no scripts, external links or web fonts; up to 2 MB). Use instead of asset_id or query."
+                  },
+                  "image_file": {
+                    "type": "string",
+                    "enum": [
+                      "image",
+                      "image2",
+                      "image3"
+                    ],
+                    "description": "Use the conversation file (an image the user uploaded, or one generated in the chat) passed in that top-level argument as this element's picture."
+                  },
+                  "image_url": {
+                    "type": "string",
+                    "description": "An https URL of this element's picture (SVG, PNG, JPEG, GIF or WebP, up to 2 MB)."
+                  },
+                  "image_base64": {
+                    "type": "string",
+                    "description": "This element's picture, base64-encoded (a data: URL works too): SVG, PNG, JPEG, GIF or WebP, up to 2 MB."
+                  },
+                  "image_ref": {
+                    "type": "string",
+                    "description": "The user's own picture from a previous figure's spec (compose_figure stores each one and returns this). Keep it when editing."
                   }
                 }
               }

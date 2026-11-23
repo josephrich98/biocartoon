@@ -29,7 +29,7 @@ async function runCheck(t, { missingTool = false, unguardedWrite = false } = {})
         if (name === 'search_assets') result = { structuredContent: { assets } };
         else if (name === 'render_assets') {
           const selected = args.ids.map(id => assets.find(a => a.id === id));
-          result = { structuredContent: { assets: selected }, content: [{ type: 'text', text: JSON.stringify(selected) }] };
+          result = { structuredContent: { assets: selected }, content: [{ type: 'text', text: 'Do not repeat the list.' }, { type: 'text', text: selected.map((a, i) => `${i + 1}. ${a.id} · x`).join('\n') }] };
         } else if (name === 'sql_query') result = { content: [{ type: 'text', text: JSON.stringify({ rows: [[21183]] }) }] };
         else if (name === 'asset_image') result = { content: [{ type: 'image', mimeType: 'image/png', data: '' }] };
         else if (name === 'list_templates') result = { structuredContent: { templates: [{ id: 'demo-template', thumb_url: 'https://assets.biocartoon.com/demo.png' }] } };

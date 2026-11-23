@@ -31,14 +31,21 @@ for biology; healthicons for clinical/public-health symbols; openmoji and noto f
 asset (asset_variants) are the same drawing in other colours. Every asset keeps its own license: credit it as its \
 `credit` field says.\n\
 After judging search results, use render_assets with the selected IDs to show an interactive gallery with previews, \
-licenses, credits and download links. It also returns text for clients without UI support.\n\
+licenses, credits and download links. It also returns text for clients without UI support. Once the gallery is shown, \
+reply briefly without repeating its list, and never add images of your own (web or image-search pictures are not the \
+catalog's files).\n\
 list_templates finds shared slide templates (whole slide layouts, not icons); they open in the BioCartoon editor, so \
 point the user to a template by its title rather than rebuilding it.\n\
 Whole figures (a process, pathway, experiment or comparison): plan the elements (each a depictable thing, with a \
 1-3 word query) and the arrows between them, and call compose_figure. It picks catalog icons, lays them out with \
 labels and arrows, shows the figure in the gallery and returns an editor link (open_in_biocartoon makes one for any \
 figure, icon or template). Judge its match report as you would search results; for changes, pass figure.spec back \
-edited. Gaps stay as labelled boxes: say so rather than hiding them. Not for data charts.";
+edited. Gaps stay as labelled boxes: say so rather than hiding them. Not for data charts.\n\
+The user's own pictures go in figures too: an element may carry artwork you drew (svg), an image the user uploaded or \
+generated in the conversation (pass the file in compose_figure's image argument and set image_file: \"image\" on the \
+element), an image_url, or image_base64. When the user wants a figure \"in BioCartoon\" or one they can open and edit, \
+always deliver it through compose_figure's editor link, with their pictures as elements; never hand over an SVG or \
+image you assembled yourself instead.";
 
 /// A set of MCP tools.
 pub trait Tools {
@@ -532,7 +539,7 @@ pub fn catalog_server_info() -> ServerInfo {
 /// Serve the catalog and submission tools on stdin/stdout (`biocartoon mcp` from this crate).
 /// Submissions may name local files here, since the server runs on the user's own computer.
 pub fn serve_catalog() -> Result<(), String> {
-    let mut tools = Chain(vec![Box::new(CatalogTools::default()), Box::new(crate::mcp_submit::SubmitTools { local_files: true }), Box::new(crate::mcp_figure::FigureTools)]);
+    let mut tools = Chain(vec![Box::new(CatalogTools::default()), Box::new(crate::mcp_submit::SubmitTools { local_files: true }), Box::new(crate::mcp_figure::FigureTools { local_files: true })]);
     serve(&catalog_server_info(), &mut tools)
 }
 
@@ -615,11 +622,13 @@ mod tests {
         assert_eq!(result["structuredContent"]["assets"][0]["id"], "a/2");
         assert_eq!(result["structuredContent"]["assets"][1]["id"], "a/1");
         assert_eq!(result["structuredContent"]["assets"][0]["credit"], "Artist Two, CC BY 4.0");
-        // Text-only clients get the same records, credits and available downloads.
-        let text_records: Value = serde_json::from_str(result["content"][1]["text"].as_str().unwrap()).unwrap();
-        assert_eq!(text_records, result["structuredContent"]["assets"]);
-        assert!(text_records[1]["svg_url"].as_str().unwrap().ends_with("a/1.svg"));
-        assert!(text_records[0].get("svg_url").is_none());
+        // The model is told the gallery is on screen; text-only clients still get credits and downloads, without thumbnails.
+        assert!(result["content"][0]["text"].as_str().unwrap().contains("Do not repeat the list"));
+        let listing = result["content"][1]["text"].as_str().unwrap();
+        assert!(listing.starts_with("1. a/2 · Astrocyte"), "{listing}");
+        assert!(listing.contains("Credit: Artist Two, CC BY 4.0"));
+        assert!(listing.contains("a/1.svg") && !listing.contains("a/2.svg") && !listing.contains("thumb"));
+        assert_eq!(result["structuredContent"]["assets"][1]["svg_url"].as_str().map(|u| u.ends_with("a/1.svg")), Some(true));
         let missing = handle(&info, &mut tools, "tools/call", &json!({"name": "render_assets", "arguments": {"ids": ["missing"]}})).unwrap();
         assert_eq!(missing["isError"], true);
         assert!(missing.get("structuredContent").is_none());

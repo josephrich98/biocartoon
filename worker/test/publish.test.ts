@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { REJECTED_KEEP_DAYS, type Row, approve, publicKey, purgeRejected, reject, undo } from "../src/publish.ts";
+import { MAX_REJECT_REASON, REJECTED_KEEP_DAYS, type Row, approve, cleanReason, publicKey, purgeRejected, reject, undo } from "../src/publish.ts";
 import { Rejected } from "../src/text.ts";
 
 // Just enough of R2 and D1 for publish.ts. The fake DB understands the few statements it sends.
@@ -33,9 +33,9 @@ function setup(row: Row, pending: string[]) {
         bind(...a: unknown[]) {
           return {
             async run() {
-              if (sql.includes("status = 'pending'")) Object.assign(row, { status: "pending", reviewed_at: null, reviewed_by: null, official: 0 });
+              if (sql.includes("status = 'pending'")) Object.assign(row, { status: "pending", reviewed_at: null, reviewed_by: null, official: 0, reject_reason: "" });
               else if (sql.includes("files = '[]'")) row.files = "[]";
-              else Object.assign(row, { status: a[1], reviewed_at: a[2], reviewed_by: a[3], official: a[4] });
+              else Object.assign(row, { status: a[1], reviewed_at: a[2], reviewed_by: a[3], official: a[4], reject_reason: a[5] });
             },
             async all() {
               const old = row.status === "rejected" && row.files !== "[]" && row.reviewed_at! < (a[0] as string);
@@ -168,4 +168,18 @@ test("an SVG's named layers go in its sidecar", async () => {
   const { env, PUBLIC } = setup(row, ["flask/image.svg"]);
   await approve(env, row, "me");
   assert.deepEqual(sidecar(PUBLIC, "user/flask.json").layers, [{ name: "Liquid", colors: ["#f49dc0"] }]);
+});
+
+test("a rejection keeps its reason, one line and capped, until undone", async () => {
+  const row = asset("cell", ["cell/image.png"]);
+  const { env } = setup(row, ["cell/image.png"]);
+  await reject(env, row, "me", "  Too blurry;\n please redraw  ");
+  assert.equal(row.status, "rejected");
+  assert.equal(row.reject_reason, "Too blurry; please redraw");
+  await undo(env, row);
+  assert.equal(row.reject_reason, "");
+  await reject(env, row, "me");
+  assert.equal(row.reject_reason, "");
+  assert.equal(cleanReason("x".repeat(500)).length, MAX_REJECT_REASON);
+  assert.equal(cleanReason(null), "");
 });

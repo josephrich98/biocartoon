@@ -60,6 +60,12 @@ export function asset(row: Row, query = ""): Record<string, unknown> {
 export function records(assets: Record<string, unknown>[], note?: string): ToolResult {
   return { content: [...(note ? [text(note)] : []), pretty(assets)], structuredContent: { assets }, isError: false };
 }
+/** What the model reads after render_assets. The gallery already shows previews, credits and downloads, so the
+ * model should not repeat them, and must never add pictures from anywhere else: they would not be these files. */
+export const GALLERY_NOTE = "The BioCartoon gallery is now showing the user these illustrations with their real previews, credit lines, licenses and PNG/SVG download buttons. Do not repeat the list and do not show any images yourself: pictures from image search or the web are not these files and would mislead the user. Reply in one or two sentences, e.g. which illustration you would pick and why, and any credit line it requires. Only if the user cannot see the gallery (a client without app UI), list the illustrations below by title with their credit and download links, without images.";
+export function galleryText(assets: Record<string, unknown>[]): string {
+  return assets.map((a, i) => `${i + 1}. ${a.id} · ${a.title}${a.variant ? ` (${a.variant})` : ""} · ${a.source_name}\n   License: ${a.license}. Credit: ${a.credit}\n   ${a.svg_url ? `SVG: ${a.svg_url}  ` : ""}PNG: ${a.url}`).join("\n");
+}
 export async function rows(db: D1Database, sql: string, params: (string | number)[] = []): Promise<Row[]> {
   const result = await db.prepare(sql).bind(...params).all<Row>();
   return result.results;
@@ -137,7 +143,7 @@ export async function catalogTool(db: D1Database, name: string, args: Args): Pro
       const ids = selectedIds(args);
       const found = await rows(db, `SELECT * FROM assets WHERE id IN (${ids.map(() => "?").join(",")})`, ids);
       const ordered = ids.map(id => { const a = found.find(a => a.id === id); if (!a) throw new Error(`no asset ${id}`); return asset(a); });
-      return records(ordered, "Selected BioCartoon illustrations. Use each illustration's original license and credit line.");
+      return { content: [text(GALLERY_NOTE), text(galleryText(ordered))], structuredContent: { assets: ordered }, isError: false };
     }
     case "asset_variants": {
       const a = await getAsset(db, required(args, "id"));

@@ -2,7 +2,7 @@ import { App } from "@modelcontextprotocol/ext-apps";
 
 type Asset = { id: string; title: string; source: string; source_name?: string; license: string; credit: string; url: string; thumb_url?: string; svg_url?: string; description?: string };
 type Template = { id: string; title: string; license: string; author?: string; description?: string; thumb_url?: string; json_url?: string };
-type FigureElement = { id: string; label: string; match: string; asset?: Asset };
+type FigureElement = { id: string; label: string; match: string; asset?: Asset; own?: unknown };
 type Figure = { title: string; layout: string; width: number; height: number; spec: unknown; elements: FigureElement[]; credits: string[]; preview_svg?: string; open_url?: string };
 type ToolResult = { structuredContent?: unknown; content?: unknown[]; isError?: boolean };
 
@@ -245,7 +245,11 @@ const SVG_NS = "http://www.w3.org/2000/svg", XLINK = "http://www.w3.org/1999/xli
 const SVG_TAGS = new Set(["svg", "rect", "path", "image", "text", "tspan", "g"]);
 const SVG_ATTRS = new Set(["viewBox", "width", "height", "x", "y", "dy", "rx", "d", "fill", "stroke", "stroke-width", "stroke-linecap", "stroke-linejoin", "stroke-dasharray", "paint-order", "font-size", "font-weight", "font-family", "text-anchor", "preserveAspectRatio", "href"]);
 
-/** The server's preview SVG, rebuilt from allowed elements only; pictures only from the asset host. */
+/** The user's own pictures in a figure arrive embedded: raster or SVG data URLs (an SVG in <image> is drawn
+ *  without scripts or external loads). */
+const OWN_PICTURE = /^data:image\/(?:png|jpeg|gif|webp|svg\+xml);base64,[A-Za-z0-9+/=]+$/;
+
+/** The server's preview SVG, rebuilt from allowed elements only; pictures only from the asset host, or embedded. */
 function cleanSvg(markup: string): SVGSVGElement | undefined {
   const doc = new DOMParser().parseFromString(markup, "image/svg+xml");
   const root = doc.documentElement;
@@ -256,7 +260,7 @@ function cleanSvg(markup: string): SVGSVGElement | undefined {
     for (const a of from.attributes) {
       const name = a.localName;
       if (!SVG_ATTRS.has(name)) continue;
-      if (name === "href") { const url = assetUrl(a.value); if (url) to.setAttribute("href", url); continue; }
+      if (name === "href") { const url = from.localName === "image" && OWN_PICTURE.test(a.value) ? a.value : assetUrl(a.value); if (url) to.setAttribute("href", url); continue; }
       if (/url\(|javascript:/i.test(a.value)) continue;
       to.setAttribute(name, a.value);
     }
@@ -312,7 +316,7 @@ function figurePanel(figure: Figure): HTMLElement {
     media, credit: credits ? { license: "Credits", text: credits } : undefined,
     edit: {
       what: `the BioCartoon figure "${figure.title || "figure"}"`, placeholder: "Describe the change: swap an icon, add a step, relabel an arrow, change the layout…",
-      context: () => `The user is editing the BioCartoon figure "${figure.title}". To change it, call compose_figure with figure set to this spec, edited (keep asset_id on elements that stay): ${JSON.stringify(figure.spec)}`,
+      context: () => `The user is editing the BioCartoon figure "${figure.title}". To change it, call compose_figure with figure set to this spec, edited (keep asset_id and image_ref on elements that stay): ${JSON.stringify(figure.spec)}`,
       structured: { figure: { title: figure.title, spec: figure.spec } },
     },
     download: {
@@ -327,7 +331,7 @@ function figurePanel(figure: Figure): HTMLElement {
   });
   c.style.setProperty("--ratio", `${figure.width}/${figure.height}`);
   panel.append(c);
-  const gaps = figure.elements.filter(e => !e.asset).map(e => e.label);
+  const gaps = figure.elements.filter(e => !e.asset && e.match !== "own").map(e => e.label);
   const weak = figure.elements.filter(e => e.match === "weak").map(e => e.label);
   const notes = [gaps.length ? `No library icon fits ${gaps.join(", ")}: shown as empty boxes to fill in the editor.` : "", weak.length ? `Loose matches: ${weak.join(", ")}.` : ""].filter(Boolean);
   if (notes.length) { const p = node("p", notes.join(" "), "gaps"); p.style.marginTop = "10px"; panel.append(p); }

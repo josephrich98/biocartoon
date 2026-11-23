@@ -12,9 +12,9 @@ const assets = [
 const templates = [{ id: 't1', title: 'Cell signaling', license: 'CC0-1.0', author: 'Ann', thumb_url: 'https://assets.biocartoon.com/templates/t1.png' }];
 const figure = {
   title: 'Neuron to heart', layout: 'flow', width: 960, height: 400, credits: ['NIH BioArt, public domain', 'Servier Medical Art, CC BY 4.0'],
-  spec: { title: 'Neuron to heart', layout: 'auto', elements: [{ id: 'e1', label: 'Neuron', query: 'neuron', asset_id: 'BA1' }, { id: 'e2', label: 'Heart', query: 'heart', asset_id: 'BA3' }, { id: 'e3', label: 'Zebrafish', query: 'zebrafish', placeholder: true }], connections: [{ from: 'e1', to: 'e2', kind: 'arrow', label: '' }], sources: [] },
-  elements: [{ id: 'e1', label: 'Neuron', match: 'chosen', asset: assets[0] }, { id: 'e2', label: 'Heart', match: 'strong', asset: assets[2] }, { id: 'e3', label: 'Zebrafish', match: 'none' }],
-  preview_svg: '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 400" width="960" height="400" onload="alert(1)"><rect width="100%" height="100%" fill="#fff"/><image x="100" y="100" width="150" height="150" href="https://assets.biocartoon.com/neuron.png"/><image x="400" y="100" width="150" height="150" href="https://evil.example/x.png"/><script>alert(1)</script><foreignObject><div>x</div></foreignObject><path d="M260 175 L390 175" stroke="#3c4850" stroke-width="3"/><text x="175" y="280" font-size="16" text-anchor="middle"><tspan x="175" dy="0">Neuron</tspan></text></svg>',
+  spec: { title: 'Neuron to heart', layout: 'auto', elements: [{ id: 'e1', label: 'Neuron', query: 'neuron', asset_id: 'BA1' }, { id: 'e2', label: 'Heart', query: 'heart', asset_id: 'BA3' }, { id: 'e3', label: 'Zebrafish', query: 'zebrafish', placeholder: true }, { id: 'e4', label: 'My sketch', query: 'My sketch', image_ref: 'AbC-_0123456789abcdefg.k' }], connections: [{ from: 'e1', to: 'e2', kind: 'arrow', label: '' }], sources: [] },
+  elements: [{ id: 'e1', label: 'Neuron', match: 'chosen', asset: assets[0] }, { id: 'e2', label: 'Heart', match: 'strong', asset: assets[2] }, { id: 'e3', label: 'Zebrafish', match: 'none' }, { id: 'e4', label: 'My sketch', match: 'own', own: { format: 'png', width: 1, height: 1 } }],
+  preview_svg: '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 400" width="960" height="400" onload="alert(1)"><rect width="100%" height="100%" fill="#fff"/><image x="100" y="100" width="150" height="150" href="https://assets.biocartoon.com/neuron.png"/><image x="400" y="100" width="150" height="150" href="https://evil.example/x.png"/><image x="600" y="100" width="150" height="150" href="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg=="/><image x="800" y="100" width="50" height="50" href="data:text/html;base64,PHNjcmlwdD5hbGVydCgxKTwvc2NyaXB0Pg=="/><script>alert(1)</script><foreignObject><div>x</div></foreignObject><path d="M260 175 L390 175" stroke="#3c4850" stroke-width="3"/><text x="175" y="280" font-size="16" text-anchor="middle"><tspan x="175" dy="0">Neuron</tspan></text></svg>',
   open_url: 'https://app.biocartoon.com/#share=AbC-_0123456789abcdefg.key',
 };
 let server, browser, address;
@@ -170,11 +170,14 @@ test('a composed figure: sanitized preview, Edit with its spec, SVG and PNG down
   try {
     const panel = frame.getByRole('region', { name: 'Figure', exact: true });
     await expect(panel.getByRole('heading', { name: 'Neuron to heart' })).toBeVisible();
-    await expect(panel.locator('svg image')).toHaveCount(2);
+    await expect(panel.locator('svg image')).toHaveCount(4);
     await expect(panel.locator('svg image').nth(1)).not.toHaveAttribute('href', /.+/);
+    // The user's own picture is embedded; other data: URLs are not pictures and are dropped.
+    await expect(panel.locator('svg image').nth(2)).toHaveAttribute('href', /^data:image\/png;base64,/);
+    await expect(panel.locator('svg image').nth(3)).not.toHaveAttribute('href', /.+/);
     await expect(panel.locator('svg script, svg foreignObject')).toHaveCount(0);
     assert.equal(await panel.locator('.media > svg').getAttribute('onload'), null);
-    await expect(panel).toContainText('No library icon fits Zebrafish');
+    await expect(panel).toContainText('No library icon fits Zebrafish:');
     await expect(frame.getByRole('region', { name: 'Icons in this figure' }).locator('.card')).toHaveCount(2);
     const c = panel.locator('.card');
     await c.hover(); await c.getByRole('button', { name: 'Open in BioCartoon' }).click();

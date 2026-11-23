@@ -65,6 +65,9 @@ the collection it came from, so each one used must be credited as its `credit` f
    collection search and colour variants. Search and judge first; do not display weak matches as
    recommendations. Keep using `preview_assets` to inspect ambiguous drawings yourself. Clients
    without app UI still receive the selected records and download links as text.
+   The gallery is the answer: afterwards reply in a sentence or two (your pick and its credit line).
+   Do not repeat the list below it, and never add images from image or web search: they are not
+   the catalog's files, so they would not match the downloads.
 
    If the user wants a colour that one drawing doesn't come in, mention its colour variants. If they want
    an icon changed ("like this but ..."), use the `biocartoon-create-icon` skill to adapt it.

@@ -20,6 +20,15 @@ def build(binary=None):
             tool['description'] = 'Look at an asset: returns its catalog thumbnail when max_side is at most 256 and one is available, otherwise its original PNG (up to 2 MB). The free hosted endpoint does not resize images.'
         if tool['name'] == 'preview_assets':
             tool['description'] = 'Look at up to 12 catalog previews with asset IDs, titles, collections, licenses and credits. Uses published thumbnails where available. Use render_assets to show selected icons in the interactive gallery.'
+        if tool['name'] in ('compose_figure', 'open_in_biocartoon', 'export_figure'):
+            # Figure elements name local files only on the user's own computer.
+            def strip(schema):
+                if isinstance(schema, dict):
+                    schema.get('properties', {}).get('elements', {}).get('items', {}).get('properties', {}).pop('file_path', None)
+                    for v in schema.values(): strip(v)
+                elif isinstance(schema, list):
+                    for v in schema: strip(v)
+            strip(tool['inputSchema'])
         if tool['name'] == 'submit_artwork':
             tool['inputSchema']['properties'].pop('file_path', None)
             tool['inputSchema']['properties']['image_base64']['description'] = 'A PNG image, base64-encoded (a data: URL works too), up to 2 MB. For SVG, use svg with the complete markup. Convert other image formats with the local biocartoon command first.'

@@ -47,9 +47,29 @@ pub fn structured_result(name: &str, content: Vec<Value>) -> Value {
     let data = content.iter().rev().find_map(|block| {
         block.get("text").and_then(Value::as_str).and_then(|s| serde_json::from_str::<Value>(s).ok())
     });
+    if name == "render_assets" {
+        if let Some(data) = data {
+            // The gallery shows previews, credits and downloads; the model gets a note and a plain fallback list.
+            return json!({"content": [mcp::text(GALLERY_NOTE), mcp::text(&gallery_text(&data))], "structuredContent": {key: data}, "isError": false});
+        }
+    }
     let mut result = json!({"content": content, "isError": false});
     if let Some(data) = data { result["structuredContent"] = json!({key: data}); }
     result
+}
+
+/// What the model reads after render_assets: the gallery is already on screen, so do not repeat it, and never add
+/// pictures from elsewhere (they would not be these files). Kept in step with worker/src/mcp_catalog.ts.
+pub const GALLERY_NOTE: &str = "The BioCartoon gallery is now showing the user these illustrations with their real previews, credit lines, licenses and PNG/SVG download buttons. Do not repeat the list and do not show any images yourself: pictures from image search or the web are not these files and would mislead the user. Reply in one or two sentences, e.g. which illustration you would pick and why, and any credit line it requires. Only if the user cannot see the gallery (a client without app UI), list the illustrations below by title with their credit and download links, without images.";
+
+fn gallery_text(assets: &Value) -> String {
+    let s = |a: &Value, k: &str| a[k].as_str().unwrap_or("").to_string();
+    assets.as_array().into_iter().flatten().enumerate().map(|(i, a)| {
+        let variant = s(a, "variant");
+        let variant = if variant.is_empty() { String::new() } else { format!(" ({variant})") };
+        let svg = a["svg_url"].as_str().map(|u| format!("SVG: {u}  ")).unwrap_or_default();
+        format!("{}. {} · {}{} · {}\n   License: {}. Credit: {}\n   {}PNG: {}", i + 1, s(a, "id"), s(a, "title"), variant, s(a, "source"), s(a, "license"), s(a, "credit"), svg, s(a, "url"))
+    }).collect::<Vec<_>>().join("\n")
 }
 
 #[cfg(test)]

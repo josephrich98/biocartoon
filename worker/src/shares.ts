@@ -99,7 +99,7 @@ function newShareId(): string {
 
 /** `mcp`: made by the hosted MCP server for its users (an editor link for a composed figure). They all
  *  come from one address and none signs in, so they share one allowance of their own (the ip_hash
- *  "mcp"), with a smaller size limit since such projects only reference catalog pictures. */
+ *  "mcp"), with a smaller size limit since such projects mostly reference catalog pictures. */
 export async function create(req: Request, env: Env, mcp = false): Promise<Response> {
   const edit = req.headers.get("x-share-edit");
   const owner = req.headers.get("x-share-owner");
