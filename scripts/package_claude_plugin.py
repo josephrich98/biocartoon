@@ -42,6 +42,8 @@ def package(dist=None):
     plugin = {f'biocartoon/skills/{p}': body for p, body in files.items()}
     plugin['biocartoon/.claude-plugin/plugin.json'] = (json.dumps(packaged, indent=2) + '\n').encode()
     plugin['biocartoon/.mcp.json'] = (json.dumps(mcp, indent=2) + '\n').encode()
+    if manifest.get('icon'):
+        plugin[f"biocartoon/{Path(manifest['icon']).as_posix()}"] = (ROOT / manifest['icon']).read_bytes()
     out = [write_zip(dist / f"biocartoon-claude-{manifest['version']}.zip", plugin)]
     for name in names:
         out.append(write_zip(dist / 'claude-skills' / f'{name}.zip',

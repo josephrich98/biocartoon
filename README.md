@@ -245,7 +245,7 @@ The gallery uses the standard MCP Apps bridge and ships as an embedded, self-con
 HTML resource (`ui://biocartoon/icon-gallery-v2.html`). `search_assets` remains a data tool;
 after judging results, the assistant calls `render_assets` with selected IDs. The gallery
 can call the same search and variant tools without opening another widget. Its only external
-image origin is `https://assets.biocartoon.com`; it does not contact the API directly.
+image origin is https://assets.biocartoon.com, and it does not contact the API directly.
 
 ```bash
 cd catalog/ui
