@@ -37,7 +37,7 @@ impl Reply {
 
 /// The page a person sees opening the server's address in a browser.
 const HOME: &str = "BioCartoon MCP server\n\n\
-Search about 20,000 open-licensed scientific illustrations and contribute your own from an AI assistant.\n\
+Search about 35,000 open-licensed scientific illustrations and contribute your own from an AI assistant.\n\
 Connect your assistant to this address with /mcp at the end (Streamable HTTP, no sign-in).\n\
 More: https://github.com/josephrich98/biocartoon#ai-assistants\n";
 

@@ -2,7 +2,7 @@
 """Download open scientific-illustration collections into a common layout.
 
     python data/scrape_sources.py <source> [...]     sources: bioicons healthicons noto openmoji
-                                                     reactome scidraw servier all
+                                                     phylopic reactome scidraw servier togotv all
 
 Each source lands in data/sources/<source>/ with
     files/...          the assets (SVG and/or PNG, as the source provides them)
@@ -18,9 +18,12 @@ Licenses (recorded per item where the source provides it):
   healthicons  CC0 / MIT
   noto         Apache-2.0 (Noto's own emoji); public domain (its flags, from Wikipedia)
   openmoji     CC BY-SA 4.0
+  phylopic     per-silhouette: CC0 / public domain mark / CC BY 3.0,4.0 / CC BY-SA 3.0 (API `license`);
+               the NC ones (CC BY-NC, CC BY-NC-SA) are left out
   reactome     CC BY 4.0
   scidraw      per-drawing: CC-BY 4.0 or CC0 (API `license` field); each has a Zenodo DOI
   servier      CC BY 4.0  (PNG per image; PPTX per set)
+  togotv       CC BY 4.0  (DBCLS TogoTV pictures; each has a DOI)
 """
 from __future__ import annotations
 
@@ -282,6 +285,342 @@ def noto():
 
     with cf.ThreadPoolExecutor(8) as ex:
         write_items(src, [it for it in ex.map(one, listing) if it])
+
+
+# ----------------------------------------------------------------------------
+# Model organisms, by scientific name (lower case, matched at the start of a title or name):
+# the English names people search for. PhyloPic titles are scientific names only.
+MODEL_ORGANISMS = {
+    "homo sapiens": ["human", "person"],
+    "mus musculus": ["mouse", "house mouse", "lab mouse"],
+    "rattus norvegicus": ["rat", "brown rat", "lab rat"],
+    "danio rerio": ["zebrafish"],
+    "drosophila melanogaster": ["fruit fly", "drosophila"],
+    "caenorhabditis elegans": ["c. elegans", "nematode", "worm"],
+    "arabidopsis thaliana": ["thale cress", "arabidopsis"],
+    "saccharomyces cerevisiae": ["baker's yeast", "budding yeast", "yeast"],
+    "schizosaccharomyces pombe": ["fission yeast", "yeast"],
+    "escherichia coli": ["e. coli", "bacterium"],
+    "bacillus subtilis": ["b. subtilis", "bacterium"],
+    "xenopus laevis": ["african clawed frog", "xenopus", "frog"],
+    "xenopus tropicalis": ["western clawed frog", "xenopus", "frog"],
+    "gallus gallus": ["chicken"],
+    "macaca mulatta": ["rhesus macaque", "monkey"],
+    "macaca fascicularis": ["crab-eating macaque", "monkey"],
+    "callithrix jacchus": ["common marmoset", "monkey"],
+    "oryzias latipes": ["medaka", "japanese rice fish"],
+    "nothobranchius furzeri": ["turquoise killifish", "killifish"],
+    "bombyx mori": ["silkworm", "silk moth"],
+    "apis mellifera": ["honey bee", "bee"],
+    "tribolium castaneum": ["red flour beetle", "beetle"],
+    "oryza sativa": ["rice"],
+    "zea mays": ["maize", "corn"],
+    "nicotiana tabacum": ["tobacco"],
+    "physcomitrium patens": ["moss"],
+    "physcomitrella patens": ["moss"],
+    "chlamydomonas reinhardtii": ["green alga", "alga"],
+    "dictyostelium discoideum": ["slime mold"],
+    "ciona intestinalis": ["sea squirt", "tunicate"],
+    "strongylocentrotus purpuratus": ["purple sea urchin", "sea urchin"],
+    "sus scrofa": ["pig"],
+    "bos taurus": ["cow", "cattle"],
+    "ovis aries": ["sheep"],
+    "canis familiaris": ["dog"],
+    "canis lupus familiaris": ["dog"],
+    "felis catus": ["cat"],
+    "oryctolagus cuniculus": ["rabbit"],
+    "cavia porcellus": ["guinea pig"],
+    "mesocricetus auratus": ["golden hamster", "hamster"],
+}
+
+
+def model_organism(*names: str) -> list[str] | None:
+    """The English names of the model organism any of `names` is (a species or below), or None."""
+    for n in names:
+        n = re.sub(r"\s+", " ", (n or "").lower()).strip()
+        for sci, common in MODEL_ORGANISMS.items():
+            if n == sci or n.startswith(sci + " "):
+                return common
+    return None
+
+
+def is_human(*names: str) -> bool:
+    return any((n or "").lower().startswith("homo sapiens") for n in names)
+
+
+# ----------------------------------------------------------------------------
+# PhyloPic: silhouettes of organisms, one license per image. https://www.phylopic.org/api
+PHYLOPIC_API = "https://api.phylopic.org"
+PHYLOPIC_LICENSES = {  # license URL -> kept; the NC licenses are not open for published figures
+    "https://creativecommons.org/publicdomain/zero/1.0/": True,
+    "https://creativecommons.org/publicdomain/mark/1.0/": True,
+    "https://creativecommons.org/licenses/by/3.0/": True,
+    "https://creativecommons.org/licenses/by/4.0/": True,
+    "https://creativecommons.org/licenses/by-sa/3.0/": True,
+    "https://creativecommons.org/licenses/by-nc/3.0/": False,
+    "https://creativecommons.org/licenses/by-nc-sa/3.0/": False,
+}
+# PhyloPic has no categories and its titles are scientific names, so each image is placed by the
+# clades it falls in: (clade name as PhyloPic lists it, English tags, group). The first clade
+# with a group sets the category ("Organisms / <group>"); every clade adds its tags.
+PHYLOPIC_CLADES = [
+    ("Aves", ["bird"], "Birds"),
+    ("Dinosauria", ["dinosaur", "reptile"], "Dinosaurs"),
+    ("Pterosauria", ["pterosaur", "reptile"], "Reptiles"),
+    ("Serpentes", ["snake"], None),
+    ("Squamata", ["lizard", "squamate"], None),
+    ("Testudines", ["turtle", "tortoise"], None),
+    ("Crocodylia", ["crocodile", "alligator"], None),
+    ("Reptilia", ["reptile"], "Reptiles"),
+    ("Homo", ["human", "hominin"], None),
+    ("Primates", ["primate", "monkey", "ape"], None),
+    ("Rodentia", ["rodent"], None),
+    ("Carnivora", ["carnivore"], None),
+    ("Chiroptera", ["bat"], None),
+    ("Cetacea", ["whale", "dolphin", "cetacean"], None),
+    ("Artiodactyla", ["even-toed ungulate", "ungulate"], None),
+    ("Perissodactyla", ["odd-toed ungulate", "ungulate"], None),
+    ("Marsupialia", ["marsupial"], None),
+    ("Mammalia", ["mammal"], "Mammals"),
+    ("pan-Lissamphibia", ["amphibian"], "Amphibians"),
+    ("Chondrichthyes", ["shark", "ray", "cartilaginous fish", "fish"], "Fish"),
+    ("Actinopterygii", ["ray-finned fish", "fish"], "Fish"),
+    ("Coleoptera", ["beetle"], None),
+    ("Lepidoptera", ["butterfly", "moth"], None),
+    ("Diptera", ["fly"], None),
+    ("Hymenoptera", ["bee", "ant", "wasp"], None),
+    ("Insecta", ["insect"], None),
+    ("Araneae", ["spider"], None),
+    ("Arachnida", ["arachnid"], None),
+    ("Malacostraca", ["crustacean", "crab", "shrimp"], None),
+    ("Trilobita", ["trilobite", "fossil"], None),
+    ("Arthropoda", ["arthropod"], "Arthropods"),
+    ("Cephalopoda", ["cephalopod", "octopus", "squid"], None),
+    ("Gastropoda", ["snail", "slug", "gastropod"], None),
+    ("Bivalvia", ["bivalve", "clam"], None),
+    ("Mollusca", ["mollusc"], "Molluscs"),
+    ("Nematoda", ["nematode", "roundworm", "worm"], "Worms"),
+    ("Annelida", ["annelid", "worm"], "Worms"),
+    ("Platyhelminthes", ["flatworm", "worm"], "Worms"),
+    ("Cnidaria", ["cnidarian", "jellyfish", "coral"], None),
+    ("Echinodermata", ["echinoderm", "starfish", "sea urchin"], None),
+    ("Porifera", ["sponge"], None),
+    ("Metazoa", ["animal"], "Animals"),
+    ("Gramineae", ["grass"], None),
+    ("Coniferae", ["conifer"], None),
+    ("Angiospermae", ["flowering plant"], None),
+    ("Viridiplantae", ["plant"], "Plants"),
+    ("Fungi", ["fungus"], "Fungi"),
+    ("Eubacteria", ["bacterium", "bacteria", "microbe"], "Bacteria"),
+    ("Methanobacteriati", ["archaeon", "archaea", "microbe"], "Archaea"),
+    ("Thermoproteota", ["archaeon", "archaea", "microbe"], "Archaea"),
+    ("viruses", ["virus"], "Viruses"),
+    ("Rhodoplantae", ["red alga", "alga", "seaweed"], "Algae"),
+    ("Phaeophyceae", ["brown alga", "alga", "seaweed", "kelp"], "Algae"),
+    ("Diatomea", ["diatom", "alga"], "Algae"),
+    ("Amoebozoa", ["amoeba", "protist"], "Protists"),
+    ("Ciliophora", ["ciliate", "protist"], "Protists"),
+    ("Foraminifera", ["foraminiferan", "protist"], "Protists"),
+    ("Radiolaria", ["radiolarian", "protist"], "Protists"),
+    ("Sar", ["protist"], "Protists"),
+]
+
+
+def _phylopic(path: str, params: dict | None = None) -> dict:
+    r = None
+    for i in range(3):
+        try:
+            r = S.get(PHYLOPIC_API + path, params=params, timeout=TIMEOUT)
+            if r.status_code == 200:
+                return r.json()
+        except requests.RequestException:
+            pass
+        time.sleep(3 * (i + 1))
+    raise RuntimeError(f"phylopic {path} {params}: {getattr(r, 'status_code', 'no answer')}")
+
+
+def phylopic_build() -> int:
+    """The current build of PhyloPic's data (the API root redirects to `/?build=N`); every
+    listing is asked for at one build. It changes whenever PhyloPic's data does."""
+    for i in range(3):
+        try:
+            r = S.get(PHYLOPIC_API + "/", timeout=TIMEOUT, allow_redirects=False)
+            if m := re.search(r"build=(\d+)", r.headers.get("location", "")):
+                return int(m.group(1))
+        except requests.RequestException:
+            pass
+        time.sleep(3 * (i + 1))
+    raise RuntimeError("phylopic: no build")
+
+
+def _phylopic_pages(path: str, build: int, params: dict, embed: bool) -> list:
+    """Every item of a paged listing (48 a page), embedded records or `_links` entries."""
+    first = _phylopic(path, {"build": build, **params})
+    pages = first.get("totalPages", 0)
+
+    def page(n):
+        d = _phylopic(path, {"build": build, "page": n, **params, **({"embed_items": "true"} if embed else {})})
+        return d["_embedded"]["items"] if embed else d["_links"]["items"]
+
+    with cf.ThreadPoolExecutor(8) as ex:
+        out = [x for p in ex.map(page, range(pages)) for x in p]
+    if len(out) != first.get("totalItems", len(out)):
+        raise RuntimeError(f"phylopic {path}: listed {len(out)} of {first.get('totalItems')}")
+    return out
+
+
+def phylopic_listing(build: int) -> tuple[list[dict], dict[str, list[tuple]]]:
+    """(every image record at `build`, {image uuid: [PHYLOPIC_CLADES entries it falls in]})."""
+    images = _phylopic_pages("/images", build, {}, True)
+    clades: dict[str, list[tuple]] = {}
+    for entry in PHYLOPIC_CLADES:
+        found = _phylopic("/nodes", {"build": build, "filter_name": entry[0].lower(), "page": 0, "embed_items": "true"})
+        # A name can also be another node's synonym (Squamata on Pholidota): match the node's own first name.
+        nodes = [n for n in found.get("_embedded", {}).get("items", []) if n["names"] and n["names"][0][0]["text"] == entry[0]]
+        if len(nodes) != 1:
+            raise RuntimeError(f"phylopic: clade {entry[0]} matched {len(nodes)} nodes")
+        for link in _phylopic_pages("/images", build, {"filter_clade": nodes[0]["uuid"]}, False):
+            uuid = link["href"].split("/images/", 1)[1].split("?", 1)[0]
+            clades.setdefault(uuid, []).append(entry)
+    return images, clades
+
+
+def phylopic_item(rec: dict, clades: list[tuple], svg, png=None):
+    links = rec["_links"]
+    title = links["self"].get("title") or (links.get("specificNode") or {}).get("title") or ""
+    group = next((g for _, _, g in clades if g), "Other organisms")
+    tags = [t for _, ts, _ in clades for t in ts] + [c for c, _, _ in clades if c not in ("Metazoa", "Eubacteria", "viruses", "Sar")]
+    general = (links.get("generalNode") or {}).get("title")
+    if general and general != title:
+        tags.append(general)
+    cats = [f"Organisms / {group}"]
+    if common := model_organism(title):
+        if not is_human(title):  # a person, not a lab organism
+            cats.insert(0, "Model organisms")
+        tags = common + tags
+    tags.append("silhouette")
+    return item("phylopic", rec["uuid"], title, tags=list(dict.fromkeys(tags)), category=", ".join(cats),
+                license=links["license"]["href"], author=rec.get("attribution") or "",
+                url=f"https://www.phylopic.org/images/{rec['uuid']}", svg=svg, png=png,
+                description=f"Silhouette of {title}" + (f" ({', '.join(common)})" if common else ""))
+
+
+def phylopic_records(build: int) -> list[tuple[dict, list[tuple]]]:
+    images, clades = phylopic_listing(build)
+    return [(rec, clades.get(rec["uuid"], [])) for rec in images if PHYLOPIC_LICENSES.get(rec["_links"]["license"]["href"])]
+
+
+def phylopic():
+    src = "phylopic"
+    recs = phylopic_records(phylopic_build())
+
+    def one(rc):
+        rec, cl = rc
+        rel = Path("files") / f"{rec['uuid']}.svg"
+        return phylopic_item(rec, cl, str(rel)) if download(rec["_links"]["vectorFile"]["href"], ROOT / src / rel) else None
+
+    with cf.ThreadPoolExecutor(8) as ex:
+        write_items(src, [it for it in ex.map(one, recs) if it])
+
+
+# ----------------------------------------------------------------------------
+# TogoTV: DBCLS's life-science pictures (https://togotv.dbcls.jp/en/pics.html), all CC BY 4.0.
+TOGOTV_API = "https://togotv-api.dbcls.jp/api/entries?target=pictures"
+TOGOTV_FILES = "https://dbarchive.biosciencedbc.jp/data/togo-pic/image/"
+# Not pictures of science: lab door signs and labels (mostly Japanese text), TogoTV's own
+# copyright logos, and sheets of other pictures.
+TOGOTV_SKIP_TAGS = {"Signage", "Use cases"}
+# Society collections, not subjects: their pictures are placed by their first other tag.
+TOGOTV_COLLECTIONS = {"JSHG WebCast", "JSPG", "KBG", "Icon"}
+# taxon1_en (mostly a class) -> organism group
+TOGOTV_GROUPS = {
+    "Arthropods": {"Insecta", "Arachnida", "Merostomata", "Malacostraca", "Branchiopoda", "Lepidoptera", "Coleoptera",
+                   "Odonata", "Trilobita"},
+    "Plants": {"Angiosperms (Magnoliopsida)", "Bryopsida", "Chlorophyceae", "Taraxacum", "Saxifragales", "Cupressales",
+               "Gymnosperms", "Ericales", "Rosales", "Sapindales", "Pinopsida", "Marchantiopsida", "Zygnematophyceae"},
+    "Bacteria": {"Gammaproteobacteria", "Actinomycetes"},
+    "Fungi": {"Saccharomycetes", "Ascomycota"},
+    "Protists": {"Oligohymenophorea", "Oxymonadida", "Trichomonadida", "Heterotrichea", "Euglenophyceae"},
+}
+
+
+def togotv_listing() -> tuple[int, list[dict]]:
+    """(how many pictures TogoTV has, every picture's record). `from` is a page number; the
+    API answers 500 for pages much over 5,000 rows."""
+    data, page, found = [], 1, None
+    while found is None or len(data) < found:
+        r = get(f"{TOGOTV_API}&from={page}&rows=2000", allow_404=False)
+        if r is None or r.status_code != 200:
+            raise RuntimeError(f"togotv: no listing page {page}")
+        body = r.json()
+        found = body["numfound"]
+        if not body["data"]:
+            break
+        data += body["data"]
+        page += 1
+    if len({d["TogoTV_Image_ID"] for d in data}) != found:
+        raise RuntimeError(f"togotv: listed {len(data)} of {found}")
+    return found, data
+
+
+def _togotv_list(s) -> list[str]:
+    return [t.strip() for t in re.split(r"[,/]", s or "") if re.search(r"\w", t)]
+
+
+def togotv_keep(rec: dict) -> bool:
+    labels = set(_togotv_list(rec.get("other_tags_en"))) | set(_togotv_list(rec.get("other_tags_comma_en")))
+    return bool(rec.get("png") or rec.get("svg")) and not labels & TOGOTV_SKIP_TAGS \
+        and not (rec.get("name_en") or "").lower().startswith("togopic")
+
+
+def togotv_item(rec: dict, svg, png):
+    tags = _togotv_list(rec.get("other_tags_comma_en"))
+    labels = [t for t in _togotv_list(rec.get("other_tags_en")) if t not in TOGOTV_COLLECTIONS]
+    if not labels:  # a society collection: its first subject tag
+        labels = [t for t in tags if t not in TOGOTV_COLLECTIONS][:1]
+    taxon, sci = rec.get("taxon1_en") or "", rec.get("scientific_name") or ""
+    title = next((t for t in (rec.get("name_en"), sci, rec.get("name")) if re.search(r"\w", t or "")), "")
+    title = re.sub(r"\s+", " ", title).strip()
+    common = model_organism(sci, title)
+    if taxon or "Organisms" in labels or (not labels and not tags):
+        group = next((g for g, ts in TOGOTV_GROUPS.items() if taxon in ts), "Animals" if taxon else "")
+        labels = [f"Organisms / {group}" if (l == "Organisms" and group) else l for l in labels if l != "Fossil organisms"] \
+            or ([f"Organisms / {group}"] if group else ["Organisms"])
+        if "Fossil organisms" in _togotv_list(rec.get("other_tags_en")):
+            tags.append("fossil")
+    if common:
+        # Pictures of an organism, not of a body part or a condition (TogoTV draws many for Homo sapiens).
+        if any(l.startswith("Organisms") for l in labels) and not is_human(sci, title):
+            labels.insert(0, "Model organisms")
+        tags = common + tags
+    tags += [t for t in (sci, taxon, rec.get("taxon2_en")) if t]
+    tags = [t for t in dict.fromkeys(tags) if t not in TOGOTV_COLLECTIONS and re.search(r"\w", t)]
+    # No author: TogoTV's own staff drew it, and the source in the credit line already names them.
+    author = re.sub(r"<[^>]+>", "", rec.get("author_str") or "").strip()
+    lic = rec.get("license") or ""
+    lic = lic if lic.startswith("https://creativecommons.org/") else "https://creativecommons.org/licenses/by/4.0/"
+    desc = rec.get("Description_small_en") or ""
+    if sci and sci.lower() != title.lower():
+        desc = f"{sci}. {desc}".strip()
+    return item("togotv", rec["TogoTV_Image_ID"], title, tags=tags, category=", ".join(dict.fromkeys(labels)),
+                license=lic, author=author, url=rec.get("id") or "https://togotv.dbcls.jp/en/pics.html",
+                svg=svg, png=png, description=desc)
+
+
+def togotv():
+    src = "togotv"
+    _, recs = togotv_listing()
+
+    def one(rec):
+        out = {}
+        for kind in ("svg", "png"):
+            if rec.get(kind):
+                rel = Path("files") / rec[kind]
+                out[kind] = str(rel) if download(TOGOTV_FILES + rec[kind], ROOT / src / rel) else None
+        return togotv_item(rec, out.get("svg"), out.get("png")) if any(out.values()) else None
+
+    with cf.ThreadPoolExecutor(4) as ex:
+        write_items(src, [it for it in ex.map(one, [r for r in recs if togotv_keep(r)]) if it])
 
 
 def reactome():
@@ -594,12 +933,35 @@ def discover_servier(known, prev, work):
     return sig, len(pages), new
 
 
+def discover_phylopic(known, prev, work):
+    build = phylopic_build()
+    if prev == str(build):
+        return prev, None, []
+    recs = phylopic_records(build)
+    new = [phylopic_item(rec, cl, rec["_links"]["vectorFile"]["href"]) for rec, cl in recs if rec["uuid"] not in known]
+    return str(build), len(recs), new
+
+
+def discover_togotv(known, prev, work):
+    import hashlib
+
+    _, recs = togotv_listing()
+    recs = [r for r in recs if togotv_keep(r)]
+    sig = hashlib.sha256("\n".join(sorted(f"{r['TogoTV_Image_ID']}:{r.get('svg')}:{r.get('png')}" for r in recs)).encode()).hexdigest()[:16]
+    if sig == prev:
+        return sig, None, []
+    new = [togotv_item(r, TOGOTV_FILES + r["svg"] if r.get("svg") else None, TOGOTV_FILES + r["png"] if r.get("png") else None)
+           for r in recs if str(r["TogoTV_Image_ID"]) not in known]
+    return sig, len(recs), new
+
+
 DISCOVER = dict(bioicons=discover_bioicons, healthicons=discover_healthicons, noto=discover_noto, openmoji=discover_openmoji,
-                reactome=discover_reactome, scidraw=discover_scidraw, servier=discover_servier)
+                phylopic=discover_phylopic, reactome=discover_reactome, scidraw=discover_scidraw, servier=discover_servier,
+                togotv=discover_togotv)
 
 
-SOURCES = dict(bioicons=bioicons, healthicons=healthicons, noto=noto, openmoji=openmoji, reactome=reactome,
-               scidraw=scidraw, servier=servier)
+SOURCES = dict(bioicons=bioicons, healthicons=healthicons, noto=noto, openmoji=openmoji, phylopic=phylopic,
+               reactome=reactome, scidraw=scidraw, servier=servier, togotv=togotv)
 
 if __name__ == "__main__":
     ap = argparse.ArgumentParser()

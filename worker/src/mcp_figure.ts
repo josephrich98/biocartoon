@@ -135,7 +135,7 @@ const STOP = new Set(["a", "an", "the", "of", "and", "or", "in", "on", "with", "
 const GENERIC = new Set(["phase", "stage", "step", "process", "type", "level", "state", "form", "system", "structure", "sample", "human", "generic", "simple", "icon", "image"]);
 /** Pictures of a scan or a device's screen, not of the thing itself. */
 const IMAGING = /\b(?:ct|mri|ultrasound|x-?ray|scan|window|histology|micrograph|slice|section|screen)\b/i;
-const SOURCE_BONUS: Record<string, number> = { bioart: 1, bioicons: 1, servier: 1, scidraw: 0.9, user: 1, reactome: 0.5, healthicons: 0.3, openmoji: 0, noto: 0 };
+const SOURCE_BONUS: Record<string, number> = { bioart: 1, bioicons: 1, servier: 1, scidraw: 0.9, togotv: 0.9, phylopic: 0.8, user: 1, reactome: 0.5, healthicons: 0.3, openmoji: 0, noto: 0 };
 const tokens = (s: string) => s.toLowerCase().match(/[\p{L}\p{N}]+/gu) ?? [];
 const sameWord = (w: string, t: string) => w === t || w === t.replace(/(?:es|s)$/, "") || t === w.replace(/(?:es|s)$/, "") || (t.length >= 5 && w.startsWith(t));
 

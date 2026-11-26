@@ -175,6 +175,8 @@ pub const SOURCES: &[(&str, &str, &str, &str)] = &[
     ("scidraw", "SD", "SciDraw", "Neuroscience and model-organism drawings from the community"),
     ("healthicons", "HI", "Health Icons", "Clinical and public-health pictograms in outline and filled styles"),
     ("reactome", "RE", "Reactome Icon Library", "Molecules, cells and organelles for pathway diagrams"),
+    ("togotv", "TG", "TogoTV", "DBCLS's life-science pictures: organisms, organs, cells and lab equipment (CC-BY 4.0)"),
+    ("phylopic", "PP", "PhyloPic", "Silhouettes of organisms, titled by scientific name (CC0 / CC-BY / CC-BY-SA per image)"),
     ("openmoji", "OM", "OpenMoji", "Open-source emoji: generic everyday pictograms"),
     ("noto", "NE", "Noto Emoji", "Google's open-source color emoji (Apache-2.0; flags public domain)"),
     ("user", "UG", "User-generated", "Icons people uploaded from the editor"),
@@ -326,7 +328,7 @@ fn category_filter(category: Option<&str>) -> (&'static str, String) {
 /// it, so no database is ranked ahead of another.
 const SOURCE_ORDER: &str = "CASE a.source WHEN 'user' THEN 0 WHEN 'bioart' THEN 1 WHEN 'bioicons' THEN 2 \
     WHEN 'servier' THEN 3 WHEN 'scidraw' THEN 4 WHEN 'healthicons' THEN 5 WHEN 'reactome' THEN 6 \
-    WHEN 'openmoji' THEN 7 WHEN 'noto' THEN 8 ELSE 9 END";
+    WHEN 'togotv' THEN 7 WHEN 'phylopic' THEN 8 WHEN 'openmoji' THEN 9 WHEN 'noto' THEN 10 ELSE 11 END";
 
 /// One value per result tile: a BioArt accession holds recolours of one drawing (its `variant`s are
 /// colour names), shown as one icon. Everything else is its own icon: Health Icons' filled and

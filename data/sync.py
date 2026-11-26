@@ -52,10 +52,12 @@ from backup_db import backup, local_backup
 from config import R2_BACKUP_BUCKET, R2_BUCKET
 
 DATA = Path(__file__).resolve().parent
-SOURCES = ["bioart", "bioicons", "healthicons", "noto", "openmoji", "reactome", "scidraw", "servier"]
+SOURCES = ["bioart", "bioicons", "healthicons", "noto", "openmoji", "phylopic", "reactome", "scidraw", "servier", "togotv"]
 # The licenses a source may bring before the catalog has any of its assets (the gate otherwise only
 # lets in licenses the source already has there). A first sync of a source also needs --force <source>.
-NEW_SOURCE_LICENSES = {"noto": {"Apache-2.0", "PD"}}
+NEW_SOURCE_LICENSES = {"noto": {"Apache-2.0", "PD"},
+                       "phylopic": {"CC0-1.0", "PD", "CC-BY-3.0", "CC-BY-4.0", "CC-BY-SA-3.0"},
+                       "togotv": {"CC-BY-4.0"}}
 MIN_LISTED_FRACTION = 0.8  # upstream listing fewer than this share of what we have -> broken scraper
 
 STATE_SQL = """

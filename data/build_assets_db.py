@@ -33,9 +33,11 @@ SOURCE_NAMES = {
     "healthicons": "Health Icons",
     "noto": "Noto Emoji",
     "openmoji": "OpenMoji",
+    "phylopic": "PhyloPic",
     "reactome": "Reactome Icon Library",
     "scidraw": "SciDraw",
     "servier": "Servier Medical Art",
+    "togotv": "TogoTV (DBCLS)",
 }
 
 # raw license string (lower-cased) -> (spdx-ish id, license url, attribution required, share-alike)
@@ -51,6 +53,11 @@ LICENSES = {
     "cc by-sa 4.0": ("CC-BY-SA-4.0", "https://creativecommons.org/licenses/by-sa/4.0/", True, True),
     "cc-by-sa-4.0": ("CC-BY-SA-4.0", "https://creativecommons.org/licenses/by-sa/4.0/", True, True),
     "cc-by-sa-3.0": ("CC-BY-SA-3.0", "https://creativecommons.org/licenses/by-sa/3.0/", True, True),
+    # PhyloPic and TogoTV give each license as its URL
+    "https://creativecommons.org/publicdomain/mark/1.0/": ("PD", "https://creativecommons.org/publicdomain/mark/1.0/", False, False),
+    "https://creativecommons.org/licenses/by/3.0/": ("CC-BY-3.0", "https://creativecommons.org/licenses/by/3.0/", True, False),
+    "https://creativecommons.org/licenses/by/4.0/": ("CC-BY-4.0", "https://creativecommons.org/licenses/by/4.0/", True, False),
+    "https://creativecommons.org/licenses/by-sa/3.0/": ("CC-BY-SA-3.0", "https://creativecommons.org/licenses/by-sa/3.0/", True, True),
     # MIT/BSD: keep the copyright + license notice with copies
     "mit": ("MIT", "https://opensource.org/license/mit", True, False),
     "bsd": ("BSD", "https://opensource.org/license/bsd-3-clause", True, False),
@@ -109,7 +116,7 @@ COLS = [c.split()[0] for c in SCHEMA.split("(", 1)[1].split(");")[0].strip().spl
 # whole catalog (BA000123). A number is given once and never again, even after its asset is gone,
 # so an id always means one asset; the master's `id_seq` keeps the highest one given.
 ID_PREFIX = {"bioart": "BA", "bioicons": "BI", "healthicons": "HI", "noto": "NE", "openmoji": "OM",
-             "reactome": "RE", "scidraw": "SD", "servier": "SV", "user": "UG"}
+             "phylopic": "PP", "reactome": "RE", "scidraw": "SD", "servier": "SV", "togotv": "TG", "user": "UG"}
 # An upload in the official BioCartoon library (BioCartoon's own, or one a reviewer accepted to it).
 OFFICIAL_PREFIX = "BC"
 ID_RE = re.compile(r"[A-Z]{2}[0-9]{6,}")
@@ -287,6 +294,8 @@ def source_item(s: str, it: dict, ref) -> dict:
     m = re.search(r"10\.\d{4,9}/\S+", desc)
     if s == "scidraw" and m:
         doi, desc = m.group(0), ""
+    if s == "togotv" and (m := re.search(r"10\.\d{4,9}/\S+", it.get("url") or "")):
+        doi = m.group(0)
     if s == "healthicons":
         variant, desc = it["id"].split("/", 1)[0], ""
     cat, url, extra = (it.get("category") or "").strip(), it.get("url") or "", {}

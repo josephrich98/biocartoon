@@ -1,6 +1,6 @@
-//! biocartoon-catalog: the BioCartoon asset catalog (about 20,000 open-licensed scientific
-//! illustrations from NIH BioArt, Bioicons, Servier Medical Art, SciDraw, Health Icons, Reactome
-//! and OpenMoji, plus user uploads) as a library, a command line (`biocartoon`) and an MCP
+//! biocartoon-catalog: the BioCartoon asset catalog (about 35,000 open-licensed scientific
+//! illustrations from NIH BioArt, Bioicons, Servier Medical Art, SciDraw, TogoTV, PhyloPic, Health
+//! Icons, Reactome, OpenMoji and Noto Emoji, plus user uploads) as a library, a command line (`biocartoon`) and an MCP
 //! server (`biocartoon mcp`).
 //!
 //! The catalog is a SQLite file published to `<asset URL>/catalog/` by `data/publish_catalog.py`;

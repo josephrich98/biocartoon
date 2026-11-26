@@ -368,12 +368,58 @@ const KEYWORDS: &[(&str, Taxon)] = &[
     ("tool", OBJECTS), ("book", OBJECTS), ("key", OBJECTS), ("clock", OBJECTS), ("lamp", OBJECTS), ("chair", OBJECTS), ("table", OBJECTS),
 ];
 
+/// PhyloPic and TogoTV organisms are "Organisms / <group>" (data/scrape_sources.py), and
+/// "Model organisms" for the lab species.
+const PHYLOPIC: Rules = &[
+    ("model organisms", Some(MODEL_ORGANISMS)),
+    ("arthropods", Some(INSECTS)),
+    ("plants", Some(PLANTS)),
+    ("fungi", Some(FUNGI)),
+    ("bacteria", Some(BACTERIA)),
+    ("archaea", Some(BACTERIA)),
+    ("viruses", Some(VIRUSES)),
+    ("algae", Some(PLANTS)),
+    ("protists", Some(PARASITES)),
+    ("other organisms", None),
+    ("organisms / ", Some(ANIMALS)),
+];
+
+/// TogoTV's own categories ("Lab equipment", "Organs", ...), with its organisms as PhyloPic's.
+const TOGOTV: Rules = &[
+    ("model organisms", Some(MODEL_ORGANISMS)),
+    ("arthropods", Some(INSECTS)),
+    ("plants", Some(PLANTS)),
+    ("botany", Some(PLANTS)),
+    ("fungi", Some(FUNGI)),
+    ("bacteria", Some(BACTERIA)),
+    ("protists", Some(PARASITES)),
+    ("virus", Some(VIRUSES)),
+    ("organisms / ", Some(ANIMALS)),
+    ("lab equipment", Some(LAB_EQUIPMENT)),
+    ("dna sequencer", Some(LAB_EQUIPMENT)),
+    ("microscope", Some(IMAGING)),
+    ("lab apparatus", Some(LAB_EQUIPMENT)),
+    ("experimental diagram", Some(TECHNIQUES)),
+    ("genome editing", Some(TECHNIQUES)),
+    ("cell structure", Some(ORGANELLES)),
+    ("cell", Some(CELL_TYPES)),
+    ("anatomical", Some(BODY)),
+    ("organs", Some(BODY)),
+    ("pharmaceuticals", Some(DRUGS)),
+    ("medical devices", Some(MED_EQUIPMENT)),
+    ("computer", Some(COMPUTERS)),
+    ("researchers", Some(PERSONS)),
+    ("documents", Some(OBJECTS)),
+];
+
 fn rules(source: &str) -> Rules {
     match source {
         "bioart" => BIOART,
         "bioicons" => BIOICONS,
         "healthicons" => HEALTHICONS,
         "openmoji" | "noto" => OPENMOJI,
+        "phylopic" => PHYLOPIC,
+        "togotv" => TOGOTV,
         "reactome" => REACTOME,
         "scidraw" => SCIDRAW,
         "servier" => SERVIER,
@@ -598,7 +644,7 @@ mod tests {
 
     #[test]
     fn every_rule_lands_in_the_taxonomy() {
-        for r in [BIOART, BIOICONS, HEALTHICONS, OPENMOJI, REACTOME, SCIDRAW, SERVIER] {
+        for r in [BIOART, BIOICONS, HEALTHICONS, OPENMOJI, PHYLOPIC, REACTOME, SCIDRAW, SERVIER, TOGOTV] {
             for (k, t) in r {
                 if let Some(t) = t {
                     assert!(known(*t), "{k} -> {t:?}");
@@ -630,6 +676,10 @@ mod tests {
         assert_eq!(classify("servier", "", "atherosclerosis arteries overview", ""), vec![CARDIO]);
         assert_eq!(classify("openmoji", "people-body / hand-fingers-open", "waving hand", ""), vec![BODY_PARTS]);
         assert_eq!(classify("scidraw", "other", "Zebrafish larva", ""), vec![MODEL_ORGANISMS]);
+        assert_eq!(classify("phylopic", "Model organisms, Organisms / Fish", "Danio rerio", ""), vec![MODEL_ORGANISMS, ANIMALS]);
+        assert_eq!(classify("phylopic", "Organisms / Arthropods", "Apis cerana", ""), vec![INSECTS]);
+        assert_eq!(classify("togotv", "Lab apparatus, Microscope", "Confocal microscope", ""), vec![LAB_EQUIPMENT, IMAGING]);
+        assert_eq!(classify("togotv", "Cell structure", "Golgi apparatus", ""), vec![ORGANELLES]);
         assert_eq!(classify("user", "my figures", "Neurons in culture", "[]"), vec![NERVOUS]);
         assert_eq!(classify("user", "", "snowflake1", "[\"snow\", \"winter\"]"), vec![NATURE]);
         assert_eq!(classify("user", "", "qwzx", "[]"), vec![OTHER]);

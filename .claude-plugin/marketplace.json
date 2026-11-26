@@ -9,7 +9,7 @@
   "plugins": [
     {
       "name": "biocartoon",
-      "description": "Search about 20,000 open-licensed biology illustrations, preview and download them with their credit lines, and draw and submit new ones to the shared library.",
+      "description": "Search about 35,000 open-licensed biology illustrations, preview and download them with their credit lines, and draw and submit new ones to the shared library.",
       "source": "./",
       "category": "productivity"
     }

@@ -125,7 +125,7 @@
           "items": {
             "type": "string"
           },
-          "description": "Draw icons only from these collections (one keeps a consistent style): bioart, bioicons, servier, scidraw, healthicons, reactome, openmoji, noto, user."
+          "description": "Draw icons only from these collections (one keeps a consistent style): bioart, bioicons, servier, scidraw, togotv, phylopic, healthicons, reactome, openmoji, noto, user."
         },
         "figure": {
           "type": "object",
@@ -249,7 +249,7 @@
               "items": {
                 "type": "string"
               },
-              "description": "Draw icons only from these collections (one keeps a consistent style): bioart, bioicons, servier, scidraw, healthicons, reactome, openmoji, noto, user."
+              "description": "Draw icons only from these collections (one keeps a consistent style): bioart, bioicons, servier, scidraw, togotv, phylopic, healthicons, reactome, openmoji, noto, user."
             }
           }
         },
@@ -455,7 +455,7 @@
               "items": {
                 "type": "string"
               },
-              "description": "Draw icons only from these collections (one keeps a consistent style): bioart, bioicons, servier, scidraw, healthicons, reactome, openmoji, noto, user."
+              "description": "Draw icons only from these collections (one keeps a consistent style): bioart, bioicons, servier, scidraw, togotv, phylopic, healthicons, reactome, openmoji, noto, user."
             }
           }
         },
@@ -662,7 +662,7 @@
               "items": {
                 "type": "string"
               },
-              "description": "Draw icons only from these collections (one keeps a consistent style): bioart, bioicons, servier, scidraw, healthicons, reactome, openmoji, noto, user."
+              "description": "Draw icons only from these collections (one keeps a consistent style): bioart, bioicons, servier, scidraw, togotv, phylopic, healthicons, reactome, openmoji, noto, user."
             }
           }
         }

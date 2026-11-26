@@ -49,12 +49,12 @@ Choose by what you can do:
     Edit that markup rather than redrawing: change only what the user asked for (colours, a part added or
     removed, a different pose), and keep the outline weight, palette and level of detail.
   - `asset_svg` also says whether an adaptation may be submitted, which depends on the original's license:
-    - **public domain or CC0** (all NIH BioArt and Health Icons, some Bioicons, SciDraw and uploads): yes,
+    - **public domain or CC0** (all NIH BioArt and Health Icons, some Bioicons, SciDraw, PhyloPic and uploads): yes,
       under either license.
     - **CC BY, MIT or BSD**: only as CC-BY-4.0 by a person, without generative AI. So an adaptation you made
       can't be submitted: AI-made submissions must be CC0, and the original's credit requirement rules that
       out.
-    - **CC BY-SA** (OpenMoji, a few Bioicons): no.
+    - **CC BY-SA** (OpenMoji, some PhyloPic, a few Bioicons): no.
     In every case the user can use the adaptation in their own figure, with the original's `credit` line.
     Tell them this before they put work into an adaptation they hope to contribute.
   - Servier icons and some uploads are PNG only, and some drawings are too detailed to edit as code
